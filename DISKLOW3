@@ -1,0 +1,324 @@
+               INCLUDE HPFIXUPS
+               TITLE "DISKLOW3"
+***************************************************************************************************
+***************************************************************************************************
+***                                                                                             ***
+***            DISKLOW3 - 12-BIT (SAMPLE) DATA TRANSFER                                         ***
+***                                                                                             ***
+***************************************************************************************************
+***************************************************************************************************
+;
+NEG_EXT        EQU     0FFFFFF00H      ;USE IN MOVEQ INSTRUCTIONS WHERE ARG IS
+                                       ;80H OR LARGER - HP XASM DOES NOT HANDLE
+                                       ;SIGN-EXTEND CORRECTLY.  COSMETIC, KEEPS
+                                       ;ACTUAL BYTE VALUE CLEARER.
+;
+               INCLUDE EQUATES         ;HDW ADDR AND CONSTANT DEFS, ABS_SHORT DIRECTIVE.
+;
+               INCLUDE DISKDEFS        ;DISK SYSTEM DEFINITIONS.
+;
+               GLB     READ_12_BIT,WRITE_12_BIT,VER_12_BIT
+;
+               EXTERNAL  TEST_COMPL_STAT,TEST_WRITE_STAT,TEST_VERFY_STAT
+               EXTERNAL  DELAY_32USEC,AWAIT_DRQ
+;
+               EXTERNAL  BEGIN_TRUNC
+               EXTERNAL  BYTE_LENGTH
+;
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+READ_12_BIT
+;
+;TRANSFERS DATA FROM A SINGLE SECTOR INTO SAMPLE MEMORY (SAMPLE MEMORY INTERFACE MUST BE
+;INITIALIZED BEFORE CALLING THIS ROUTINE).
+;D0 CONTAINS SECTOR NUMBER FOR TRANSFER.
+;BEGIN_TRUNC INDICATES WHETHER OR NOT TO SKIP ANY DATA AT BEGINNING OF THE SECTOR (0 = NO SKIP).
+;IF BEGIN_TRUNC = 0, D2 CONTAINS DATA TRANSFER LENGTH IN BYTES.
+;IF BEGIN_TRUNC > 0, D2 CONTAINS DATA SKIP LENGTH IN BYTES -
+;AFTER DATA SKIP, D2 IS RELOADED FROM BYTE_LENGTH WITH THE ACTUAL TRANSFER LENGTH IN BYTES.
+;SECTORS ALWAYS BEGIN ON A DOUBLE-WORD BOUNDARY AND CONTAIN AN INTEGRAL NUMBER OF DOUBLE-WORDS -
+;ALL BUT LAST SECTOR IN A SAMPLE FILE CONTAIN 682 BYTE-PACKED WORDS WITH A 00H BYTE AT THE END -
+;TO READ ALL DATA IN THESE SECTORS, SEND BEGIN_TRUNC = 0, D2 = 1023.
+;LAST SAMPLE FILE SECTOR CONTAINS 128 BYTE-PACKED WORDS, REMAINDER OF BYTES IN SECTOR ARE 00H.
+;BEGINNING-TRUNCATED READS ARE FOR 1-SAMPLE LOAD ONLY.
+;
+;      THE DATA PACKING/UNPACKING ALGORITHM LOOKS LIKE THIS:
+;
+;        IN 12-BIT RAM                           ON DISK:
+;      (AS READ BY CPU):
+;              1   1
+;              5   1      4                            7      0        .
+;   WORD 1     bbbbyyyyyyyy0000              BYTE 2    yyyyyyyy       /|\
+;   WORD 0     aaaaxxxxxxxx0000              BYTE 1    bbbbaaaa        |
+;                                            BYTE 0    xxxxxxxx        |    HIGHER ADDRESSES
+;                                                                      |
+               MOVE.B  D0,DISK_SEC          ;PASS SECTOR NUMBER TO FDC.
+               MOVE.B  #READ_SECTOR,DISK_CMD     ;ISSUE COMMAND TO FDC.
+               BSR     DELAY_32USEC         ;ALLOW TIME FOR FDC STATUS TO BECOME VALID.
+               TST.B   BEGIN_TRUNC          ;IS READ TO BEGIN AFTER THE BEGINNING OF THE SECTOR?
+               BEQ.S   RD_12_1              ;BRANCH IF NOT - READ BEGINS ON DOUBLE-WORD BOUNDARY.
+               BRA.S   RD_12_K              ;IF SO, D2 INDICATES NUMBER OF BYTES TO SKIP -
+                                            ;HEAD FOR THE DATA-SKIP LOOP.
+;
+RD_12_6
+               MOVE.B  DISK_STAT,D1         ;(16) POLL FOR BYTE 0.
+               BTST    #DRQ,D1              ;(10)
+               BNE.S   RD_12_4              ;(12) IF BYTE 0 IS AVAILABLE, GO READ IT.
+               BTST    #FDC_BUSY,D1         ;(10) IS FDC STILL BUSY?
+               BNE     RD_12_6              ;(10) YES - KEEP POLLING.
+               BRA     RD_12_7              ;NO - GO CHECK FDC COMPLETION STATUS IN D1.
+RD_12_1
+               BSR     AWAIT_DRQ            ;(88) LOOP ENTRY FOR NON-BEGINNING-TRUNCATED READ.
+RD_12_4
+               MOVE.B  DISK_DATA,D0         ;(16) READ BYTE 0 - L.S. BYTE OF WORD 0.
+               SUBQ    #1,D2                ;( 4) DECREMENT BYTE COUNT - READ CANNOT END ON BYTE 0.
+;
+RD_12_8
+               MOVE.B  DISK_STAT,D1         ;(16) POLL FOR BYTE 1.
+               BTST    #DRQ,D1              ;(10)
+               BNE.S   RD_12_5              ;(12) IF BYTE 1 IS AVAILABLE, GO READ IT.
+               BTST    #FDC_BUSY,D1         ;(10) IS FDC STILL BUSY?
+               BNE     RD_12_8              ;(10) YES - KEEP POLLING.
+               BRA.S   RD_12_7              ;NO - GO CHECK FDC COMPLETION STATUS IN D1.
+RD_12_5
+               MOVE.B  DISK_DATA,D1         ;(16) READ BYTE 1 - M.S. NIBS OF WORDS 1,0.
+               MOVE    D1,D3                ;(4)  MAKE A COPY OF COMBINED M.S.NIBBLES.
+               LSL     #8,D3                ;(22) POSITION WORD 0 M.S.NIB FOR COMBINE W/ L.S.BYTE.
+               MOVE.B  D0,D3                ;(4)  COMBINE WORD 0 L.S.BYTE WITH M.S.NIBBLE.
+               LSL     #4,D3                ;(14) FINISH POSITIONING WORD 0.
+               MOVE    D3,WR_SAM_RAM        ;(16) WRITE WORD 0 OUT TO RAM.
+               SUBQ    #1,D2                ;( 4) DECREMENT BYTE COUNT - READ CANNOT END ON BYTE 1.
+;
+RD_12_A
+               MOVE.B  DISK_STAT,D0         ;(16) POLL FOR BYTE 2.
+               BTST    #DRQ,D0              ;(10)
+               BNE.S   RD_12_3              ;(12) IF BYTE 2 IS AVAILABLE, GO READ IT.
+               BTST    #FDC_BUSY,D0         ;(10) IS FDC STILL BUSY?
+               BNE     RD_12_A              ;(10) YES - KEEP POLLING.
+               BRA.S   RD_12_O              ;NO - GO CHECK FDC COMPLETION STATUS IN D0.
+RD_12_3
+               ROL     #4,D1                ;(14) POSITION WORD 1 M.S.NIB FOR COMBINE W/ L.S.BYTE.
+               MOVE.B  DISK_DATA,D1         ;(16) READ BYTE 2 - L.S. BYTE OF WORD 1 - COMBINE.
+               ROL     #4,D1                ;(14) FINISH POSITIONING COMBINED WORD 1.
+               MOVE    D1,WR_SAM_RAM        ;(16) WRITE WORD 1 INTO SAMPLE RAM.
+               SUBQ    #1,D2                ;( 4) WAS THIS THE LAST BYTE TO READ?
+               BNE     RD_12_6              ;(10) NO - GO FOR NEXT BYTE 0.
+               BRA.S   RD_12_9              ;(10) YES -BRANCH INTO DATA-SKIP LOOP.
+;
+                                            ;DATA-SKIP LOOP - DUMMY READS AT EITHER END OF SECTOR.
+RD_12_K
+               BSR     AWAIT_DRQ            ;(88) ENTRY FOR BEGINNING-TRUNCATED SECTOR READ.
+RD_12_9
+               MOVE.B  DISK_STAT,D1         ;(16)
+               BTST    #DRQ,D1              ;(10)
+               BNE.S   RD_12_G              ;(12) DATA IS AVAILABLE - GO GIT IT.
+               BTST    #FDC_BUSY,D1         ;(10) IS FDC STILL BUSY?
+               BNE     RD_12_9              ;(10) YES - KEEP DUMMYING.
+               BRA.S   RD_12_7              ;NO - GO CHECK FDC COMPLETION STATUS IN D1.
+RD_12_G
+               MOVE.B  DISK_DATA,D0         ;(16) READ (BUT DON'T STORE) A BYTE FROM DISK.
+               SUBQ    #1,D2                ;( 4) WAS THIS THE LAST BYTE TO IGNORE?
+               BNE     RD_12_9              ;(10) NO - IGNORE SOME MORE ....
+;
+               MOVE    BYTE_LENGTH,D2       ;(12) YES - FETCH DATA TRANSFER LENGTH.
+               BRA     RD_12_6              ;(10) START AT TOP OF NORMAL READ LOOP,
+                                            ;     POLL FOR BYTE 0.
+;
+RD_12_O
+               MOVE.B  D0,D1                ;IF FDC GOES IDLE DURING POLL FOR BYTE 2 LOOP, THEN
+                                            ;FDC COMPLETION STATUS IS IN D0 - TRANSFER IT TO D1.
+RD_12_7
+               BSR     TEST_COMPL_STAT      ;GET DISK SYS CODE IN D0 FOR FDC STATUS NOW IN D1.
+RD_12_EXIT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+WRITE_12_BIT
+;
+;IN GENERAL, SIMILAR TO READ_12_BIT (SEE HEADER COMMENTS FOR THAT ROUTINE).
+;HOWEVER, 1-SAMPLE SAVE/VERIFY IS NOT POSSIBLE -
+;BEGINNING-TRUNCATED OPERATIONS ARE THEREFORE NOT NEEDED, BEGIN_TRUNC AND BYTE_LENGTH NOT USED,
+;WRITE/VERIFY OPERATIONS ALWAYS START FROM BEGINNING OF SECTOR.
+;AS WITH READ_12_BIT, SAMPLE MEMORY INTERFACE MUST BE INITIALIZED BEFORE THIS ROUTINE IS CALLED.
+;
+               MOVE.B  D0,DISK_SEC          ;PASS SECTOR NUMBER TO FDC.
+               MOVE.B  #WRITE_SECTOR,DISK_CMD    ;ISSUE SECTOR WRITE COMMAND TO FDC.
+               BSR     DELAY_32USEC         ;ALLOW TIME FOR FDC STATUS TO BECOME VALID.
+;
+               MOVE    RD_SAM_RAM,D0        ;FETCH WORD 0 INTO D0.
+               LSR     #4,D0                ;POSITION FOR BYTE 0 WRITE, BYTE 1 COMBINE.
+               BSR     AWAIT_DRQ            ;(88) WHEN DRQ OCCURS,
+               MOVE.B  D0,DISK_DATA         ;(16) WRITE BYTE 0.
+               SUBQ    #1,D2                ;(4)  DECREMENT DATA TRANSFER COUNT.
+               BRA.S   WR_12_1              ;(10) WRITE CAN'T END ON BYTE 0, GO FOR BYTE 1.
+;
+WR_12_6
+               MOVE.B  DISK_STAT,D1         ;(16) POLL FOR BYTE 0.
+               BTST    #DRQ,D1              ;(10)
+               BNE.S   WR_12_4              ;(12) IF BYTE 0 REQUESTED, WRITE IT.
+               BTST    #FDC_BUSY,D1         ;(10) IS FDC STILL BUSY?
+               BNE     WR_12_6              ;(10) YES - KEEP POLLING.
+               BRA.S   WR_12_D              ;NO - GO CHECK COMPLETION STATUS IN D1.
+WR_12_4
+               MOVE.B  D0,DISK_DATA         ;(16) WRITE BYTE 0.
+               SUBQ    #1,D2                ;( 4) DECREMENT BYTE COUNT - WRITE CAN'T STOP HERE.
+;
+WR_12_1
+               MOVE    RD_SAM_RAM,D1        ;(16) FETCH WORD 1 FROM RAM.
+               MOVE    D1,D3                ;(4)  MAKE A COPY.
+               AND     #0F000H,D3           ;(8)  CLEAR THE WAY FOR COMBINE OF M.S.NIBBLES.
+               OR      D0,D3                ;(4)  COMBINE WITH WORD 0 M.S.NIBBLE.
+               LSR     #8,D3                ;(22) POSITION FOR BYTE 1 WRITE.
+WR_12_A
+               MOVE.B  DISK_STAT,D0         ;(16) POLL FOR BYTE 1.
+               BTST    #DRQ,D0              ;(10)
+               BNE.S   WR_12_5              ;(12) IF BYTE 1 REQUESTED, WRITE IT.
+               BTST    #FDC_BUSY,D0         ;(10) IS FDC STILL BUSY?
+               BNE     WR_12_A              ;(10) YES - KEEP POLLING.
+               BRA.S   WR_12_P              ;NO - GO CHECK COMPLETION STATUS IN D0.
+WR_12_5
+               MOVE.B  D3,DISK_DATA         ;(16) WRITE BYTE 1.
+               LSR     #4,D1                ;(14) POSITION WORD 1 L.S.BYTE FOR BYTE 2 WRITE.
+               SUBQ    #1,D2                ;( 4) DECR BYTE COUNT - WRITE CAN'T END ON BYTE 1.
+;
+WR_12_C
+               MOVE.B  DISK_STAT,D0         ;(16) POLL FOR BYTE 2.
+               BTST    #DRQ,D0              ;(10)
+               BNE.S   WR_12_3              ;(12) IF BYTE 2 IS REQUESTED, GO WRITE IT.
+               BTST    #FDC_BUSY,D0         ;(10) IS FDC STILL BUSY?
+               BNE     WR_12_C              ;(10) YES - KEEP POLLING.
+               BRA.S   WR_12_P              ;NO - GO CHECK COMPLETION STATUS IN D0.
+WR_12_3
+               MOVE.B  D1,DISK_DATA         ;(16) WRITE BYTE 2.
+               SUBQ    #1,D2                ;( 4) WAS THIS THE LAST BYTE TO WRITE?
+               BEQ.S   WR_12_N              ;(12) YES - SIT IN WRITE-ZEROES LOOP TILL SECTOR END.
+               MOVE    RD_SAM_RAM,D0        ;(16) NO - FETCH NEXT WORD 0,
+               LSR     #4,D0                ;(14) POSITION IT FOR BYTE 0 WRITE / BYTE 1 COMBINE,
+               BRA     WR_12_6              ;(10) GO POLL FOR NEXT BYTE 0.
+;
+                                            ;WRITE-ZEROES LOOP FOR LEFTOVERS AT END OF SECTOR -
+                                            ;PROVIDE NULL DATA TO FDC TO AVOID LOST-DATA ERRORS.
+WR_12_N
+               MOVE.B  DISK_STAT,D1         ;(16) READ FDC STATUS.
+               BTST    #DRQ,D1              ;(10) DATA AVAILABLE?
+               BNE.S   WR_12_O              ;(12) BRANCH IF YES, READ IT.
+               BTST    #FDC_BUSY,D1         ;(10) NO - FDC STILL BUSY?
+               BNE     WR_12_N              ;(10) STILL BUSY - LOOK AT STATUS AGAIN.
+               BRA.S   WR_12_D              ;NOT BUSY - CHECK COMPLETION STATUS IN D1.
+WR_12_O
+               MOVE.B  D0,DISK_DATA         ;(16) WRITE DATA TO FDC TO KEEP IT FROM FLIPPING OUT.
+               BRA     WR_12_N              ;(10)
+;
+WR_12_P
+               MOVE    D0,D1                ;IF FDC WENT IDLE DURING POLL FOR BYTE 1 OR BYTE 2,
+                                            ;FDC STATUS IS IN D0 - TRANSFER IT TO D1.
+WR_12_D
+               BSR     TEST_WRITE_STAT      ;GET DISK SYS CODE IN D0 FOR FDC STATUS IN D1.
+WR_12_EXIT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+VER_12_BIT
+;
+;IN GENERAL, SIMILAR TO READ_12_BIT (SEE HEADER COMMENTS FOR THAT ROUTINE).
+;HOWEVER, 1-SAMPLE SAVE/VERIFY IS NOT POSSIBLE -
+;BEGINNING-TRUNCATED OPERATIONS ARE THEREFORE NOT NEEDED, BEGIN_TRUNC AND BYTE_LENGTH NOT USED,
+;WRITE/VERIFY OPERATIONS ALWAYS START FROM BEGINNING OF SECTOR.
+;AS WITH READ_12_BIT, SAMPLE MEMORY INTERFACE MUST BE INITIALIZED BEFORE THIS ROUTINE IS CALLED.
+;
+               MOVE.B  D0,DISK_SEC          ;PASS SECTOR NUMBER TO FDC.
+               MOVE.B  #READ_SECTOR,DISK_CMD     ;ISSUE SECTOR READ COMMAND TO FDC.
+               CLR     D4                   ;D4 IS USED AS A VERIFY-ERROR FLAG - CLEAR IT.
+               BSR     DELAY_32USEC         ;ALLOW TIME FOR FDC STATUS TO BECOME VALID.
+;
+               MOVE    RD_SAM_RAM,D0        ;FETCH WORD 0 INTO D0.
+               LSR     #4,D0                ;POSITION FOR BYTE 0 COMPARE, BYTE 1 COMBINE.
+               BSR     AWAIT_DRQ            ;(88) WHEN DRQ OCCURS,
+               CMP.B   DISK_DATA,D0         ;(16) COMPARE BYTE 0.
+               BEQ.S   VE_12_2              ;(12) BRANCH IF COMPARE OK,
+               ST      D4                   ;(6)  ELSE SET VERIFY-ERROR FLAG.
+VE_12_2
+               SUBQ    #1,D2                ;(4)  DECREMENT DATA TRANSFER COUNT.
+               BRA.S   VE_12_1              ;(10) COMPARE CAN'T END ON BYTE 0, GO FOR BYTE 1.
+;
+VE_12_6
+               MOVE.B  DISK_STAT,D1         ;(16) POLL FOR BYTE 0.
+               BTST    #DRQ,D1              ;(10)
+               BNE.S   VE_12_4              ;(12) IF BYTE 0 AVAILABLE, COMPARE IT WITH RAM VALUE.
+               BTST    #FDC_BUSY,D1         ;(10) IS FDC STILL BUSY?
+               BNE     VE_12_6              ;(10) YES - KEEP POLLING.
+               BRA     VE_12_D              ;NO - GO CHECK COMPLETION STATUS IN D1.
+VE_12_4
+               CMP.B   DISK_DATA,D0         ;(16) COMPARE BYTE 0.
+               BEQ.S   VE_12_K              ;(12) BRANCH IF COMPARE OK,
+               ST      D4                   ;( 4) ELSE SET VERIFY-ERROR FLAG.
+VE_12_K
+               SUBQ    #1,D2                ;( 4) DECREMENT BYTE COUNT - VERIFY CAN'T STOP HERE.
+;
+VE_12_1
+               MOVE    RD_SAM_RAM,D1        ;(16) FETCH WORD 1 FROM RAM.
+               MOVE    D1,D3                ;(4)  MAKE A COPY.
+               AND     #0F000H,D3           ;(8)  CLEAR THE WAY FOR COMBINE OF M.S.NIBBLES.
+               OR      D0,D3                ;(4)  COMBINE WITH WORD 0 M.S.NIBBLE.
+               LSR     #8,D3                ;(22) POSITION FOR BYTE 1 COMPARE.
+VE_12_A
+               MOVE.B  DISK_STAT,D0         ;(16) POLL FOR BYTE 1.
+               BTST    #DRQ,D0              ;(10)
+               BNE.S   VE_12_5              ;(12) IF BYTE 1 AVAILABLE, COMPARE IT WITH RAM VALUE.
+               BTST    #FDC_BUSY,D0         ;(10) IS FDC STILL BUSY?
+               BNE     VE_12_A              ;(10) YES - KEEP POLLING.
+               BRA.S   VE_12_P              ;NO - GO CHECK COMPLETION STATUS IN D0.
+VE_12_5
+               CMP.B   DISK_DATA,D3         ;(16) COMPARE BYTE 1.
+               BEQ.S   VE_12_L              ;(12) BRANCH IF COMPARE OK,
+               ST      D4                   ;( 4) ELSE SET VERIFY-ERROR FLAG.
+VE_12_L
+               LSR     #4,D1                ;(14) POSITION WORD 1 L.S.BYTE FOR BYTE 2 COMPARE.
+               SUBQ    #1,D2                ;( 4) DECR BYTE COUNT - COMPARE CAN'T END ON BYTE 1.
+;
+VE_12_C
+               MOVE.B  DISK_STAT,D0         ;(16) POLL FOR BYTE 2.
+               BTST    #DRQ,D0              ;(10)
+               BNE.S   VE_12_3              ;(12) IF BYTE 2 IS AVAILABLE, GO COMPARE IT.
+               BTST    #FDC_BUSY,D0         ;(10) IS FDC STILL BUSY?
+               BNE     VE_12_C              ;(10) YES - KEEP POLLING.
+               BRA.S   VE_12_P              ;NO - GO CHECK COMPLETION STATUS IN D0.
+VE_12_3
+               CMP.B   DISK_DATA,D1         ;(16) COMPARE BYTE 2.
+               BEQ.S   VE_12_M              ;(12) BRANCH IF COMPARE OK,
+               ST      D4                   ;( 4) ELSE SET VERIFY-ERROR FLAG.
+VE_12_M
+               SUBQ    #1,D2                ;( 4) WAS THIS THE LAST BYTE TO COMPARE?
+               BEQ.S   VE_12_N              ;(12) YES - SIT IN DUMMY COMPARE LOOP TILL SECTOR END.
+               MOVE    RD_SAM_RAM,D0        ;(16) NO - FETCH NEXT WORD 0,
+               LSR     #4,D0                ;(14) POSITION IT FOR BYTE 0 COMPARE,
+               BRA     VE_12_6              ;(10) GO POLL FOR NEXT BYTE 0.
+;
+                                            ;DUMMY COMPARE LOOP FOR LEFTOVERS AT END OF SECTOR -
+                                            ;READ DATA COMING FROM FDC TO AVOID LOST-DATA ERRORS.
+VE_12_N
+               MOVE.B  DISK_STAT,D1         ;(16) READ FDC STATUS.
+               BTST    #DRQ,D1              ;(10) DATA AVAILABLE?
+               BNE.S   VE_12_O              ;(12) BRANCH IF YES, READ IT.
+               BTST    #FDC_BUSY,D1         ;(10) NO - FDC STILL BUSY?
+               BNE     VE_12_N              ;(10) STILL BUSY - LOOK AT STATUS AGAIN.
+               BRA.S   VE_12_D              ;NOT BUSY - CHECK COMPLETION STATUS IN D1.
+VE_12_O
+               MOVE.B  DISK_DATA,D0         ;(16) READ DATA FROM FDC TO KEEP IT FROM FLIPPING OUT.
+               BRA     VE_12_N              ;(10)
+;
+VE_12_P
+               MOVE    D0,D1                ;IF FDC WENT IDLE DURING POLL FOR BYTE 1 OR BYTE 2,
+                                            ;FDC STATUS IS IN D0 - TRANSFER IT TO D1.
+VE_12_D
+               BSR     TEST_VERFY_STAT      ;GET DISK SYS CODE IN D0 FOR FDC STATUS IN D1.
+VE_12_EXIT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA

@@ -1,0 +1,215 @@
+
+Segmented link etc for use with HMI system:
+
+group the object modules into four or more groups,
+each of which is a separate region within overlay "rom".
+each region begins at a fixed address such that there is
+space between the separate regions, allowing each to grow
+to a certain extent before overlap occurs.
+for each of the groups, create a link spec file which
+performs an intermediate link and generates a relocatable object file.
+the system-wide link spec file contains only these four or eight
+intermediate files instead of the individual object modules.
+an intelligent batch file for assemble/link/download must
+branch based on the source file name to invoke the linker with
+the link spec file which pertains to the region in which the source
+file is included.
+following this it must invoke the system-wide link -
+however, it must remain on the region-specific branch in order to generate
+a download module for the new region only, using the -w option
+and address window parameters as appropriate.
+finally, it heads to a common exit path which invokes the downloader
+with options as req'd to generate codeless systemwide symbol download file
+(since HMI system seems not to allow partial symbol table loads).
+
+Oh, uhhh, one more minor detail - cross-linkages between these regions
+must be effected strictly via a fixed branch table for each region,
+otherwise changes in one region will usually have link repercussions for
+the other regions, necessitating that all be downloaded anew.
+A TRAP vector linkage could confine the damage to the source module which
+contains the module table, but many routines cannot use this system
+owing to timing constraints.  Aw shit.  This a hell of a lotta work.
+Oh well ....
+
+There is still the prospect of improving link time via intermediate links,
+even though download time will not be improved.
+If intermediate module sizes are small enough, it should be possible to
+do the intermediate links completely on the RAM disk.
+(Follow-up: it was possible, but the final link actually took longer).
+
+So, about that fixed branch-table stuff:
+Each table contains instructions (BRA, JMP as appropriate) for branching to
+the globally-accessible subroutines in its associated region.
+All tables are located entirely within the Abs.W address range to allow
+access via JMP/JSR.W instructions from anywhere in the address range.
+Tables may be located as near as possible to the top of the Abs.W range
+to maximize the ability to use BRA instead of JMP.L in order to reach
+destination routines, most of which will be above the Abs.W range.
+References to routines elswhere in the code use the original name of the
+subroutine, eg JSR THIS_ROUTINE.
+The routine itself is renamed with an leading underbar (eg _THIS_ROUTINE),
+and this name is .EXPORTed for access by the branch table module -
+this also makes them available for downloading and debugging use.
+The entry points in the branch-table are named using the original
+non-underbar routine names.
+These names are not .EXPORTed, and are made accessible to routines in the
+system at large via inclusion of the branch table source files into other
+source files as necessary (routines in the native module can go direct).
+An OFFSET directive is used along with each INCLUDEd branch table file to
+render it as a list of constant address definitions within the source file -
+for this use, the externally referenced labels need not be .IMPORTed,
+and are therefore maintained in separate source files (assembly of the
+tables themselves is via a small main file which INCLUDEs the table
+definitions, the .IMPORT list and an appropriate .REGION directive).
+The branch table source file itself must begin and end with .ALONG/.AWORD,
+to guarantee the generation of JMP.L instructions where JMP is used.
+Since moving any of the entry points in a branch table may necessitate
+reassembly of ALL source modules, this should be avoided if at all possible
+- this includes leaving entry points in place even when no longer needed,
+adding only to the end of the list, and using JMP if BRA is not definitely
+going to be applicable (although a BRA can be patched to a new JMP in the
+same table if the target routine goes out of BRA range, in order to
+forestall the need for immediate wholesale reassembly, at cost of an
+additional usec or so of execution time).
+
+Wide-scale implications:
+When a source file is modified and reassembled, its region must be
+re-linked.  The associated branch table must be re-linked as well -
+this can be accomplished in a single link with the appropriate link spec
+file, which must also include the RAM object module.
+If new entry points have been added and are referenced by code in other
+regions, then those regions need re-linking as well (because the individual
+source module must be reassembled to incorporate its use of the new entry
+point).
+After the initial first download of an emulation session, which must include
+all regions, downloading can be restricted to those regions which have been
+changed.
+Another implication of all of this is that ROM strings either must not be
+shared across regions, or must be located in a fixed region of their own,
+or must be accessed indirectly via a dedicated subroutine which accepts
+fixed-value parameters instead of directly by address.
+
+A note on controlling expansion of program size:
+At this count, there are 705 global subroutine/ROM labels defined.
+Since each one added to a branch table adds 4 or 6 bytes to total program size,
+it would be preferable to do this only when the savings in program size which
+results from shrinking the size of multiple widespread subroutine calls from
+6 bytes to 4 bytes is enough to compensate.
+For routines called only from one place, this is not possible, nor does it
+occur for routines currently called only via BSR from nearby modules.
+Where it is possible to group modules together in such a way as to minimize or
+eliminate the need to .EXPORT many of their subroutines to the rest of the
+system, this should be done - these routines are left out of the branch table
+(the disk system is the most obvious case of this situation).
+
+CALL/JUMP TRAP system adds some twists, since:
+1.  Adds only two bytes per entry-point in its current form,
+2.  As a result of #1, does not have full addressing range if function tables
+    are located in a specific place instead of with the associated modules,
+3.  If all function tables are combined in a single place, then all modules
+    addressed by them must be part of one link spec, whereas if they are
+    kept with their modules, then the main function table directory still needs
+    to be linked to all of the modules containing function tables.
+Possible solutions:
+1.  Change the system to use the "standard" branch tables instead of the
+    offset lists currently employed.  The main function table directory then
+    needs only to be linked to these tables, and if it is located in a fixed
+    place, then the actual trap handler routines can located apart from it.
+    A worthwhile side effect: trap handling overhead is reduced slightly.
+2.  A separate trap handler per region, with entry point at the fixed start
+    address of each region.  These entry points would become the actual trap
+    vectors, eliminating the need for a wide-scale link.  Each region would
+    need its own dedicated trap number, thus the number of regions would have
+    its limits (although the TRAP system is applicable mainly to disk and user
+    interface functions anyway).  The definitions of the CALL/JUMP macros
+    could be extended to include use of the appropriate TRAP number based on
+    the function class referenced in a given instruction.
+
+
+
+
+tentative module grouping:
+
+
+
+        0H ROMVECS         @VECTORS
+
+
+      6E2H LEVEL2          @MAIN
+      7B2H REALTIME        @MAIN
+      ADEH LEVEL4          @MAIN
+      C4CH LEVEL5          @MAIN
+      C8CH LEVEL6          @MAIN
+
+
+
+
+     290CH SEQSUBS         @MAIN
+     7F5EH SEQCHASE        @MAIN
+     1C4AH PRO_CLIC        @MAIN
+     51B0H PRO_TC          @MAIN
+     56FEH PRO_MTC         @MAIN
+     6F30H TRANSPOR        @MAIN
+    15E64H TEMPO           @MAIN
+    1798AH BLOOZE          @MAIN
+    1CC90H PHASES          @MAIN
+
+     C5E0H SEQFUNS1        @MAIN
+     CF40H SEQFUNS2        @MAIN
+     E5EAH SEQFUNS3        @MAIN
+     FD00H SEQFUNS4        @MAIN
+    1187EH SONGFUNS        @MAIN
+
+      100H PRIORITY        @MAIN
+      3F0H NON_PRIO        @MAIN
+      DFCH VINITMAI        @MAIN
+     107EH VINITSUB        @MAIN
+     1668H ASSIGN          @MAIN
+     4E04H PRO_PADS        @MAIN
+     8876H FOOTSWBO        @MAIN
+     8A56H FOOTPADS        @MAIN
+     8D9AH TRIGRBOY        @MAIN
+    15A70H KT_ALT_A        @MAIN
+     83C0H switchbo        @MAIN
+     5E26H backgrou        @MAIN
+    1C590H TABLES          @MAIN
+    1D7CAH TUNE_TAB        @MAIN
+
+     6B90H SAMSUBS         @MAIN
+    14FB4H SAMPLING        @MAIN
+     8F7EH SNDFUNS1        @MAIN
+     A2D8H SNDFUNS2        @MAIN
+     BA72H SNDFUNS3        @MAIN
+
+     324AH PERF_MID        @MAIN
+     3F26H SEQ_MIDI        @MAIN
+     4890H AUTO_MID        @MAIN
+     8F7AH SYS_EX          @MAIN
+    12262H SYSFUNS1        @MAIN
+    12DC4H SYSFUNS2        @MAIN
+    14206H SYSFUNS3        @MAIN
+    14B3AH SYSFUNS4        @MAIN
+
+
+    16AECH LCD.S           @MAIN
+    16F42H GUIDO           @MAIN
+    171F0H FIELDS          @MAIN
+    15C20H MISCSUBS        @MAIN
+    188C2H DISKLOW1        @MAIN
+    18B2EH DISKLOW2        @MAIN
+    18E3EH DISKLOW3        @MAIN
+    19090H DISKCMD1        @MAIN
+    19AD0H DISKCMD2        @MAIN
+    1AA76H DISKMAIN        @MAIN
+    1B480H GNRCSCSI        @MAIN
+    1B9E4H SCSICMDS        @MAIN
+
+    16582H reset_44        @MAIN
+    1DCF2H ROMVECS         @MAIN
+    1E006H DIAG440         @MAIN
+    1ED78H SOFTDIAG        @MAIN
+
+
+ FFF80000H RAM_440         @LONGRAM
+ FFFF8000H RAM_440         @SHORTRAM
+

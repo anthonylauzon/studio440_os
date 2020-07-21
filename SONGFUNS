@@ -1,0 +1,1099 @@
+               INCLUDE HPFIXUPS
+               TITLE "SONGFUNS"
+***************************************************************************************************
+***************************************************************************************************
+***                                                                                             ***
+***            SONGFUNS - SUBFUNCTIONS UNDER "SONG"  FUNCTION SWITCH                   ***
+***                                                                                             ***
+***************************************************************************************************
+***************************************************************************************************
+;
+NEG_EXT        EQU     0FFFFFF00H      ;USE IN MOVEQ INSTRUCTIONS WHERE ARG IS
+                                       ;80H OR LARGER - HP XASM DOES NOT HANDLE
+                                       ;SIGN-EXTEND CORRECTLY.  COSMETIC, KEEPS
+                                       ;ACTUAL BYTE VALUE CLEARER.
+;
+                ABS_SHORT
+;
+               INCLUDE FIELD_EQU       ;SUBFUNCTION/FIELD BLOCK DEFINITIONS.
+;
+               GLB     GET_SONG_PTR,CLEAR_SONG,WRITE_SONG_NAME
+               GLB     DST_NOT_MT_SCRN
+;
+               EXTERNAL  Q_NAME          ;SEQUENCE DIRECTORY ELEMENTS.
+               EXTERNAL  Q_STATUS
+               EXTERNAL  Q_INIT_TEMPO
+               EXTERNAL  Q_TOTAL_BARS
+               EXTERNAL  Q_RPT_COUNT
+               EXTERNAL  Q_RPT_START
+               EXTERNAL  Q_RPT_END
+               EXTERNAL  Q_TIME_NUM
+               EXTERNAL  Q_XS_BEATS
+;
+                                            ;EXTERNAL ROM.
+               EXTERNAL  SET_NAME_BUF_ACC,FETCH_NAME
+               EXTERNAL  NAME_CURS_LEFT,NAME_CURS_RIGHT,CHAR_EDIT_LIM
+               EXTERNAL  WRITE_NAME_BUF,STORE_NAME_BUF,NOT_SAVED_WARNING
+               EXTERNAL  WRITE_PARAM_STRING,WRITE_A0_STRING,WRITE_STRING
+               EXTERNAL  GO_TO_NEXT_FIELD
+               EXTERNAL  MEM_FULL_SCRN
+               EXTERNAL  BLIND_FLUSH_NOTE_BUFS
+               EXTERNAL     SET_ENTER_FLASH
+               EXTERNAL     USER_STALL
+               EXTERNAL     WRITE_SCREEN
+               EXTERNAL     DISP_SCREEN
+               EXTERNAL     WRITE_BCD_DIGITS
+               EXTERNAL     WORD_BIN_TO_BCD
+               EXTERNAL     DISP_BUFFER
+               EXTERNAL     GET_SEQ_DIR_PTR
+               EXTERNAL     GET_CUR_SEQ_DIR
+               EXTERNAL     SEQ_NDSTR_READ
+               EXTERNAL     SEQ_WRITE
+               EXTERNAL     SEQ1_DRD_SETUP
+               EXTERNAL     SEQX_NDRD_SETUP
+               EXTERNAL     SEQ_NDRMW_EATER
+               EXTERNAL     SEQ_NDRD_EATER
+               EXTERNAL     WRITE_OLD_M_OFFS
+               EXTERNAL     WRITE_OLD_P_OFFS
+               EXTERNAL     SEQ_WR_PTR
+               EXTERNAL     SEQ_TURNAROUND
+               EXTERNAL     UPDATE_SEQ_SIZE
+               EXTERNAL     NOTHINGNESS
+               EXTERNAL     SEQ_CHANGE_SUB
+               EXTERNAL     NOTE_CHECK_W
+               EXTERNAL     SEQ_RUNNING_TEST,STOP_THE_SEQUENCER
+               EXTERNAL     INSTALL_SONG
+               EXTERNAL     NEW_SONG_SELECTED
+;
+                                            ;RAM-HOLES.
+               EXTERNAL     CURRENT_SEQUENCE
+               EXTERNAL     FROM_TRACK_NUM
+               EXTERNAL     BNC_TRK_NUM
+               EXTERNAL     SONG_STEP_NUM
+               EXTERNAL     SONG_FUNC
+               EXTERNAL     CURRENT_SONG
+               EXTERNAL     SONG_RPT_NUM
+               EXTERNAL     SONG_SEQ_NUM
+               EXTERNAL     SONG_LIST
+               EXTERNAL     PARAM_HI_LIM
+               EXTERNAL     CUR_FLD_INDEX
+               EXTERNAL     SUBFUN_INSTALL
+               EXTERNAL     CUR_SUB_BLOCK
+               EXTERNAL     TRACKS_MUTED
+               EXTERNAL     SEQ_MEM_FULL
+               EXTERNAL     DI_TEMP_1_B,SONG_UNBUILD_FLAG
+               EXTERNAL     NO_POT_CLEAR
+;
+SONG_LEN       EQU          8
+SONG_ST        EQU          10
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; FOR STARTERS, GLOBAL DECLARATIONS FOR THE SUBFUNCTION BLOCKS -
+; THEY'RE ACCESSED FROM SWITCHBOY MODULE:
+;
+                                            ;SONG_GROUP.
+               GLB     BUILD_SONG_SUB
+               GLB     BUILD_SONG_SUB2
+               GLB     BUILD_SONG_SUB3
+               GLB     SONG_NAME_SUB
+               GLB     CLEAR_SONG_SUB
+               GLB     DUB_TO_SEQ_SUB
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+;
+;
+;
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; THE SUBFUNCTION BLOCKS -
+; EACH BEGINS WITH THE DEFAULT SCREEN TEXT FOR THE SUBFUNCTION.
+;
+;
+;
+; SONG_GROUP:
+;;;;;;;;;
+BUILD_SONG_SUB
+               ASC     "STEP:     INSERT"
+               ASC     "SEQ.   REPEAT   "
+
+;STEP NUMBER FIELD
+
+               DC.B    6
+               DC.B    3
+               DC.W    ACCESS+SET_PTR
+               DC.L    ACC_STEP_NUM
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+TAILOR
+               DC.L    FIRST_UNBUILD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    500
+               DC.W    EDIT+ENTR_VEC
+               DC.L    BUILD_SONG
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    STEP_LIMIT
+               DC.W    EDIT+ED_VEC
+               DC.L    UNBUILD_EVENT
+               DC.W    FIELD_END
+
+;FUNCTION FIELD
+
+               DC.B    10
+               DC.B    6
+               DC.W    ACCESS+DIR_PTR
+               DC.W    SONG_FUNC
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    SONG_FUNC_STR
+               DC.W    EDIT+HI_LIMIT
+               DC.W    2
+               DC.W    EDIT+ENTR_VEC
+               DC.L    BUILD_SONG
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    FIELD_END
+
+;SEQUENCE NUMBER FIELD
+
+               DC.B    20
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    SONG_SEQ_NUM
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+HI_LIMIT
+               DC.W    99
+               DC.W    EDIT+ENTR_VEC
+               DC.L    BUILD_SONG
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    EDIT+ED_VEC
+               DC.L    WHERE_TO_GO
+               DC.W    FIELD_END
+
+;REPEAT # FIELD
+
+               DC.B    30
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    SONG_RPT_NUM
+               DC.W    ACCESS+WORD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    31
+               DC.W    EDIT+ENTR_VEC
+               DC.L    BUILD_SONG
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    SUBFUN_END
+
+;;;;;;;;;
+BUILD_SONG_SUB2
+               ASC     "STEP:     INSERT"
+               ASC     "TRK MUTE        "
+
+;STEP NUMBER FIELD
+
+               DC.B    6
+               DC.B    3
+               DC.W    ACCESS+DIR_PTR
+               DC.W    SONG_STEP_NUM
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+TAILOR
+               DC.L    FIRST_UNBUILD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    500
+               DC.W    EDIT+ENTR_VEC
+               DC.L    BUILD_SONG
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    STEP_LIMIT
+               DC.W    EDIT+ED_VEC
+               DC.L    UNBUILD_EVENT
+               DC.W    FIELD_END
+
+;FUNCTION FIELD
+
+               DC.B    10
+               DC.B    6
+               DC.W    ACCESS+DIR_PTR
+               DC.W    SONG_FUNC
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    SONG_FUNC_STR
+               DC.W    EDIT+HI_LIMIT
+               DC.W    2
+               DC.W    EDIT+ENTR_VEC
+               DC.L    BUILD_SONG
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    FIELD_END
+
+;SEQUENCE NUMBER FIELD
+
+               DC.B    20
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    SONG_SEQ_NUM
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    DISPLAY+MAX_LIMIT
+               DC.W    99
+               DC.W    DISPLAY+MAX_STRNG
+               DC.L    MU_STRING
+               DC.W    EDIT+HI_LIMIT
+               DC.W    99
+               DC.W    EDIT+ENTR_VEC
+               DC.L    BUILD_SONG
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    EDIT+ED_VEC
+               DC.L    WHERE_TO_GO
+               DC.W    FIELD_END
+
+;TRACKS TO BE MUTED DURING SONG PLAYBACK
+
+               DC.B    24
+               DC.B    1
+               DC.W    ACCESS+DIR_PTR
+               DC.W    BNC_TRK_NUM
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_MUTE_TRACK
+               DC.W    EDIT+HI_LIMIT
+               DC.W    7
+               DC.W    EDIT+ENTR_VEC
+               DC.L    BUILD_SONG
+               DC.W    EDIT+POT_CHG_VEC
+               DC.L    NOTHINGNESS
+               DC.W    EDIT+INCR_VEC
+               DC.L    NOTHINGNESS
+               DC.W    EDIT+DECR_VEC
+               DC.L    NOTHINGNESS
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    EDIT+LINKED
+               DC.W    SUBFUN_END
+
+;;;;;;;;;
+BUILD_SONG_SUB3
+               ASC     "STEP:     INSERT"
+               ASC     "END             "
+
+;STEP NUMBER FIELD
+
+               DC.B    6
+               DC.B    3
+               DC.W    ACCESS+DIR_PTR
+               DC.W    SONG_STEP_NUM
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+TAILOR
+               DC.L    FIRST_UNBUILD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    500
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    STEP_LIMIT
+               DC.W    EDIT+ED_VEC
+               DC.L    UNBUILD_EVENT
+               DC.W    FIELD_END
+
+;FUNCTION FIELD
+
+               DC.B    10
+               DC.B    6
+               DC.W    ACCESS+SET_PTR
+               DC.L    ACC_SONG_FUNC
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    SONG_FUNC_STR
+               DC.W    EDIT+HI_LIMIT
+               DC.W    0
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    FIELD_END
+
+;SEQUENCE NUMBER FIELD
+
+               DC.B    20
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    SONG_SEQ_NUM
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    DISPLAY+MAX_LIMIT
+               DC.W    100
+               DC.W    DISPLAY+MAX_STRNG
+               DC.L    NU_STRING
+               DC.W    EDIT+HI_LIMIT
+               DC.W    100
+               DC.W    EDIT+ED_VEC
+               DC.L    WHERE_TO_GO
+               DC.W    SUBFUN_END
+
+ACC_SONG_FUNC  CLR     SONG_FUNC
+               MOVE.L  #SONG_FUNC,D0
+               RTS
+
+ACC_STEP_NUM   BSR     GET_SONG_PTR
+               MOVE    SONG_LEN(A0),D0
+               CMP     SONG_STEP_NUM,D0
+               BGE.S   ACC_STEP_1
+               CLR     SONG_STEP_NUM
+ACC_STEP_1     MOVE.L  #SONG_STEP_NUM,D0
+               RTS
+
+;
+WRITE_MUTE_TRACK
+
+               MOVEM.L D0-D2/A2,-(A7)
+               MOVE    BNC_TRK_NUM,D0
+               MOVE    FROM_TRACK_NUM,D2
+               TST     D0
+               BMI     WR_MUTE_0
+               BCHG    D0,D2                    ;CHANGE BIT OF TRACKS TO BE BOUNCED
+               MOVE    D2,FROM_TRACK_NUM
+WR_MUTE_0      MOVE    #7,D0
+               MOVE.L  #BLANK_STRING,A2         ;POINT TO BLANK SCREEN
+WR_MUTE_1      MOVE    #24,D1                   ;GET POSITION OF STRING
+               ADD     D0,D1                    ;ADD TRACK NUMBER TO IT
+               LSL     #8,D1                    ;SHIFT IN TO HIGH ORDER BYTE
+               ADDQ    #1,D1                    ;SET LENGTH TO 1
+               BTST    D0,D2                    ;SEE IF TRACK IS ON OR OFF
+               BEQ     CLEAR_BIT                ;IF OFF DISPLAY BLANK
+               ADDQ    #1,D0
+                ABS_LONG
+               JSR     WORD_BIN_TO_BCD
+               JSR     WRITE_BCD_DIGITS         ;WRITE TRACK NUMBER TO DISPLAY
+                ABS_SHORT
+               SUBQ    #1,D0
+               BRA     WR_MUTE_2
+                ABS_LONG
+CLEAR_BIT      JSR     WRITE_STRING
+                ABS_SHORT
+WR_MUTE_2      DBRA    D0,WR_MUTE_1
+                ABS_LONG
+               JSR     DISP_BUFFER
+                ABS_SHORT
+               MOVE    #-1,BNC_TRK_NUM
+               MOVEM.L (A7)+,D0-D2/A2
+               RTS
+;
+;
+BLANK_STRING   ASC     "- "
+MU_STRING      DC.B    20
+               DC.B    2
+               ASC     "MU"
+NU_STRING      DC.B    20
+               DC.B    2
+               ASC     "  "
+
+WHERE_TO_GO    CMP     #99,SONG_SEQ_NUM         ;DECIDE WHICH SUBFUNCTION TO
+               BGE.S   W_T_G_1                  ;INSTALL BASED ON SEQUENCE NUMBER
+               MOVE.L  #BUILD_SONG_SUB,CUR_SUB_BLOCK
+               BRA.S   W_T_G_3
+W_T_G_1        BNE.S   W_T_G_2
+               MOVE.L  #BUILD_SONG_SUB2,CUR_SUB_BLOCK
+               BRA.S   W_T_G_3
+W_T_G_2        MOVE.L  #BUILD_SONG_SUB3,CUR_SUB_BLOCK
+W_T_G_3        ST      SUBFUN_INSTALL
+               ST      NO_POT_CLEAR
+               RTS
+
+STEP_LIMIT     BSR     GET_SONG_PTR
+               MOVE    SONG_LEN(A0),PARAM_HI_LIM       ;GET # OF EVENTS IN SONG
+                ABS_LONG
+               JSR     SET_ENTER_FLASH
+                ABS_SHORT
+               RTS
+
+FIRST_UNBUILD          ;I DON'T LIKE TO BE THIS MESSY, BUT....   IF THIS MAGICAL FLAG IS CLEAR,
+; IT MEANS THAT THIS IS THE FIRST TIME THAT WE'VE TRIED TO DO THIS WHILE IN THIS SCREEN.  THEREFORE,
+; WE HAVE TO UNBUILD AN EVENT FOR DISPLAY PURPOSES.  SET THE FLAG.  IF WE COME HERE (VIA DISPLAY+
+; TAILORS), THEN DON'T DO - LOCKS US IN NASTY LOOPS.  THIS FLAG IS CLEARED IN THE BACKGROUND IF IT
+; SEES THAT WE ARE NOT IN ONE OF THESE SUBFUNCTIONS.
+               TST.B   SONG_UNBUILD_FLAG    ;WELL - DEJA VU' OR NOT?
+               BNE     UH_UH_NO_WAY         ;    IF YES, GIT
+               ST      SONG_UNBUILD_FLAG    ;         ELSE, SAY 'NEVER AGAIN'
+
+                                            ;         AND FALL THRU TO DO AN UNBUILD.
+UNBUILD_EVENT  MOVEM.L   D0-D1/A0-A2,-(A7)
+               MOVE      SONG_STEP_NUM,-(A7)
+               MOVE      CURRENT_SONG,-(A7)
+               BSR       INSTALL_SONG
+               MOVE      (A7)+,CURRENT_SONG
+               MOVE      (A7)+,SONG_STEP_NUM
+               BSR       GET_SONG_PTR
+               MOVE      SONG_STEP_NUM,D0
+               LSL       #1,D0                  ;WORD OFFSET
+               EXT.L     D0
+               MOVE      SONG_ST(A0,D0),D0
+               CMP       #0FH,D0                ;SEE IF THIS IS THE END OF SONG
+               BEQ       UNBUILD_END            ;IF SO DONT REINSTALL SUBFUNCTION
+               BTST      #0,D0
+               BEQ.S     UNBUILD_MUTE
+               LSR       #4,D0                  ;GET SEQUENCE NUMBER
+               MOVE      D0,SONG_SEQ_NUM        ;SAVE IT
+               ANDI      #7FH,SONG_SEQ_NUM      ;MASK OFF REPEAT NUMBER
+               LSR       #7,D0
+               MOVE      D0,SONG_RPT_NUM
+               MOVE.L    #BUILD_SONG_SUB,CUR_SUB_BLOCK
+UNBUILD_SONG   ST        SUBFUN_INSTALL
+               MOVEM.L   (A7)+,D0-D1/A0-A2
+               MOVE.L    #SONG_STEP_NUM,D0
+UH_UH_NO_WAY
+               RTS
+
+
+UNBUILD_MUTE   LSR       #8,D0                  ;GET TRACK MUTE MASK
+               MOVE      D0,FROM_TRACK_NUM      ;SAVE IT
+               MOVE      #-1,BNC_TRK_NUM
+               MOVE      #99,SONG_SEQ_NUM
+               MOVE.L    #BUILD_SONG_SUB2,CUR_SUB_BLOCK
+               BRA.S     UNBUILD_SONG
+
+UNBUILD_END    MOVE.L    #BUILD_SONG_SUB3,CUR_SUB_BLOCK
+               MOVE      #100,SONG_SEQ_NUM
+               BRA.S     UNBUILD_SONG
+
+
+
+;********************************************************************************
+;RETURNS WITH ADDRESS OF THE START OF THE CURRENT SONG IN A0
+;
+;
+GET_SONG_PTR   MOVE    CURRENT_SONG,D0          ;GET THE SONG #
+               LSL     #8,D0
+               LSL     #2,D0                    ;X 512
+               EXT.L   D0
+               MOVE.L  #SONG_LIST,A0            ;GET ADDRESS OF SONG RAM
+               ADD.L   D0,A0                    ;A0=START OF SONG IN QUESTION
+               RTS
+
+;**********************************************************************************
+
+SONG_FUNC_STR  ASC     "INSERT"
+               ASC     "DELETE"
+               ASC     "CHANGE"
+
+SONG_EVENT_STR ASC     "SEQ.TRK."
+
+;
+;
+BUILD_SONG
+               ST      SUBFUN_INSTALL       ;US BEING EXECUTED MEANS CHANGES - REDISPLAY
+               JSR     STOP_THE_SEQUENCER   ;MAKE SURE SEQUENCER IS NOT RUNNING.
+               BSR     GET_SONG_PTR             ;GET ADDRESS OF CURRENT SONG
+               MOVE    SONG_FUNC,D0            ;DETERMINE TYPE OF EVENT
+               BEQ.S   INSERT_SONG
+               CMP     #1,D0
+               BEQ.S   DELETE_SONG
+
+CHANGE_SONG    MOVE    SONG_LEN(A0),D0          ;GET LENGTH OF SONG
+               BEQ     SONG_C_EMPTY               ;IF EMPTY WE CANT CHANGE ANYTHING
+               MOVE    SONG_STEP_NUM,D0         ;GET STEP NUMBER TO CHANGE
+               LSL     #1,D0                    ;CHANGE TO WORD OFFSET
+               EXT.L   D0
+               MOVE    SONG_ST(A0,D0),D2        ;GET SONG EVENT
+               CMP     #0FH,D2                  ;IS IT AN END OF SONG?
+               BEQ.S   CHANGE_SONG_X            ;IF SO THEN DONT CHANGE IT
+               BSR     BUILD_SONG_EVNT          ;CREATE THE NEW EVENT
+               MOVE    D1,SONG_ST(A0,D0)        ;AND WRITE NEW EVENT TO SONG
+CHANGE_SONG_X  BRA     BUILD_SONG_X
+
+INSERT_SONG    MOVE    SONG_LEN(A0),D0          ;GET SONG LENGTH
+               CMP     #499,D0                  ;IS SONG FULL?
+               BEQ     SONG_FULL                ;IF SO GIVE WARNING AND SPLIT
+               LSL     #1,D0                    ;CONVERT TO WORD OFFSET
+               EXT.L   D0
+               LEA     SONG_ST(A0,D0),A1
+               ADD.L   #4,A1                    ;A1=1 WORD PAST END OF SONG
+               MOVE.L  A1,A2
+               ADD.L   #2,A2                    ;A2=2 WORDS PAST END OF SONG
+               MOVE    SONG_LEN(A0),D0          ;FIND AMOUNT OF RAM TO MOVE UP FOR INSERT
+               SUB     SONG_STEP_NUM,D0
+               ADDQ    #1,D0
+INS_SONG_1     MOVE    -(A1),-(A2)              ;MOVE UP MEMORY
+               DBRA    D0,INS_SONG_1
+               BSR     BUILD_SONG_EVNT          ;BUILD NEW EVENT TO INSERT
+               MOVE    D1,(A1)
+               ADD     #1,SONG_LEN(A0)          ;INCREMENT SONG LENGTH COUNTER
+               ADD     #1,SONG_STEP_NUM
+               BRA.S   BUILD_SONG_X
+
+DELETE_SONG    MOVE    SONG_LEN(A0),D0          ;IS SONG EMPTY?
+               BEQ.S   SONG_D_EMPTY               ;IF SO THEN SPLIT
+               MOVE    SONG_STEP_NUM,D0
+               LSL     #1,D0
+               EXT.L   D0                       ;WORD OFFSET
+               LEA     SONG_ST(A0,D0),A1        ;A1=ADDRESS OF EVENT TO DELETE
+               MOVE    (A1),D2                  ;GET THE SONG EVENT TO DELETE
+               CMP     #0FH,D2                  ;IS IT THE END OF SONG?
+               BEQ.S   BUILD_SONG_X             ;IF SO DONT ERASE IT
+               MOVE.L  A1,A2
+               ADD.L   #2,A2
+               MOVE    SONG_LEN(A0),D0          ;FIND AMOUNT OF MEMORY TO MOVE DOWN
+               SUB     SONG_STEP_NUM,D0
+               ADDQ    #1,D0
+DEL_SONG_1     MOVE    (A2)+,(A1)+              ;MOVE MEMORY
+               DBRA    D0,DEL_SONG_1
+               SUB     #1,SONG_LEN(A0)          ;DECREMENT SONG LENGTH
+BUILD_SONG_X
+               BSR     UNBUILD_EVENT        ;NOW, UNBUILD WOT WE JUST ENTERED, FOR DISPLAYING
+               ST      SUBFUN_INSTALL
+               RTS
+
+BUILD_SONG_EVNT
+               CMP     #99,SONG_SEQ_NUM
+               BEQ.S   BUILD_MUTE               ;SEQUENCE OR TRACK MUTE ?
+               MOVE    SONG_RPT_NUM,D1
+               LSL     #7,D1                    ;SHIFT OVER INTO POSITION
+               ADD     SONG_SEQ_NUM,D1          ;ADD SEQUENCE NUMBER TO WORD
+               LSL     #4,D1
+               ADD     #1,D1
+BUILD_END      RTS
+
+BUILD_MUTE     MOVE    FROM_TRACK_NUM,D1        ;GET TRACK MUTE MASK
+               LSL     #8,D1
+               ADDQ    #2,D1
+               RTS
+
+SONG_C_EMPTY   MOVE.L  #SONG_MT1_SCRN,A1
+               BRA.S   SONG_MT_0
+SONG_D_EMPTY   MOVE.L  #SONG_MT0_SCRN,A1
+                ABS_LONG
+SONG_MT_0      JSR     WRITE_SCREEN
+               JSR     DISP_BUFFER
+                ABS_SHORT
+               SF      SUBFUN_INSTALL
+               BRA     USER_STALL
+
+SONG_FULL      MOVE.L  #SONG_FULL_SCRN,A1
+               BRA.S   SONG_MT_0
+
+SONG_MT0_SCRN  ASC     " CANNOT DELETE  "
+               ASC     " SONG IS EMPTY  "
+SONG_MT1_SCRN  ASC     " CANNOT CHANGE  "
+               ASC     " SONG IS EMPTY  "
+SONG_FULL_SCRN ASC     " CANNOT INSERT  "
+               ASC     " SONG IS FULL   "
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; SONG NAME EDIT -
+; NOTE:  NAME-EDIT SUBROUTINES ARE IN SYSFUNS2 UNDER BANK_NAME_SUB.
+;
+SONG_NAME_SUB
+               ASC     "SONG:           "
+               ASC     " EDIT SONG NAME "
+;
+               DC.B    5                    ;SONG NUMBER FIELD.
+               DC.B    2
+               DC.W    ACCESS+SET_PTR
+               DC.L    ACC_SONG_NUM
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    11
+               DC.W    EDIT+LINKED
+               DC.W    EDIT+CURS_LFT        ;SCROLL FROM SONG NUMBER
+               DC.L    GO_TO_NEXT_FIELD     ;TO FIRST NAME CHAR FIELD
+               DC.W    FIELD_END            ;WITH EITHER SCROLL BUTTON.
+;
+               DC.B    0                    ;NAME-FETCH FIELD - INVISIBLE.
+               DC.B    0
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+SET_PTR
+               DC.L    FETCH_SONG_NAME
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    NOTHINGNESS
+               DC.W    FIELD_END
+;
+               DC.B    8                    ;NAME FIELD.
+               DC.B    8
+               DC.W    ACCESS+SET_PTR
+               DC.L    SET_NAME_BUF_ACC
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_NAME_BUF
+               DC.W    EDIT+NO_KEYPAD       ;SORRY, BUD.
+               DC.W    EDIT+HI_LIMIT
+               DC.W    CHAR_EDIT_LIM
+               DC.W    EDIT+CURS_RGT
+               DC.L    NAME_CURS_RIGHT
+               DC.W    EDIT+CURS_LFT
+               DC.L    NAME_CURS_LEFT
+               DC.W    EDIT+ED_VEC
+               DC.L    NOT_SAVED_WARNING
+               DC.W    EDIT+ENTR_VEC
+               DC.L    STORE_SONG_NAME
+               DC.W    SUBFUN_END
+;
+;
+;
+ACC_SONG_NUM
+               BSR      NEW_SONG_SELECTED   ;DO A BUNCH OF STUFF CONNECTED TO SONG CHANGE.
+               MOVE.L   #CURRENT_SONG,D0    ;RETURN POINTER TO CURRENT_SONG.
+               RTS
+;
+;
+;
+; SET A0 AS POINTER TO SONG NAME PER CURRENT_SONG:
+; SINCE THIS IS DONE AS PART OF FETCHING OR STORING A SONG NAME,
+; AS A BY-PRODUCT WE SET UP TO SETTLE ON FIRST FIELD IN SCREEN -
+; THE SONG NUMBER FIELD - TO HELP AVERT ACCIDENTAL NAME EDITS.
+;
+GET_SONGNAME_PTR
+               CLR     CUR_FLD_INDEX        ;WHEN SUBFUN INSTALLED, SETTLE ON UNIT SELECTION FIELD.
+               BRA     GET_SONG_PTR         ;SET A0 AS POINTER TO CURRENT_SONG BLOCK -
+                                            ;SONG NAME IS AT THE BEGINNING - THEN RETURN THROUGH.
+;
+;
+;
+; FETCH NAME FROM CURRENT_SONG BLOCK INTO NAME EDIT BUFFER:
+; AS A BY-PRODUCT, WE SET UP TO SETTLE ON FIRST FIELD IN SCREEN -
+; THE SONG NUMBER FIELD - TO HELP AVERT ACCIDENTAL NAME EDITS.
+;
+FETCH_SONG_NAME
+               BSR     GET_SONGNAME_PTR     ;SET A0 AS POINTER TO NAME,
+                ABS_LONG
+               JMP     FETCH_NAME           ;RETURN THROUGH GENERAL NAME-FETCH PROCEDURE.
+                ABS_SHORT
+;
+;
+;
+; STORE BUFFERED/EDITED SONG NAME BACK TO CURRENT_SONG BLOCK:
+; AS A BY-PRODUCT, WE SET UP TO SETTLE ON FIRST FIELD IN SCREEN -
+; THE SONG NUMBER FIELD - TO HELP AVERT ACCIDENTAL NAME EDITS.
+;
+STORE_SONG_NAME
+               ST      SUBFUN_INSTALL       ;AFTER WE'RE DONE HERE, REINSTALL SUBFUNCTION.
+               BSR     GET_SONGNAME_PTR     ;SET A0 AS POINTER TO NAME SLOT IN SONG BLOCK,
+                ABS_LONG
+               JMP     STORE_NAME_BUF       ;RETURN THROUGH GENERAL NAME-STORE PROCEDURE.
+                ABS_SHORT
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; SONG-CLEAR SUBFUNCTION:
+;
+CLEAR_SONG_SUB
+               ASC    "CLEAR SONG:  #  "
+               ASC    "                "
+;
+               DC.B    14                   ;SONG NUMBER FIELD.
+               DC.B    2
+               DC.W    ACCESS+SET_PTR
+               DC.L    ACC_SONG_NUM
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    11
+               DC.W    EDIT+ENTR_VEC
+               DC.L    CLEAR_SONGS
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+;
+               DC.B    20                   ;SONG NAME FIELD.
+               DC.B    8
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CURRENT_SONG
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_SONG_NAME
+               DC.W    SUBFUN_END
+;
+;
+;
+WRITE_SONG_NAME
+               MOVEM.L A2,-(A7)
+               BSR     GET_SONG_PTR
+                ABS_LONG
+               JSR     WRITE_A0_STRING
+                ABS_SHORT
+               MOVEM.L (A7)+,A2
+               RTS
+;
+;
+;
+CLEAR_SONGS
+               JSR     STOP_THE_SEQUENCER   ;MAKE SURE SEQUENCER IS NOT RUNNING.
+               BSR.S   CLEAR_SONG           ;CLEAR SONG INDICATED BY CURRENT_SONG.
+               MOVE.L  #SONG_CLR_SCRN,A1    ;DISPLAY COMPLETION MESSAGE, FALL INTO BACKGROUND.
+                ABS_LONG
+               JSR     DISP_SCREEN
+               JMP     USER_STALL
+                ABS_SHORT
+;
+;
+;
+CLEAR_SONG
+               BSR     GET_SONG_PTR             ;GET SONG POINTER
+               MOVE.L  #EMPTY_SONG_NAME,A1      ;CHANGE NAME TO "emptysng"
+               MOVE.L  (A1)+,(A0)+
+               MOVE.L  (A1)+,(A0)+
+               CLR     (A0)+                    ;SET LENGTH TO 0
+               MOVE    #0FH,(A0)                ;PUT END OF SONG MARKER IN SONG
+               RTS
+;
+;
+SONG_CLR_SCRN
+               ASC      "  SONG CLEARED  "
+               ASC      "PRESS ANY SWITCH"
+;
+;
+EMPTY_SONG_NAME
+              ASC    "emptysng"
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+DUB_TO_SEQ_SUB
+               ASC     "DUB TO SEQUENCE "
+               ASC     "SEQ.            "
+
+               DC.B    21
+               DC.B    2
+               DC.W    ACCESS+SET_PTR
+               DC.L    DUB_SEQ_ACC
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    98
+               DC.W    EDIT+ENTR_VEC
+               DC.L    DUB_TO_SEQ
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+
+
+               DC.B    24
+               DC.B    8
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+SET_PTR
+               DC.L    WRITE_SEQ_NAME
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    NOTHINGNESS
+               DC.W    SUBFUN_END
+
+
+DUB_SEQ_ACC    MOVE    CURRENT_SEQUENCE,D0      ;DONT LET CURRENT SEQUENCE BE NULL
+               CMP     #99,D0
+               BNE.S   DUB_SEQ_ACC_1
+               CLR     CURRENT_SEQUENCE
+DUB_SEQ_ACC_1  MOVE.L  #CURRENT_SEQUENCE,D0
+               RTS
+
+WRITE_SEQ_NAME
+               MOVEM.L D0-D1/A0-A2,-(A7)
+               JSR     GET_CUR_SEQ_DIR          ;GET THE NAME AND PUT IT IN NAME BUFFER
+               MOVE.L  A0,A2                    ;DISPLAY NAME BUFFER
+               MOVE    #1808H,D1
+                ABS_LONG
+               JSR     WRITE_STRING
+               JSR     DISP_BUFFER
+                ABS_SHORT
+               MOVEM.L (A7)+,D0-D1/A0-A2
+               RTS
+
+DUBBING_STR    ASC      "DUBBING TO SEQ  "
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+DUB_TO_SEQ
+               JSR     SEQ_RUNNING_TEST     ;IS SEQUENCER RUNNING? (NOT COOL TO AUTO-STOP IT ....)
+               BNE     DUB_TO_SEQ_STALL     ;EXIT IF YES (MESSAGE IS IN LCD ....)
+;
+               TST.B   SEQ_MEM_FULL         ;IS SEQUENCE MEMORY FULL?
+               BEQ.S   DUB_TO_SEQ_00        ;BRANCH IF NOT, GO ON.
+               MOVE.L  #MEM_FULL_SCRN,A1    ;ELSE, EXIT WITH ERROR MESSAGE.
+               BRA.S   DUB_TO_SEQ_08
+;
+DUB_TO_SEQ_00
+               CLR     D3                   ;CLEAR BAR-NUMBER OFFSET FOR SUCCESSIVE SEQUENCES.
+               ST      DI_TEMP_1_B          ;THIS SAYS WE HAVEN'T DUBBED OUR FIRST SEQUENCE YET.
+               MOVEQ   #-1,D5               ;"FIRST SEQ" NUMBER IS GA-BARGE TO BEGIN WITH.
+               BSR     GET_SONG_PTR         ;LETS GET THE CURRENT SONG
+               TST     8(A0)                ;IS SONG EMPTY?
+               BNE.S   DUB_TO_SEQ_01        ;BRANCH IF NOT, GO ON.
+               LEA     SONG_EMPTY_SCRN(PC),A1    ;ELSE, EXIT WITH ERROR MESSAGE.
+               BRA.S   DUB_TO_SEQ_08
+;
+DUB_TO_SEQ_01
+               ADD     #10,A0               ;SKIP PAST NAME AND LENGTH
+                                            ;CHECK TO SEE IF DESTINATION SEQ IS IN SONG -
+                                            ;ALSO MAKE SURE THERE ARE NO EMPTY SEQUENCES IN SONG,
+               CLR     D4                   ;AND THAT THERE IS AT LEAST ONE SEQUENCE IN SONG:
+DUB_TO_SEQ_02
+               MOVE    (A0)+,D0             ;FETCH SONG EVENT -
+               CMP     #0FH,D0              ;END-OF-SONG MARK?
+               BEQ.S   DUB_TO_SEQ_06        ;BRANCH IF YES - DEST SEQ ISN'T IN SONG, OK TO GO ON.
+               BTST    #0,D0                ;ELSE - IS THIS A TRACK MUTE EVENT?
+               BEQ.S   DUB_TO_SEQ_02        ;BRANCH IF YES, LOOP AGAIN AND CHECK NEXT EVENT.
+               ST      D4                   ;ELSE - ASSUME IT'S A SEQ, SET FLAG TO SAY WE SAW ONE.
+               LSR     #4,D0                ;ISOLATE SEQUENCE NUMBER.
+               AND     #7FH,D0              ;(MASK OFF STEP-REPEAT FIELD)
+               CMP     CURRENT_SEQUENCE,D0  ;IS THIS SEQUENCE ALSO OUR DUB DESTINATION SEQUENCE?
+               BEQ.S   DUB_TO_SEQ_03        ;BRANCH IF YES - EXIT WITH ERROR MESSAGE.
+               MOVE.L  A0,A1                ;ELSE - HOLD SONG POINTER ASIDE,
+               JSR     GET_SEQ_DIR_PTR      ;SEE IF SEQUENCE CALLED OUT BY THIS SONG STEP EXISTS -
+               TST     Q_STATUS(A0)
+               MOVE.L  A1,A0                ;(RESTORE SONG POINTER - CONDITION CODES NOT AFFECTED.)
+               BNE     DUB_TO_SEQ_02        ;BRANCH IF SEQUENCE EXISTS - COOLNESS, KEEP LOOPING.
+;
+               LEA     DUB_EMPTY_SEQ_SCRN(PC),A1 ;ELSE, EXIT WITH ERROR MESSAGE.
+               BRA.S   DUB_TO_SEQ_08
+;
+DUB_TO_SEQ_03
+               LEA     DST_IN_SONG_SCRN(PC),A1
+               BRA.S   DUB_TO_SEQ_08
+;
+DUB_TO_SEQ_06
+               TST     D4                   ;DID SONG CONTAIN AT LEAST ONE SEQUENCE?
+               BNE.S   DUB_TO_SEQ_07        ;BRANCH IF YES, GO ON.
+               LEA     NO_SEQS_SCRN(PC),A1  ;ELSE, EXIT WITH ERROR MESSAGE.
+               BRA.S   DUB_TO_SEQ_08
+;
+DUB_TO_SEQ_07
+               JSR     GET_CUR_SEQ_DIR      ;SO FAR SO GOOD - IS DUB DESTINATION SEQUENCE EMPTY?
+               TST     Q_STATUS(A0)
+               BEQ.S   DUB_TO_SEQ_0C        ;BRANCH IF YES - HAPPYHAPPY.
+               LEA     DST_NOT_MT_SCRN(PC),A1    ;ELSE, EXIT WITH ERROR MESSAGE.
+DUB_TO_SEQ_08
+               BRA     DUB_TO_SEQ_X_2       ;WRITE ERROR MESSAGE PER A1, THEN EXIT.
+;
+;
+DUB_TO_SEQ_0C
+               LEA     DUBBING_STR(PC),A2   ;TELL THEM WHAT WERE DOING
+               MOVE    #0010H,D1
+                ABS_LONG
+               JSR     WRITE_STRING
+               JSR     DISP_BUFFER
+                ABS_SHORT
+               MOVE    #2700H,SR
+;
+               JSR     SEQ1_DRD_SETUP
+               BSR     GET_SONG_PTR
+               ADD     #10,A0               ;GET SONG AGAIN
+;
+;
+; THE DUB LOOP:
+;
+DUB_TO_SEQ_0
+               MOVE     (A0)+,D0                ;GET SONG EVENT
+               CMP      #0FH,D0                 ;END OF SONG ?
+               BEQ.S    DUB_TO_SEQ_X            ;IF SO THEN WERE DONE!
+               BTST     #0,D0                   ;TRACK MUTE EVENT?
+               BEQ.S    DUB_MUTE
+               MOVE     D0,D1                   ;SEQUENCE EVENT
+               LSR      #4,D1
+               MOVE     D1,D2
+               AND      #7FH,D1                 ;D1=SEQUENCE #
+               LSR      #7,D2                   ;D2= # OF REPEATS
+DUB_TO_SEQ_1
+               BSR      DUB_SEQ_BOY             ;COPY SEQ TO DUB SEQ
+               BNE.S    DUB_NO_MEM              ;OUT OF MEMORY
+               DBRA     D2,DUB_TO_SEQ_1            ;DO ALL THE REPEATS
+               BRA.S    DUB_TO_SEQ_0
+;
+DUB_MUTE
+               LSR      #8,D0                   ;D0=TRACK MUTE MASK
+               MOVE.B   D0,TRACKS_MUTED         ;UPDATE MUTED TRACK FLAG FOR USE ON SEQUENCES AFTER THIS
+               BRA.S    DUB_TO_SEQ_0
+;
+;
+DUB_NO_MEM
+               MOVE.L  #DUB_FULL_SCRN,-(A7) ;LEAVE "MEMORY FULL" MESSAGE TEXT POINTER ON STACK -
+               BRA.S   DUB_TO_SEQ_X_1       ;GO TIE UP THE (PARTIALLY DUBBED) SEQUENCE AND EXIT.
+;
+;
+DUB_TO_SEQ_X
+               MOVE.L  #DUB_CMPLT_SCRN,-(A7)
+DUB_TO_SEQ_X_1
+               MOVE.L  A6,SEQ_WR_PTR
+                ABS_LONG                        ;TURN OFF ALL HANGING NOTES
+               JSR     WRITE_OLD_M_OFFS
+               JSR     WRITE_OLD_P_OFFS
+                ABS_SHORT
+               MOVE.L  SEQ_WR_PTR,A6
+               MOVEQ   #0FH,D7                 ;WRITE END OF SEQUENCE
+               JSR     SEQ_WRITE
+               JSR     SEQ_TURNAROUND
+               JSR     UPDATE_SEQ_SIZE
+;
+               JSR     GET_CUR_SEQ_DIR      ;UPDATE DIRECTORY BLOCK PARAMETERS:
+               MOVE.L  A0,A1                ;A1 POINTS TO DIR BLOCK OF NEW SEQUENCE -
+               MOVE    D5,D0                ;RECALL FIRST SEQUENCE IN SONG,
+               BMI.S   DUB_SEQ_X_10         ;IF WARN'T NO SEQUENCES IN SONG, SKIP THESE STEPS.
+               JSR     GET_SEQ_DIR_PTR      ;SET A0 AS POINTER TO ITS DIRECTORY BLOCK.
+               MOVE    Q_INIT_TEMPO(A0),Q_INIT_TEMPO(A1)   ;USE INITIAL TEMPO OF FIRST SEQ IN SONG.
+               MOVE.L  Q_TIME_NUM(A0),Q_TIME_NUM(A1)       ;COPY INITIAL TIME SIG (NUM AND DENOM).
+DUB_SEQ_X_10
+               SUBQ    #1,D4
+               MOVE    D4,Q_TOTAL_BARS(A1)  ;STORE TOTAL NUMBER OF BARS IN NEW SEQUENCE.
+               CLR     Q_XS_BEATS(A1)       ;NO EXCESS BEATS (EVERY BEAT COUNTS, YOU KNOW).
+               MOVE    #1,Q_RPT_START(A1)   ;SET DEFAULT LOOP LIMITS - BAR 1 ....
+               MOVE    D4,Q_RPT_END(A1)     ;THROUGH THE END OF THE SEQUENCE.
+               ST      Q_RPT_COUNT(A1)      ;DEFAULT PLAYBACK LOOPING TO "OFF".
+               MOVE.L  #UNNAMED_STR,A2
+               MOVE.L  (A2)+,Q_NAME(A1)
+               MOVE.L  (A2),Q_NAME+4(A1)
+               MOVE    #0FFFFH,Q_STATUS(A1)            ;SET SEQUENCE NOT EMPTY
+;
+               JSR     SEQ_CHANGE_SUB      ;WEDGE THE NEW SEQUENCE INTO PLAYBACK APPARATUS.
+                ABS_LONG
+               JSR     BLIND_FLUSH_NOTE_BUFS     ;MAKE SURE THEY'RE COMPLETELY BLANKED OUT.
+                ABS_SHORT
+               MOVE.L  (A7)+,A1            ;RETRIEVE PREVIOUSLY STORED COMPLETION MESSAGE POINTER.
+;
+DUB_TO_SEQ_X_2
+                ABS_LONG
+               JSR     DISP_SCREEN
+                ABS_SHORT
+               MOVE    #2000H,SR
+;
+DUB_TO_SEQ_STALL
+               BRA     USER_STALL
+;
+;
+;
+SONG_EMPTY_SCRN
+               ASC     " SORRY, DUDE -  "
+               ASC     "THE SONG'S EMPTY"
+;
+DUB_EMPTY_SEQ_SCRN
+               ASC     "CAN'T DUB, EMPTY"
+               ASC     " SEQ(S) IN SONG "
+;
+DST_IN_SONG_SCRN
+               ASC     " CAN'T DO DUB - "
+               ASC     "DEST SEQ IN SONG"
+;
+NO_SEQS_SCRN
+               ASC     " CAN'T DO DUB - "
+               ASC     "NO SEQS IN SONG "
+;
+DST_NOT_MT_SCRN
+               ASC     "ERROR! DEST. SEQ"
+               ASC     "  IS NOT EMPTY  "
+;
+DUB_FULL_SCRN
+               ASC     "RAN OUT OF ROOM,"
+               ASC     "DUB NOT COMPLETE"
+;
+DUB_CMPLT_SCRN
+               ASC     "DUB IS COMPLETE-"
+               ASC     "PRESS ANY SWITCH"
+;
+UNNAMED_STR    ASC     "unnamed "
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; I AM HE WHO DOTH DUB EACH SEQUENCE OF A SONG INTO THE NEW SEQUENCE:
+; ENTER ME WITH SEQUENCE NUMBER IN D1.
+;
+DUB_SEQ_BOY
+               MOVE     D1,D0
+               JSR      SEQX_NDRD_SETUP
+               TST      DI_TEMP_1_B             ;CHECK FOR FIRST TIME THROUGH
+               BEQ.S    DUB_BOY_00
+               CLR      DI_TEMP_1_B
+               MOVE    D1,D5                ;SAVE "FIRST SEQUENCE" NUMBER FOR DIR BLOCK INIT.
+               BRA.S    DUB_BOY_0
+
+DUB_BOY_00     JSR      SEQ_NDSTR_READ          ;IF NOT FIRST TIME THEN REPLACE LAST BAR
+               MOVE     D7,(A2)                 ;MARKER OF PREVIOUS SEQUENCE WITH FIRST BAR
+               JSR      SEQ_NDSTR_READ          ;MARKER OF THIS SEQUENCE
+
+DUB_BOY_0      JSR      SEQ_NDSTR_READ          ;READ_FROM SEQUENCE
+               MOVE     D7,D0
+               AND      #0FH,D0
+DUB_BOY_01     CMP      #0FH,D0
+               BEQ.S    DUB_BOY_X               ;IF END OF SEQUENCE THEN SPLIT
+               TST.B    SEQ_MEM_FULL            ;IF MEMORY IS FULL THEN SPLIT
+               BNE.S    DUB_BOY_EXIT
+               BSR.S    MUTE_CHECK              ;CHECK TO SEE IF EVENT HAS BEEN MUTED
+               BNE.S    DUB_BOY_2               ;IF SO THEN DONT COPY IT
+               CMP      #8,D0                   ;CHECK FOR BAR MARKER
+               BNE.S    DUB_BOY_1
+               MOVE.L   A6,A2                   ;SAVE FOR LATER REWRITE OF BAR MARKER
+               JSR      SEQ_WRITE               ;WRITE BAR MARKER
+               JSR      SEQ_NDSTR_READ          ;GET BAR NUMBER
+               ADD      D3,D7                   ;ADJUST BAR NUMBER
+               JSR      SEQ_WRITE               ;WRITE IT TO SEQUENCE
+               MOVE     D7,D4                   ;SAVE BAR NUMBER
+               BRA.S    DUB_BOY_0
+
+DUB_BOY_1      BSR      NOTE_CHECK_W            ;LOG NOTE EVENTS
+               BNE.S    DUB_BOY_01
+               JSR      SEQ_NDRMW_EATER         ;SAVE THIS EVENT TO SEQUENCE
+               BRA.S    DUB_BOY_01
+
+DUB_BOY_2      JSR      SEQ_NDRD_EATER          ;IF MUTED THEN DONT WRITE TO NEW SEQUENCE
+               BRA.S    DUB_BOY_01
+;
+;
+;
+; OUT WE GO:
+;
+DUB_BOY_X
+               MOVE     D4,D3
+               SUBQ     #1,D3                   ;D3= OFFSET TO ADD TO NEXT SEQS BAR NUMBER
+               CMP      D3,D3                   ;CLEAR Z FLAG
+;
+DUB_BOY_EXIT
+               RTS
+;
+;
+;
+MUTE_CHECK
+               MOVEM.L D5,-(A7)
+               CMP     #6,D0                ;IS THIS A PERFORMANCE EVENT
+               BGT.S   MUTE_CHK_10
+               MOVE    D7,D5                ;CHECK TO SEE IF .ITS MUTED
+               AND     #70H,D5
+               LSR     #4,D5                ;D5=TRACK NUMBER OF EVENT
+               BTST    D5,TRACKS_MUTED      ;IS THAT TRACK MUTED
+               BRA.S   MUTE_CHK_20
+MUTE_CHK_10
+               CMP     D0,D0
+MUTE_CHK_20
+               MOVEM.L (A7)+,D5
+MUTE_CHK_EXIT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+

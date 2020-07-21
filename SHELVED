@@ -1,0 +1,1405 @@
+
+               From SEQ_MIDI (moved to SYSEXCL as is):
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;
+; Start-of-exclusive (SOX) received - always, not just for sequencer.
+; We handle both MIDI IN routing cases, since our sys ex response is the same
+; regardless of whether MIDI is routed to sounds or to sequencer (except that
+; sys ex messages are not recorded as such if MIDI IN is routed to sounds).
+; If recording, and MIDI IN is routed to sequencer, we receive and pack
+; the entire message into sequence event format, stuff it into the sequence -
+; note that sys ex messages are recorded indiscriminately in this case.
+; If not recording, we inspect the incoming message up to the point where
+; we can determine whether it may be of interest to us (eg, dump request).
+; The above assumes that no special procedure (eg, sample dump) is currently in
+; progress - some procedures divert MIDI receive handling into their own special
+; routines, and we don't get to see or handle messages in the interim.
+;
+; Note that at present, sys ex messages are not echoed to MIDI out under
+; any circumstances.
+;
+;
+SYS_EX_IN
+               TST.B   RECORDING            ; are we currently recording?
+               BNE.S   SYSXI_RECORD        ; branch if yes, might record this.
+;
+                                            ; not recording, but see if we want
+                                            ; to pay attention to this message -
+                                            ; currently, SDS dump requests and
+                                            ; dump headers only are dealt with,
+                                            ; even if MIDI IN is routed to seq.
+                                            ; Later, who knows?
+                                            ; SDS dump request format:
+                                            ;    F0 7E cc 03 ss ss F7
+                                            ; cc = channel number (we ignore)
+                                            ; ss = sample number, ls byte first
+                                            ;      with 7-bit packing.
+;
+               BTST    #PLAY_BIT,XPORT_STATE     ; is sequencer running?
+               BNE.S   SYSXI_GARBAGE             ; exit if yes, ignore remainder
+                                                 ; of this message (note - could
+                                                 ; change, if other types of
+                                                 ; sys ex response implemented).
+;
+               JSR     GET_BYTE             ; pick up sys ex ID byte (whenever).
+               CMPI.B  #7EH,D0              ; universal non-realtime sys ex msg?
+               BNE.S   SYSXI_GARBAGE        ; exit if not, we ignore all else.
+               JSR     GET_BYTE             ; wade thru channel byte.
+               JSR     GET_BYTE             ; now expect message sub-id.
+               CMPI.B  #01H,D0              ; is this an SDS dump header?
+               BEQ     SYSXI_DUMP_HDR       ; branch to specific handler if yes.
+               CMPI.B  #03H,D0              ; is this an SDS dump request?
+               BNE.S   SYSXI_GARBAGE        ; exit if not, we ignore all else.
+;
+;
+                                            ; SDS dump request coming in:
+;
+               JSR     GET_BYTE             ; first of two sample num bytes.
+               MOVE.B  D0,D1                ; hold first one aside,
+               JSR     GRAB_BYTE            ; hang on tight for second one
+                                            ; (use GRAB_BYTE to keep D1 intact).
+               TST.B   D0                   ; ms "byte" = 00?
+               BNE.S   SYSXI_GARBAGE        ; if not, sample num out of range.
+               CMPI.B  #32,D1               ; and what about that ls "byte"?
+               BCC.S   SYSXI_GARBAGE        ; if not 0-31, we don't know it.
+               MOVE.B  D1,CURRENT_SOUND+1   ; else, announce new current sound,
+               .ALONG
+               JSR     SDS_OUT_EXEC         ; go do the dump as directed.
+               .AWORD
+SYSXI_GARBAGE
+               JMP     MIDI_GARBAGE         ; and we're back to unknown state.
+;
+;
+;
+SYSXI_RECORD
+                                            ; we're recording at this moment:
+;
+               TST.W   SOUND_SEQ_SWITCH     ; MIDI IN going direct to sequencer?
+               BEQ     SYSXI_GARBAGE        ; exit if not, we won't record it.
+;
+               MOVEA.W NON_NOTE_WRITE,A2    ;LOAD UP FRONT ADDRESS OF ROUTINE WE BE USING FOR WRITING
+               MOVE.L  SEQ_WR_PTR,A6        ;SET UP SLOT POINTERS FOR WRITE ROUTINES
+               MOVEA.W WASTELAND_PTR,A3
+;
+               ST      SYSEX_COMING         ;DO AFOREMENTIONED BLOCK
+                                            ; note - this is intended to freeze
+                                            ; PRO_CLICK action while the sys ex
+                                            ; message is being received, since
+                                            ; a large message could take time.
+                                            ; however, since we seize backgnd
+                                            ; until end of message comes in,
+                                            ; PRO_CLICK doesn't get to execute
+                                            ; in the meantime anyway.
+                                            ; we'll leave this in, however, just
+                                            ; in case this routine is someday
+                                            ; rewritten to allow backgnd back in
+                                            ; between bytes ....
+;
+               MOVE.W  NOW_TRACK,D7         ;START BUILDING FIRST WORD
+               TST.B   NOW_UART             ;WE TAKE THE FORMAT: 1111 0000 a bbb 0110
+               BEQ.S   SMOOTH_1             ;                    0 ccccccc 0 ddddddd
+               BSET    #3,D7                ;                    0 eeeeeee 1111 0111
+SMOOTH_1                                    ; a = A/B UART,bbb = TRACKNUM,ccccccc -> eeeeeee = 'n' DATA
+               LSL.W   #4,D7                ;PUT TRACK & UART INTO NIBBLE 1
+               ORI.W   #0F006H,D7           ;(MASK ON ID's)
+;
+               JSR     (A2)                 ;WRITE FIRST WORD
+               JSR     SEQ_MEM_CHECK        ; see if seq mem is full, act if so.
+;
+SEQ_SYSEX_LOOP_DE_LOOP
+               JSR     GRAB_BYTE            ;START GATHERING IN DATA BYTES
+               MOVE.B  D0,MIDI_DATA_1
+               BPL.S   FLOOP_1              ;IF ANOTHER DATA BYTE, COOL
+               CMPI.B  #0F8H,D0             ;WHOISIT?
+               BCS.S   EOX_HERE_1           ;IF NOT REAL-TIME, ANOTHER STAT BYTE - ENDS THE MESSAGE
+FLOOP_1
+               JSR     GRAB_BYTE            ;GET ANOTHER BYTE (FORMING A WORD)
+               MOVE.B  D0,MIDI_DATA_2
+               BPL.S   FLOOP_2              ;IF ANOTHER DATA BYTE, COOL
+               CMPI.B  #0F8H,D0             ;WHOISIT?
+               BCS.S   EOX_HERE_2           ;IF NOT REAL-TIME, ANOTHER STAT BYTE - ENDS THE MESSAGE
+FLOOP_2
+               MOVE.W  MIDI_DATA_1,D7       ;ANOTHER WORD FOR THE PILE....
+               JSR     (A2)
+               BRA     SEQ_SYSEX_LOOP_DE_LOOP    ;CONTINUE 'TILL DONE
+;
+EOX_HERE_1
+               MOVE.W  #0F7F7H,D7
+               MOVE.B  MIDI_DATA_1,D0
+               BRA.S   CLOSE_OUT_SEQ_SYSEX
+;
+EOX_HERE_2
+               MOVE.W  MIDI_DATA_1,D7       ;DATA BYTE IN HIGH-ORDER BYTE
+               MOVE.B  #0F7H,D7             ;MASK IN EOX
+               MOVE.B  MIDI_DATA_2,D0       ;GET READY TO PROCESS NEW STAT BYTE
+CLOSE_OUT_SEQ_SYSEX
+               JSR     (A2)                 ; write final word into sequence.
+;
+               JSR     SEQ_MEM_CHECK        ; see if seq mem is full, act if so.
+;
+               SF      SYSEX_COMING         ;NOTE THAT WE BE DONE RECEIVING A SYSEX MESSAGE
+;
+               MOVE.L  A6,SEQ_WR_PTR        ;RESAVE SLOT POINTERS FOR WRITE ROUTINES
+               MOVE.W  A3,WASTELAND_PTR
+;
+               JMP     STAT_BYTE            ; go handle whatever status byte
+                                            ; we got (might not have been EOX).
+;
+;
+;
+;
+; An SDS dump header is coming in - we are ready if it looks kosher.
+; We've seen {F0 7E cc 01} so far.
+; Remember in what follows that GET_BYTE will bail out on us
+; if it sees a status byte.
+;
+;
+SYSXI_DUMP_HDR
+               JSR     GET_BYTE             ; get sample number ls 7 bits,
+               LSL.B   #1,D0                ; set up for e-z combine with ms 7,
+               MOVE.W  D0,SDS_DH_SAMPLE     ; put 'em in safe place.
+               JSR     GET_BYTE             ; get sample number ms 7 bits,
+               LSL.W   #8,D0                ; set up to combine with ls 7 bits,
+               OR.B    SDS_DH_SAMPLE+1,D0   ; hang ls 7 bits in place,
+               LSR.W   #1,D0                ; adjust horizontal hold,
+               MOVE.W  D0,SDS_DH_SAMPLE     ; store end result.
+               JSR     GET_BYTE             ; this be data format (# of bits).
+               MOVE.B  D0,SDS_DH_FORMAT
+               BSR.S   SDS_RCV_21BIT        ; get sample period (in 3 bytes).
+               MOVE.L  D0,SDS_DH_PERIOD
+               BMI.S   SYSXI_STATUS         ; exit if status byte received.
+               BSR.S   SDS_RCV_21BIT        ; get sample length (in 3 bytes).
+               MOVE.L  D0,SDS_DH_LENGTH
+               BMI.S   SYSXI_STATUS         ; exit if status byte received.
+               BSR.S   SDS_RCV_21BIT        ; get loop start addr (in 3 bytes).
+               MOVE.L  D0,SDS_DH_LOOPST
+               BMI.S   SYSXI_STATUS         ; exit if status byte received.
+               BSR.S   SDS_RCV_21BIT        ; get loop end addr (in 3 bytes).
+               MOVE.L  D0,SDS_DH_LOOPEND
+               BMI.S   SYSXI_STATUS         ; exit if status byte received.
+               JSR     GET_BYTE             ; finally, loop type -
+               MOVE.B  D0,SDS_DH_LOOPTYP
+                                            ; no real need to wait around for
+                                            ; EOX, someone else will catch it.
+;
+                                            ; now, do we or don't we?
+                                            ; (want to accept the sample).
+;
+                                            ; at present we ignore sample #,
+                                            ; so this is not a direct concern -
+               MOVE.L  SDS_DH_LENGTH,D0     ; are we getting zero-length sample?
+               BEQ.S   SYSXIDH_CANCEL       ; give it up if yes.
+               JSR     POSTDEL_SAMSPC       ; received sample will replace
+                                            ; CURRENT_SOUND if any, will we have
+                                            ; enough total sample RAM space?
+               CMP.L   D0,D1                ; D1.L contains ultimate space amt -
+               BCC.S   SDS_IN_EXEC          ; looks like we will, so get to it.
+SYSXIDH_CANCEL
+               .ALONG
+               JSR     SEND_SDS_CANCEL      ; else, try to tell sender not to.
+               .AWORD
+               JMP     MIDI_GARBAGE         ; go back to waiting around for
+                                            ; the next interesting message.
+;
+;
+SYSXI_STATUS
+               JMP     STAT_BYTE            ; go handle the status byte we
+                                            ; unexpectedly received -
+                                            ; forget whatever we were doing.
+;
+;
+;
+;
+;
+; Receive a 21-bit number in 3-byte SDS format -
+; mainly for parameters in sample dump header.
+; Remember, data comes in ls byte first.
+; Returns received result in D0.L if no status bytes are encountered -
+; result will be non-negative by definition.
+; If a status byte is (unexpectedly) received, and is not a system realtime msg,
+; it is returned in D0.B with bit 31 of D0.L set to create a negative result.
+; Result should be tested appropriately upon return.
+; Registers other than D0.L are preserved.
+;
+;
+SDS_RCV_21BIT
+               MOVEM.L D1-D2,-(A7)
+               MOVEQ   #0,D1                ; clear slate,
+               MOVEQ   #2,D2                ; handle three MIDI bytes.
+SDSR21_20
+               JSR     GRAB_BYTE            ; gotta byte -
+               TST.B   D0                   ; status byte?
+               BPL.S   SDSR21_40            ; nope, we like it.
+               CMPI.B  #0F8H,D0             ; be it a system realtime message?
+               BCC     SDSR21_20            ; yes, pretend it never happened.
+               BSET    #31,D0               ; else, flag status byte return,
+               BRA.S   SDSR21_Z0            ; out we go.
+;
+SDSR21_40
+;
+;890317               LSL.B   #1,D0                ; shift new byte over for concat,
+;890317               LSL.L   #8,D1                ; make way for it,
+;890317               MOVE.B  D0,D1                ; concatenate,
+;890317               LSR.L   #1,D1                ; right-justify.
+               MOVE.B  D0,D1                ; drop it in at the end,
+               ROR.L   #7,D1                ; shift "offscreen" to the right.
+               DBRA    D2,SDSR21_20         ; loop until 3 bytes handled thusly.
+;
+               ROL.L   #5,D1                ; now, rotate 21 bits to the left -
+               SWAP    D1                   ; 16 bits of shift done via SWAP.
+               MOVE.L  D1,D0                ; result comes back in D0.L.
+;
+SDSR21_Z0
+               MOVEM.L (A7)+,D1-D2
+               RTS
+;
+;
+;
+;
+;
+;
+; We've decided to accept a sample dump based on info in dump header
+; and our own system status - so let's get to it, allright then.
+;
+; For the time being, at least, we don't support packet resending on the receive
+; end either, so we never send NAK messages, nor do we look at packet numbers
+; received in data packet messages, nor do we keep running checksums on data.
+;
+; Note: not an ENTER switch vector - branches back into MIDI receive handler
+; at a point appropriate to the cause of termination.
+;
+;
+; Two state levels are at work here -
+; SDS_STATE indicates the overall state of the receive procedure,
+; while SDS_SHAKE_STAT tracks the progress of the receive procedure
+; with respect to individual data packets.
+; Thus, SDS_SHAKE_STAT controls response to individual received bytes,
+; while SDS_STATE indicates when to send ACK messages, when to quit,
+; and what additional actions to take upon quitting.
+; State values are all non-zero byte values and come in increments of two
+; for direct applicability to a BRA.S table.
+;
+; State values for SDS_STATE are:
+;
+SEND_ACK       EQU     90H             ; send an ACK message, fall into loop.
+RCV_PACKET     EQU     92H             ; continue normal receive data handling.
+NORM_COMPL     EQU     94H             ; all expected data received, let's exit.
+TRASH_ABORT    EQU     96H             ; abort in mid-message owing to invalid
+                                       ; or inappropriate data byte value.
+USER_ABORT     EQU     98H             ; abort at a random point owing to user
+                                       ; hitting STOP switch.
+STAT_ABORT     EQU     9AH             ; abort in response to receipt of status
+                                       ; byte of inappropriate value or at an
+                                       ; inappropriate time.
+;
+;
+; State values for SDS_SHAKE_STAT.
+; Values 0-119 correspond to the 120 data bytes in each data packet.
+; SDS_SHAKE_STAT is incremented on each data byte handled, thus automatically
+; arriving at the AWAIT_EOX value of 120 at the proper time.
+; Similar increment-(by two)-per-byte strategy is used elsewhere when possible.
+; So, don't go casually rearranging these values, okay?
+;
+AWAIT_EOX      EQU     120             ; expect data packet EOX next.
+AWAIT_SOX      EQU     122             ; expect data packet SOX next.
+AWAIT_ID       EQU     124             ; expect univ sys ex ID (7EH) next.
+AWAIT_CC       EQU     126             ; expect data packet channel # next.
+AWAIT_SUB      EQU     128             ; expect data packet sub-ID (02H) next.
+AWAIT_PKT      EQU     130             ; expect packet number next.
+;
+;
+;              shut things down
+;              packet = 00
+;              tell sender to wait
+;              if target exists, delete it (LCD message)
+;                      NOTE: modify MOVE_MEMORY and DELETE_SHUFFLE
+;                      for external interrupt control, then use them
+;                      here with level 6 interrupt enabled -
+;                      this is in case we're running open-loop and
+;                      data starts coming in while we're still moving
+;                      memory around.
+;                      receive loop must check for receive overflow
+;                      and abort receive if it occurs.
+;              CREATE_SAMPLE (needs mods)
+;              determine addresses for sample write,
+;                      set up sample write apparatus (WRITE_UPWARD)
+;              set SDS_WORD_CNT per SDS_DH_LENGTH
+;              put up receive status screen
+;                      (incl number of words to go)
+;              STATE = ack
+;              fall into receive loop
+;
+;              loop_10:
+;              send ACK
+;              update transfer word count display
+;              if STATE = normal completion goto COMMONEXIT
+;              STAT = await SOX
+;              STATE = rcv packet
+;
+;              loop_20:
+;              if STATE = rcv packet goto loop_30:
+;              if STATE = ack goto loop_10:
+;              if STATE = normal completion goto loop_10:
+;              if STATE = trash abort goto COMMONEXIT
+;              if STATE = switch abort goto COMMONEXIT
+;              if STATE = statbyte abort goto COMMONEXIT
+;
+;              loop_30:
+;
+;              if MIDI data
+;                      if buffer full
+;                           clear buffer
+;                           STATE = trash abort
+;                      else handle it (get back to loop_20:)
+;
+;              if STOP switch down, STATE = switch abort
+;              goto loop_20:
+;
+;
+;              MIDI handler:
+;              if realtime, ignore byte
+;              if STAT = await SOX
+;                      if data byte, ignore
+;                      if EOX ignore
+;                      if SOX, STAT = await ID
+;                      if any other stat byte, STATE = statbyte abort (keep D0)
+;              if STAT = await ID
+;                      if status byte, STATE = statbyte abort (keep D0)
+;                      if 7E, STAT = await cc
+;                      if any other data byte, STATE = trash abort
+;              if STAT = await cc
+;                      if status byte, STATE = statbyte abort (keep D0)
+;                      else STAT = await sub-ID
+;              if STAT = await sub-id
+;                      if status byte, STATE = statbyte abort (keep D0)
+;                      if 02, STAT = await pkt
+;                      if any other data byte, STATE = trash abort
+;              if STAT = await pkt
+;                      if status byte, STATE = statbyte abort (keep D0)
+;                      else
+;                          SDS_PACKET_NUM = byte
+;                          STAT = await data (0)
+;              if STAT = await data (n)
+;                      if status byte, STATE = statbyte abort (keep D0)
+;                      else
+;                          if n = 119, STAT = await EOX
+;                          handle sample data byte
+;                              (sample data byte handler updates SDS_WORD_CNT,
+;                              sets STATE = normal compl if cnt --> 0).
+;              if STAT = await EOX
+;                      if data byte, ignore
+;                      if F7, STATE = ack
+;                      else STATE = statbyte abort
+;
+;
+SDS_IN_EXEC
+               JSR     SDS_SYS_SHUTDOWN     ; perform all necessary shutdown
+                                            ; of system at large.
+               SF      SDS_PACKET_NUM       ; reset packet number to zero,
+               JSR     SEND_SDS_WAIT        ; tell sender to hang tight awhile.
+               JSR     GET_PROP_BLK_PTR     ; is target sample allocated?
+               BEQ.S   SDSINX_20            ; branch if not, go get set for rcv.
+               MOVEA.L #DEL_TARG_SCRN,A1    ; else tell user that target sound
+               CALL    LCD_FUNS,DSP_SCRN    ; is being deleted,
+               MOVE.W  #2500H,SR            ; lock out interrupts other than
+                                            ; MIDI receive to speed up the job,
+               .ALONG
+               JSR     DELETE_SHUFFLE       ; delete sound indicated by A0.L,
+                                            ; rearrange sound mem as necessary.
+               .AWORD
+               MOVE.W  #2000H,SR            ; restore full interrupt enable.
+;
+SDSINX_20
+                                            ; sample needs to be "created"
+                                            ; on our end (sound control block):
+;
+               MOVEQ   #0,D0                     ; for 16KHz sample rate -
+               CMPI.L  #0C350H,SDS_DH_PERIOD     ; near there (below 20KHz)?
+               BCC.S   SDSINX_24                 ; not far, we go with 16KHz.
+               MOVEQ   #1,D0                     ; for 31.25KHz sample rate -
+               CMPI.W  #6F9BH,SDS_DH_PERIOD+2    ; is it 20KHz-35KHz?
+               BCC.S   SDSINX_24                 ; close enuf, go with 31.25KHz.
+               MOVEQ   #2,D0                     ; else, fly with 41.67KHz.
+SDSINX_24
+               MOVE.W  D0,CR_SAM_RATE
+               MOVE.L  SDS_DH_LENGTH,D0     ; get length of sample in words,
+               MOVE.L  D0,SDS_WORD_CNT      ; use to init transfer word counter,
+               ADDI.L  #3FFH,D0             ; round up to next 1K,
+               DIVU    #1024,D0             ; render result in 1K format,
+               MOVE.W  D0,CR_SAM_SIZE       ; use as size of sample to "create".
+               JSR     INIT_SND_CTL_BLK     ; this takes care of the grunt work.
+;
+               JSR     GET_PROP_BLK_PTR     ; set A0.L as pointer to this sound
+                                            ; block for remaining detail work.
+               LEA     S_SUB_0(A0),A1       ; A1.L points to sub-block 0.
+               LEA     S_SUB_1(A0),A2       ; A2.L points to sub-block 1.
+;
+               MOVE.B  #SAMPLED,S_STATUS(A0)     ; sample is not unsampled.
+               JSR     SET_SAMPLED_SOUNDS        ; update playable sounds list.
+               MOVE.L  MIDIDATA_STRNG(PC),S_NAME(A0)       ; set a default name.
+               MOVE.L  MIDIDATA_STRNG+4(PC),S_NAME+4(A0)
+;
+               MOVEQ   #10H,D0              ; loop off (7), unidir loop (6),
+                                            ; play fwd (5), release loop (4) -
+               CMPI.B  #7FH,SDS_DH_LOOPTYP  ; is this what we've been handed?
+               BEQ.S   SDSINX_28            ; branch if yes, settings correct.
+               MOVEQ   #90H,D0              ; not quite - loop is enabled -
+               TST.B   SDS_DH_LOOPTYP       ; is it a forwards-only loop?
+               BEQ.S   SDSINX_28            ; branch if yes, settings correct.
+               MOVEQ   #0D0H,D0             ; not quite, loop is bidirectional.
+SDSINX_28
+               MOVE.B  D0,S_LOOP_TYPE(A1)   ; store loop, etc settings.
+               MOVE.B  D0,S_LOOP_TYPE(A2)
+;
+               MOVE.L  S_BEGIN(A0),D0       ; fetch raw sample begin address.
+               MOVE.L  SDS_DH_LOOPST,D1     ; get loop start word number,
+               ADD.L   D0,D1                ; compute loop start address.
+               MOVE.L  D1,S_LOOP_START(A1)  ; apply to both parameter sets.
+               MOVE.L  D1,S_LOOP_START(A2)
+               MOVE.L  SDS_DH_LOOPEND,D1    ; get loop end word number,
+               ADD.L   D0,D1                ; compute loop end address.
+               MOVE.L  D1,S_LOOP_END(A1)    ; apply to both parameter sets.
+               MOVE.L  D1,S_LOOP_END(A2)
+               MOVE.L  SDS_DH_LENGTH,D1     ; get length of sample in words,
+               ADD.L   D0,D1                ; compute playback end address.
+               SUBQ.L  #1,D1
+               MOVE.L  D1,S_END(A1)         ; apply to both parameter sets.
+               MOVE.L  D1,S_END(A2)
+;
+;
+               JSR     WRITE_UPWARD         ; set up for write into sample RAM
+                                            ; from start (D0.L) thru end (D1.L).
+;
+               LEA     SDSINX_SCRN1(PC),A1  ; put up sample-receive screen.
+               CALL    LCD_FUNS,WR_SCRN
+               MOVE.W  CURRENT_SOUND,D0     ; display target sound number.
+               ADDQ.W  #1,D0
+               MOVE.W  #0E02H,D1
+               MOVEQ   #20H,D2
+               CALL    LCD_FUNS,WR_VAL
+                                            ; word cnt filled in and data moved
+                                            ; to LCD in the loop below.
+;
+               MOVEQ   #0F0H,D0             ; mask for 12-bit sample data -
+               MOVEQ   #12,D1
+SDSINX_2C
+               CMP.B   SDS_DH_FORMAT,D1     ; is mask tight enough?
+               BLS.S   SDSINX_2G            ; yep, go on from here.
+               SUBQ.B  #1,D1                ; nope - go down one notch in width,
+               LSL.W   #1,D0                ; tighten the mask.
+               BRA     SDSINX_2C
+SDSINX_2G
+               MOVE.W  D0,SDS_RCV_MASK      ; save custom-tailored mask.
+;
+               MOVE.B  SDS_DH_FORMAT,D0     ; compute number of bytes per word -
+               MOVEQ   #0FFH,D1             ; we store and use {number-1}.
+SDSINX_2K
+               ADDQ.B  #1,D1
+               SUBQ.B  #7,D0
+               BGT     SDSINX_2K
+               MOVE.B  D1,SDS_RCV_WIDTH
+               SF      SDS_RCV_WRDPOS       ; get aligned to first byte of word.
+;
+               MOVE.B  #SEND_ACK,SDS_STATE  ; first thing is to send ACK message
+                                            ; to sender, then await 1st packet.
+;
+               BSR.S   SDSINX_LOOP          ; do it till ya drop, whatever.
+;
+                                                 ; okay, we gave it our best:
+               CMPI.B  #NORM_COMPL,SDS_STATE     ; why/how did we get out?
+               BEQ.S   SDSINX_80            ; branch if we finished normally -
+                                            ; already hand-shook last packet.
+               BSR     SEND_SDS_CANCEL      ; else, some kind of abort - give a
+                                            ; signal to transmitter.
+SDSINX_80
+               MOVE.B  D0,LAST_STAT_BYTE    ; if aborted on "bad" status byte,
+                                            ; it's in D0.B - stash it, we'll
+                                            ; want to pick up on it when we
+                                            ; return to normal MIDI handling.
+               JSR     WRITE_ZERO_AND_PEAK  ; maintain contents of last two
+                                            ; words of sample memory, also
+                                            ; restore normal 4-chip daisy-chain.
+               MOVE.L  #SDSOUTX_SCRN5,A1    ; screen for normal completion -
+               MOVE.B  SDS_STATE,D1
+               CMPI.B  #NORM_COMPL,D1       ; completed normally?
+               BEQ.S   SDSINX_84            ; branch if yes.
+               MOVE.L  #SDSOUTX_SCRN3,A1
+               CMPI.B  #USER_ABORT,D1       ; user did it with STOP switch?
+               BEQ.S   SDSINX_84            ; branch if yes.
+               LEA     SDSINX_SCRN2(PC),A1  ; status or trash data abort.
+SDSINX_84
+               CALL    LCD_FUNS,DSP_SCRN    ; display termination message,
+               .ALONG
+               JSR     USER_STALL           ; hang loose, screenwise.
+               .AWORD
+               CMPI.B  #STAT_ABORT,D1       ; staring into a new message?
+               BNE.S   SDSINX_88            ; no, go wade thru possible garbage.
+               MOVE.L  #"stat",SCREEN_BUFFER+28  ; yes - modify screen slightly,
+               CALL    LCD_FUNS,DSP_BUF
+               JMP     STAT_BYTE                 ; go handle the new message -
+                                                 ; bye kids!
+;
+SDSINX_88
+               JMP     MIDI_GARBAGE         ; go wade through possible random
+                                            ; MIDI data bytes until another
+                                            ; status byte happens along -
+                                            ; bye kids!
+;
+;
+;
+;
+;
+SDSINX_LOOP
+               BSR     SEND_SDS_ACK         ; give green light to transmitter.
+               MOVE.L  SDS_WORD_CNT,D0      ; update word count display.
+               MOVE.W  #1006H,D1
+               MOVEQ   #28H,D2
+               CALL    LCD_FUNS,WR_VAL
+               CALL    LCD_FUNS,DSP_BUF
+               CMPI.B  #NORM_COMPL,SDS_STATE     ; have we got it all already?
+               BEQ.S   SDSIL_Z0                  ; branch if yes, out we go.
+               MOVE.B  #RCV_PACKET,SDS_STATE     ; else, this is what's up,
+               MOVE.B  #AWAIT_SOX,SDS_SHAKE_STAT ; and we want first byte (SOX).
+;
+;
+SDSIL_MIDLOOP
+                                            ; pretty much everything we get to
+                                            ; below this point comes directly
+                                            ; back to this point each time thru.
+               MOVE.B  SDS_STATE,D7
+               ANDI.W  #000FH,D7
+               JMP     SDSIL_TBL1(PC,D7)
+;
+SDSIL_Z0
+               RTS
+;
+SDSIL_TBL1
+               BRA.S   SDSINX_LOOP          ; SEND_ACK
+               BRA.S   SDSIL_LOWLOOP        ; RCV_PACKET
+               BRA.S   SDSINX_LOOP          ; NORM_COMPL
+               BRA.S   SDSIL_Z0             ; TRASH_ABORT
+               BRA.S   SDSIL_Z0             ; USER_ABORT
+               BRA.S   SDSIL_Z0             ; STAT_ABORT
+;
+;
+;
+;
+SDSIL_LOWLOOP
+               MOVE.W  MA_RCV_CNT,D0        ; got any MIDI receive data waiting?
+               BEQ.S   SDSIL_LL20           ; nope, go check for STOP switch.
+               CMPI.W  #3FFH,D0             ; gnat's-ass away from overflow?
+               BCS.S   SDSIL_RCV            ; nope, go handle data.
+               CLR.W   MA_RCV_CNT                ; else, clear receive buffer,
+               CLR.W   MA_RCV_IN
+               MOVE.B  #TRASH_ABORT,SDS_STATE    ; exit with ??? MIDI IN status.
+               BRA     SDSIL_MIDLOOP
+;
+SDSIL_LL20
+               MOVEQ   #1,D0                ; quick check for any switch action.
+               .ALONG
+               JSR     SCAN_SWITCHES
+               .AWORD
+               BMI     SDSIL_MIDLOOP        ; branch if none, keep looping.
+               CMPI.W  #45,D0               ; switch down - is it STOP switch?
+               BNE     SDSIL_MIDLOOP        ; proceed if not, ignore all others.
+               MOVE.B  #USER_ABORT,SDS_STATE     ; else, user orders us to exit.
+               BRA     SDSIL_MIDLOOP
+;
+;
+;
+;
+SDSIL_RCV
+               JSR     UNLOAD_LEVEL_6       ; pull next MIDI IN byte into D0.B.
+               CMPI.B  #0F8H,D0             ; is it a system realtime message?
+               BCC     SDSIL_MIDLOOP        ; back up if yes, we ignore these.
+               MOVE.B  SDS_SHAKE_STAT,D7    ; not sys rltm, so what we be after?
+               SUBI.B  #120,D7              ; expecting a data packet data byte?
+               BCC.S   SDSILR_OTHER         ; branch if not, treat other cases.
+;
+;
+;
+SDSILR_DATA
+               TST.B   D0                   ; expect data - this a status byte?
+               BPL.S   SDSILRD_20           ; no, keep going.
+               MOVE.B  #STAT_ABORT,SDS_STATE     ; else, time to abort.
+               BRA.S   SDSILRD_Z0
+;
+SDSILRD_20
+               ADDQ.B  #1,SDS_SHAKE_STAT    ; chalk up another.
+               CMPI.B  #1,SDS_RCV_WRDPOS    ; which one is this?
+               BGT.S   SDSILRD_28           ; branch if 3nd or 4th of a word.
+               BEQ.S   SDSILRD_24           ; this branch if 2nd byte of a word.
+               MOVE.B  D0,SDS_RCV_DATA      ; else stash 1st byte in ms word.
+               BRA.S   SDSILRD_28
+SDSILRD_24
+               MOVE.W  SDS_RCV_DATA,D1      ; combine 2nd byte with first.
+               LSL.B   #1,D0
+               MOVE.B  D0,D1
+               LSL.W   #1,D1                ; data now properly left-justified -
+               AND.W   SDS_RCV_MASK,D1      ; mask any garbage in ls bits,
+               SUBI.W  #8000H,D1            ; turn back into bipolar value,
+               MOVE.W  D1,WR_SAM_RAM        ; put the word into sample RAM.
+               SUBQ.L  #1,SDS_WORD_CNT      ; one more word down -
+               BNE.S   SDSILRD_28           ; branch if more to go, continue.
+               MOVE.B  #NORM_COMPL,SDS_STATE     ; else, say we made it -
+                                                 ; we'll ACK and begone.
+
+SDSILRD_28
+               MOVE.B  SDS_RCV_WRDPOS,D0    ; all bytes for this word seen?
+               CMP.B   SDS_RCV_WIDTH,D0
+               BCC.S   SDSILRD_2C           ; br if yes, reset word position.
+               ADDQ.B  #1,SDS_RCV_WRDPOS    ; else just advance position, loop.
+               BRA.S   SDSILRD_Z0
+;
+SDSILRD_2C
+               SF      SDS_RCV_WRDPOS       ; reset word position counter.
+;
+SDSILRD_Z0
+               BRA     SDSIL_MIDLOOP
+;
+;
+;
+;
+SDSILR_OTHER
+                                            ; expecting anything but a data byte
+                                            ; in mid-packet ....
+                                            ; all of the paths we take below
+                                            ; go directly back to SDSIL_MIDLOOP.
+               ANDI.W  #000FH,D7            ; D7 was (SDS_SHAKE_STAT-120).
+               JMP     SDSIL_TBL2(PC,D7)
+;
+SDSIL_TBL2
+               BRA.S   SDSILRO_EOX          ; AWAIT_EOX
+               BRA.S   SDSILRO_SOX          ; AWAIT_SOX
+               BRA.S   SDSILRO_ID           ; AWAIT_ID
+               BRA.S   SDSILRO_CC           ; AWAIT_CC
+               BRA.S   SDSILRO_SUB          ; AWAIT_SUB
+               BRA.S   SDSILRO_PKT          ; AWAIT_PKT
+;
+;
+SDSILRO_EOX
+               TST.B   D0                   ; status byte?
+               BPL.S   SDSILRO_Z0           ; nope, ignore it.
+               CMPI.B  #0F7H,D0             ; yep - is it the EOX we expected?
+               BNE.S   SDSILRO_STAT_ABORT   ; nope, guess we gotta bail out.
+               MOVE.B  #SEND_ACK,SDS_STATE  ; yep, say "hey" and whip around.
+               BRA.S   SDSILRO_Z0
+                                            ; note - as long as we persist in
+                                            ; ACK-ing upon final data byte
+                                            ; (ie, no checksum checking),
+                                            ; we should/need never get here -
+                                            ; this code could be eliminated ....
+;
+;
+SDSILRO_SOX
+               TST.B   D0                   ; status byte?
+               BPL.S   SDSILRO_Z0           ; nope, ignore it.
+               CMPI.B  #0F7H,D0             ; yep - is it an EOX?
+               BEQ.S   SDSILRO_Z0           ; yep, ignore (end of last msg).
+               CMPI.B  #0F0H,D0             ; nope - is it the SOX we expected?
+               BNE.S   SDSILRO_STAT_ABORT   ; nope, guess we gotta bail out.
+               BRA.S   SDSILRO_NEXT         ; yep, advance to next step.
+;
+;
+SDSILRO_ID
+               TST.B   D0                   ; data byte?
+               BMI.S   SDSILRO_STAT_ABORT   ; nope, we must quit now.
+               CMPI.B  #7EH,D0              ; yep - univ non-realtime sys ex ID?
+               BNE.S   SDSILRO_TRASH_ABORT  ; nope, guess we gotta bail out.
+               BRA.S   SDSILRO_NEXT         ; yep, advance to next step.
+;
+;
+SDSILRO_CC
+               TST.B   D0                   ; data byte?
+               BMI.S   SDSILRO_STAT_ABORT   ; nope, we must quit now.
+               BRA.S   SDSILRO_NEXT         ; yep, advance to next step.
+                                            ; (ie, we ignore channel number -
+                                            ; for now ....)
+;
+;
+SDSILRO_SUB
+               TST.B   D0                   ; data byte?
+               BMI.S   SDSILRO_STAT_ABORT   ; nope, we must quit now.
+               CMPI.B  #02H,D0              ; yep - SDS data packet sub-ID?
+               BNE.S   SDSILRO_TRASH_ABORT  ; nope, guess we gotta bail out.
+               BRA.S   SDSILRO_NEXT         ; yep, advance to next step.
+;
+;
+SDSILRO_PKT
+               TST.B   D0                   ; data byte?
+               BMI.S   SDSILRO_STAT_ABORT   ; nope, we must quit now.
+               MOVE.B  D0,SDS_PACKET_NUM    ; yep - it's new data packet number.
+               SF      SDS_SHAKE_STAT       ; now, into 0-119 zone (data bytes).
+               BRA.S   SDSILRO_Z0
+;
+;
+SDSILRO_NEXT
+               ADDQ.B  #2,SDS_SHAKE_STAT    ; cue up next byte handling state -
+               BRA.S   SDSILRO_Z0           ; no change now to SDS_STATE.
+;
+SDSILRO_TRASH_ABORT
+               MOVE.B  #TRASH_ABORT,SDS_STATE    ; we saw a data byte that
+               BRA.S   SDSILRO_Z0                ; made us wanna to quit.
+;
+SDSILRO_STAT_ABORT
+               MOVE.B  #STAT_ABORT,SDS_STATE     ; we saw a status byte that
+                                                 ; made us wanna to quit.
+;
+SDSILRO_Z0
+               BRA     SDSIL_MIDLOOP        ; whipp-in around.
+;
+;
+;
+;
+;
+;
+; Perform all necessary shutdown of system at large
+; in preparation for an extended background hiatus during SDS transfer.
+; This is used by both send and receive procedures.
+;
+;
+SDS_SYS_SHUTDOWN
+               .ALONG
+               JSR     UNPLUG_ALL_EDITS     ; nix all edit pathways.
+               .AWORD
+               JSR     STOP_THE_SEQUENCER   ; kill sequencer if running -
+                                            ; flushes transmit buffers.
+                                            ; this shouldn't be necessary for
+                                            ; receive, which ignores dump header
+                                            ; if sequencer is running - mostly
+                                            ; for manually-initiated send.
+               JSR     KILL_ALL_VOICES      ; no need to be hearing anything.
+               .ALONG
+               JSR     SOLID_ENTER          ; may not be in backgnd for a while,
+                                            ; jam ENTER LED on solid right now -
+                                            ; also forces transport LEDs immed
+                                            ; per pending STOP_THE_SEQ changes.
+               .AWORD
+               RTS
+;
+;
+;
+;
+;
+SDSINX_SCRN1
+               DC.B    "Rcvng sample #ss"
+               DC.B    "xxxxxx wds to go"
+;
+;
+;
+SDSINX_SCRN2
+               DC.B    "MIDI dump halted"
+               DC.B    "by inapprop data"
+;
+;
+;
+MIDIDATA_STRNG
+               DC.B    "MIDIdata"           ; default name for SDS sounds.
+;
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;
+; Send one of the following SDS handshake messages:
+;
+;              F0 7E cc 7F pp F7       - ACK
+;              F0 7E cc 7E pp F7       - NAK
+;              F0 7E cc 7D pp F7       - CANCEL
+;              F0 7E cc 7C pp F7       - WAIT
+;
+;              cc = channel number
+;              pp = packet number
+;
+; At present we use 00 for channel number.
+; The current packet number is used.
+; All registers preserved.
+;
+;
+SEND_SDS_ACK
+               MOVEM.L D0-D1/A0,-(A7)
+               MOVEQ   #7FH,D1
+               BRA.S   SEND_SDS_SHAKE
+;
+;
+SEND_SDS_NAK
+               MOVEM.L D0-D1/A0,-(A7)
+               MOVEQ   #7EH,D1
+               BRA.S   SEND_SDS_SHAKE
+;
+;
+SEND_SDS_CANCEL
+               MOVEM.L D0-D1/A0,-(A7)
+               MOVEQ   #7DH,D1
+               BRA.S   SEND_SDS_SHAKE
+;
+;
+SEND_SDS_WAIT
+               MOVEM.L D0-D1/A0,-(A7)
+               MOVEQ   #7CH,D1
+;
+;
+SEND_SDS_SHAKE
+               MOVEQ   #0F0H,D0             ; SOX.
+               JSR     LOAD_A_LIVE
+               MOVEQ   #7EH,D0              ; universal non-realtime sys ex ID.
+               JSR     LOAD_A_LIVE
+               MOVEQ   #00H,D0              ; channel (we use 00).
+               JSR     LOAD_A_LIVE
+               MOVE.B  D1,D0                ; message sub-id passed from above.
+               JSR     LOAD_A_LIVE
+               MOVE.B  SDS_PACKET_NUM,D0    ; take a guess on this one, eh?
+               JSR     LOAD_A_LIVE
+               MOVEQ   #0F7H,D0             ; EOX.
+               JSR     LOAD_A_LIVE
+               MOVEM.L (A7)+,D0-D1/A0
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+               From SYSFUNS1:
+
+;
+;
+;
+;
+;
+; This is what we do when user says "Go" -
+; also where we come upon deciding to attempt response to a dump request
+; received via MIDI (the attempt can "fail" only if sample does not exist).
+; Remember - no interruption of background or interrupt execution
+; results from our actions here - ideally, anyway.
+; In fact, making this airtight could be quite a chore.
+; In order to focus on the important stuff for now,
+; we'll adopt the approach of hogging the background for the duration,
+; and perform any necessary maintenance (which is very little) right here.
+; On the whole, we'll try to write the routines to adapt easily to the
+; more general, vectored-everything approach which we'll switch to "later".
+;
+;
+SDS_OUT_EXEC
+               MOVEM.L D0-D7/A0-A2/A6,-(A7)
+;
+               JSR     GET_PROP_BLK_PTR     ; A0 points to current sound block.
+               BTST    #SAMPLED_BIT,S_STATUS(A0)      ; is this sound sampled?
+               BNE.S   SDSOUTX_20                     ; continue if yes.
+               LEA     SDSOUTX_SCRN1(PC),A1           ; else post message,
+               BRA     SDSOUTX_Y0                     ; exit without action.
+;
+;
+SDSOUTX_20
+                                            ; looks okay to proceed:
+;890314               .ALONG
+;890314               JSR     UNPLUG_ALL_EDITS     ; nix all edit pathways.
+;890314               .AWORD
+;890314               JSR     STOP_THE_SEQUENCER   ; kill sequencer if running -
+;890314                                            ; flushes transmit buffers.
+;890314               JSR     KILL_ALL_VOICES      ; no need to be hearing anything.
+;890314               .ALONG
+;890314               JSR     SOLID_ENTER          ; may not be in backgnd for a while,
+;890314                                            ; jam ENTER LED on solid right now -
+;890314                                            ; also forces transport LEDs immed
+;890314                                            ; per pending STOP_THE_SEQ changes.
+;890314               .AWORD
+;
+               JSR     SDS_SYS_SHUTDOWN     ; perform all necessary shutdown
+                                            ; of system at large.
+;
+                                            ; moving right along:
+;
+               MOVE.L  A0,A6                ; sample params out of line of fire.
+               MOVE.W  D0,D7
+               MOVE.L  S_START(A6,D7),D0    ; playback start address.
+               MOVE.L  S_END(A6,D7),D1      ; playback end address.
+               MOVE.L  S_LOOP_START(A6,D7),D3    ; loop start address.
+               MOVE.L  S_LOOP_END(A6,D7),D4      ; loop end address.
+               SUB.L   D0,D3                ; start-relative loop start.
+               SUB.L   D0,D4                ; start-relative loop end.
+               MOVE.L  D1,D5                ; compute sample size -
+               SUB.L   D0,D5                ; pb end minus pb start,
+               ADDQ.L  #1,D5                ; plus 1.
+               MOVE.L  D5,SDS_WORD_CNT      ; store size as initial word count -
+                                            ; used to delimit data transfer.
+;
+               JSR     READ_UPWARD          ; use D0-D1 to set up sample read.
+                                            ; note: sets up 2-chip daisy chain,
+                                            ; single-step time >= 12 usec.
+;
+               LEA     SDSOUTX_SCRN2(PC),A1 ; post initial dump progress msg.
+               CALL    LCD_FUNS,WR_SCRN
+               LEA     S_NAME(A6),A2        ; name the sample being sent.
+               MOVE.W  #0808H,D1
+               CALL    LCD_FUNS,WR_STRNG
+               MOVE.L  D5,D0                ; indicate number of words to go.
+               MOVE.W  #1006H,D1
+               MOVEQ   #28H,D2
+               CALL    LCD_FUNS,WR_VAL
+               CALL    LCD_FUNS,DSP_BUF
+;
+                                            ; build and send dump header:
+               LEA     -22(A7),A7           ; set up buffer for 21 bytes.
+               MOVEA.L A7,A2                ; A2 will be buf write pointer.
+               MOVE.L  #0F07E0001H,(A2)+    ; default to channel 00 for now -
+                                            ; non-rt univ sys ex sub id #1 = 01.
+               MOVE.B  CURRENT_SOUND+1,(A2)+     ; sample number ls byte.
+               SF      (A2)+                     ; sample number ms byte.
+               MOVE.B  #12,(A2)+            ; sample format - 12 bits.
+               CLR.L   D0                   ; clear the way for sample rate -
+               MOVE.B  S_RATE(A6),D0        ; rate: 0 = 16K, 1 = 31K, 2 = 42K.
+               ADD.B   D0,D0                ; need x2, for 2-byte const value.
+               LEA     SAM_PERIOD_TBL(PC),A1     ; fetch value from table -
+               MOVE.W  0(A1,D0),D0          ; now valid to 21 bits as req'd.
+               BSR     SDS_BUF_21BIT        ; pack into (A2) buf in SDS format.
+               MOVE.L  D5,D0                ; pack sample length into (A2) buf.
+               BSR     SDS_BUF_21BIT
+               MOVE.L  D3,D0                ; pack loop start into (A2) buf.
+               BSR     SDS_BUF_21BIT
+               MOVE.L  D4,D0                ; pack loop end into (A2) buf.
+               BSR     SDS_BUF_21BIT
+               MOVEQ   #7FH,D0                   ; assume loop disabled -
+               MOVE.B  S_LOOP_TYPE(A6,D7),D1     ; this is the actual skoop.
+               BPL.S   SDSOUTX_28                ; if bit 7 = 0, loop is off.
+               MOVEQ   #0,D0                     ; loop on, now assume unidir -
+               BTST    #6,D1                     ; what did we find?
+               BEQ.S   SDSOUTX_28                ; branch if loop is unidir,
+               MOVEQ   #1,D0                     ; else do it up bidirectional.
+SDSOUTX_28
+               MOVE.B  D0,(A2)+                  ; out goes the loop type.
+               MOVE.B  #0F7H,(A2)           ; and finally, EOX wraps message up.
+               MOVEA.L A7,A2                ; back to start of header buf,
+               MOVEQ   #20,D2               ; set up to output 21 bytes.
+SDSOUTX_2C
+               MOVE.B  (A2)+,D0             ; read byte from our li'l buffer,
+               JSR     LOAD_A_LIVE          ; put it into MIDI A xmt buffer,
+               DBRA    D2,SDSOUTX_2C        ; loop until 21 bytes moved.
+               LEA     22(A7),A7            ; cast off this, our li'l buffer.
+;
+                                            ; set up state to take hold just
+                                            ; after dump header has been sent:
+               SF      SDS_PACKET_NUM       ; clear packet number variable.
+               SF      SDS_SHAKE_STAT       ; clear handshake receive status.
+               SF      SDS_SHAKE_CODE       ; clear handshake message value.
+               MOVE.B  #INIT_WAIT,SDS_STATE ; indicates initial timeout state.
+               MOVE.W  REAL_TIME,SDS_TIMER  ; note time right now for timeout.
+;
+               MOVEQ   #0FFH,D0             ; before going on - all switches up.
+               .ALONG
+               JSR     SCAN_SWITCHES
+               .AWORD
+;
+;
+SDSOUTX_LOOP
+                                            ; top of dump-in-progress loop.
+;
+               TST.W   MA_RCV_CNT           ; highest prio goes to MIDI rcv.
+               BNE.S   SDSOUT_RCV           ; if rcv data waiting, handle it -
+                                            ; comes back to top of loop.
+;
+               MOVEQ   #1,D0                ; user trying to tell us something?
+               .ALONG
+               JSR     SCAN_SWITCHES
+               .AWORD
+               BMI.S   SDSOUTX_LOOP8        ; proceed if no switches down.
+               CMPI.W  #45,D0               ; switch down - is it STOP switch?
+               BNE.S   SDSOUTX_LOOP8        ; proceed if not, ignore all others.
+               JSR     SEND_SDS_CANCEL      ; else (try to) disconnect receiver,
+               LEA     SDSOUTX_SCRN3(PC),A1 ; fetch pointer to abort message,
+               BRA.S   SDSOUTX_X0           ; and out we go - user gives orders.
+;
+SDSOUTX_LOOP8
+               BRA.S   SDSOUT_WATCH         ; check for messages, timeouts, etc.
+                                            ; comes back to top of loop,
+                                            ; or branches direct to exit point.
+;
+;
+;
+SDSOUTX_X0
+               JSR     WRITE_ZERO_AND_PEAK  ; we didn't write into sample RAM,
+                                            ; but this restores full daisychain.
+;
+SDSOUTX_Y0
+               CALL    LCD_FUNS,DSP_SCRN    ; display message indicated by A1,
+               .ALONG
+               JSR     USER_STALL           ; disconnect, hang loose, chill out.
+               .AWORD
+;
+SDSOUTX_Z0
+               MOVEM.L (A7)+,D0-D7/A0-A2/A6
+SDSOUTX_EXIT
+               RTS
+;
+;
+;
+;
+;
+;
+; Pack a 21-bit value into 3 bytes in sample dump header buffer -
+; value is in D0.L, buffer is addressed via (A2)+.
+; We trash D0-D2.
+;
+;
+SDS_BUF_21BIT
+               MOVEQ   #2,D2
+SDSBUF21_20
+               MOVE.B  D0,D1
+               ANDI.B  #7FH,D1
+               MOVE.B  D1,(A2)+
+               LSR.L   #7,D0
+               DBRA    D2,SDSBUF21_20
+               RTS
+;
+;
+;
+;
+;
+;
+; Handle MIDI data received while sitting around in SDSOUTX_LOOP,
+; as appropriate to the current SDS_STATE.
+; NOT A SUBROUTINE!!!
+; Always branches back to top of dump-in-progress loop.
+;
+; If in open-loop state, we ignore absolutely everything - data is swallowed,
+; and the text which follows is irrelevant.
+;
+; Otherwise we are looking for one of the following SDS handshake messages:
+;
+;              F0 7E cc 7F pp F7       - ACK
+;              F0 7E cc 7E pp F7       - NAK
+;              F0 7E cc 7D pp F7       - CANCEL
+;              F0 7E cc 7C pp F7       - WAIT
+;
+;              cc = channel number
+;              pp = packet number
+;
+; At present we ignore channel number.
+; Likewise, at present we ignore packet number as well, since currently,
+; packet resending in response to NAK is not implemented.
+; Qualified messages are posted (ID value only) in SDS_SHAKE_CODE,
+; where dump-in-progress loop can see and respond to them as it will.
+;
+; Other stuff is ignored - according to the fine print, illegal messages
+; are apparently supposed to abort the dump, but we take the fault-tolerant,
+; work-if-at-all-possible approach - partly since "illegal" is not clearly
+; defined in the fine print, and may refer to an illegal handshake message,
+; or simply to a message of any type which is not one of the above -
+; and if that's a problem, the STOP switch is always an option for the user.
+; As a result of this and of all other things ignored, we respond to valid
+; handshake messages as soon as we see the handshake ID.
+; If we get more picky in the future, we'll want to make sure we read each
+; message all the way to the end before responding.
+;
+; Any message received pops us into closed-loop state, in case we were in
+; initial wait state (since we noticed message, we weren't in open-loop state).
+;
+;
+SDSOUT_RCV
+               JSR     UNLOAD_LEVEL_6       ; read received byte into D0.B.
+                                            ; (note - A0 gets trashed here).
+               CMPI.B  #OPEN_LOOP,SDS_STATE ; are we in open-loop state?
+               BEQ.S   SDSOUTR_EXIT         ; exit if yes, ignore alien orders.
+;
+;
+                                            ; watching for handshake message:
+;
+               MOVE.B  SDS_SHAKE_STAT,D1    ; part-way into one already?
+               BNE.S   SDSOUTR_20           ; br if yes, handle in context.
+               CMPI.B  #0F0H,D0             ; nothing up yet - is this an SOX?
+               BEQ.S   SDSOUTR_MATCH        ; yep - getting started here.
+               BRA.S   SDSOUTR_EXIT         ; nope - stay at square zero.
+;
+SDSOUTR_20
+               CMPI.B  #1,D1                ; seen just an SOX lately?
+               BNE.S   SDSOUTR_40           ; nope, seen more.
+               CMPI.B  #7EH,D0              ; yup, now need univ sys ex ID -
+               BEQ.S   SDSOUTR_MATCH        ; and this is what we got.
+               BRA.S   SDSOUTR_KILL         ; if not, reset match process.
+;
+SDSOUTR_40
+               CMPI.B  #2,D1                ; seen FO 7E so far?
+               BNE.S   SDSOUTR_60           ; nope, seen more.
+               TST.B   D0                   ; yup, now accept any data byte -
+               BPL.S   SDSOUTR_MATCH        ; and this is what we got.
+               BRA.S   SDSOUTR_KILL         ; if not, reset match process.
+;
+SDSOUTR_60
+               TST.B   D0                   ; expect handshake ID now -
+               BMI.S   SDSOUTR_KILL         ; status byte means death.
+               CMPI.B  #7CH,D0              ; recognize 7C-7F only -
+               BCS.S   SDSOUTR_KILL         ; others are ignored.
+               MOVE.B  D0,SDS_SHAKE_CODE    ; remember what we've been told.
+               MOVE.B  #CLOS_LOOP,SDS_STATE ; we're now in closed-loop mode -
+                                            ; may have been uncommitted before.
+               BRA.S   SDSOUTR_KILL         ; and, we're done matching bytes -
+                                            ; message will be picked up in loop.
+;
+SDSOUTR_MATCH
+               ADDQ.B  #1,SDS_SHAKE_STAT    ; handshake byte match, more to go.
+               BRA.S   SDSOUTR_EXIT
+SDSOUTR_KILL
+               SF      SDS_SHAKE_STAT       ; mismatch/done - square zero.
+SDSOUTR_EXIT
+               BRA     SDSOUTX_LOOP         ; back to top o' the loop.
+;
+;
+;
+;
+;
+;
+; Check for timeouts, respond to received handshake messages, etc.
+; as appropriate to the current SDS_STATE.
+; NOT A SUBROUTINE!!!
+; Always branches back to top of dump-in-progress loop,
+; unless terminating the dump.
+;
+; If in initial wait state, we do nothing until 2 sec has elapsed -
+; at this point we default into open-loop state and start sending data.
+; (Any valid handshake message will knock us into closed-loop state via
+; MIDI receive handler before we get a chance to see it here).
+;
+; If in open-loop state, we send a data packet whenever it's been at least
+; 20 msec since we saw the last one on its way -
+; actually 60 msec intervals, since each packet takes 40 msec to dribble out,
+; comparatively negligible time to create and load into the transmit buffer.
+;
+; If in closed-loop state, we watch for messages to appear in SDS_SHAKE_CODE:
+;
+; ACK and NAK are one and the same to us, prompting send of next packet.
+; We clear the message byte upon responding to one of these,
+; in order to prevent duplicate responses.
+; If more than 2 sec goes by with no new message, we send the next packet -
+; a ridiculous worst-case situation, probably (hopefully) never executed.
+; This is based upon a loose interpretation of some text in the MIDI spec,
+; which seems to imply that some receivers may not bother to ACK every packet
+; even though working in the closed-loop mode - no news is good news?
+; Idea is really to prevent total roadblock with a receiver whose handshaking
+; is occasionally flaky, and which cannot cope with our open-loop transmissions.
+;
+; CANCEL causes us to terminate the dump and get back out to normal existence,
+; not unlike end-of-data termination (but with a different screen message).
+;
+; WAIT suppresses timeouts and causes packet sending to be inhibited
+; indefinitely pending receipt of some other message.
+; The WAIT message byte is not cleared when we see it - it stays in place
+; until some other received message is written over it, ending the wait.
+;
+; In all modes:
+; If SDS_WORD_CNT is zero when it's time to send a data packet, we're history.
+; Test-before-send lets us handshake final data packet in closed-loop mode -
+; which would be important if packet resending were implemented.
+; After sending each packet, we update data count screen display.
+;
+; Termination messages are presented as text pointers in A1.L -
+; we don't display them here.
+;
+;
+SDSOUT_WATCH
+               MOVE.W  #2000,D2             ; (hair over 2 sec at 976.6 Hz).
+               CMPI.B  #INIT_WAIT,SDS_STATE ; are we in post-header timeout?
+               BNE.S   SDSOUTW_40           ; branch if not, check other states.
+               MOVE.W  REAL_TIME,D0         ; yes, see if two seconds gone by.
+               SUB.W   SDS_TIMER,D0
+               CMP.W   D2,D0
+               BCS.S   SDSOUTW_EXIT         ; not time for moment of truth yet.
+               MOVE.B  #OPEN_LOOP,SDS_STATE ; waited enough - assume open loop.
+               BRA.S   SDSOUTW_E0           ; go send data packet, etc.
+;
+SDSOUTW_40
+               CMPI.B  #OPEN_LOOP,SDS_STATE ; we're running - in open-loop mode?
+               BNE.S   SDSOUTW_80           ; if not, check closed-loop states.
+               MOVEQ   #60,D2               ; else, load open-loop timeout
+                                            ; (hair over 60 msec at 976.6 Hz).
+               BEQ.S   SDSOUTW_C0           ; go see if time for next packet.
+;
+SDSOUTW_80
+               MOVE.B  SDS_SHAKE_CODE,D1    ; closed-loop - what's the latest?
+               BEQ.S   SDSOUTW_C0           ; nothing, go see if timeout is up.
+               CMPI.B  #7DH,D1              ; are we waiting, waiting, waiting?
+               BCS.S   SDSOUTW_EXIT         ; yep - progress not up to us.
+               BHI.S   SDSOUTW_E0           ; ACK or NAK - go send next packet.
+               LEA     SDSOUTX_SCRN4(PC),A1 ; else, CANCEL - get ptr to msg,
+               BRA     SDSOUTX_X0           ; head for common exit point.
+;
+SDSOUTW_C0
+                                            ; open/closed-loop packet timeout:
+               MOVE.W  REAL_TIME,D0         ; see if approp timeout elapsed.
+               SUB.W   SDS_TIMER,D0
+               CMP.W   D2,D0
+               BCS.S   SDSOUTW_EXIT         ; not time for next data packet yet.
+;
+SDSOUTW_E0
+                                            ; time to be sending a data packet:
+               TST.L   SDS_WORD_CNT         ; uhh, did we already send all data?
+               BNE.S   SDSOUTW_E4           ; no, still some to go.
+               LEA     SDSOUTX_SCRN5(PC),A1 ; else, we're done - get ptr to msg,
+               BRA     SDSOUTX_X0           ; head for common exit point.
+;
+SDSOUTW_E4
+               BSR.S   SEND_SDS_PACKET      ; send we must.
+               MOVE.L  SDS_WORD_CNT,D0      ; indicate number of words to go.
+               MOVE.W  #1006H,D1
+               MOVEQ   #28H,D2
+               CALL    LCD_FUNS,WR_VAL
+               CALL    LCD_FUNS,DSP_BUF
+               SF      SDS_SHAKE_CODE       ; forget last handshake msg if any.
+               MOVE.W  REAL_TIME,SDS_TIMER  ; start new timeout.
+;
+SDSOUTW_EXIT
+               BRA     SDSOUTX_LOOP         ; back to top o' the loop.
+;
+;
+;
+;
+;
+; Send out an SDS data packet -
+; do a bit of other housekeeping as well.
+;
+;
+SEND_SDS_PACKET
+               CLR.W   D1                   ; D1 holds running XOR of data.
+               MOVEQ   #0F0H,D0             ; send SOX.
+               JSR     LOAD_A_LIVE
+               MOVEQ   #7EH,D0              ; send universal sys ex ID -
+               EOR.B   D0,D1                ; data XOR start here.
+               JSR     LOAD_A_LIVE
+               MOVEQ   #0,D0                ; use 00 for channel number for now.
+               EOR.B   D0,D1                ; strickly for form sake.
+               JSR     LOAD_A_LIVE
+               MOVEQ   #2,D0                ; data packet message sub id = 2.
+               EOR.B   D0,D1
+               JSR     LOAD_A_LIVE
+               MOVE.B  SDS_PACKET_NUM,D0    ; running packet number -
+               EOR.B   D0,D1
+               JSR     LOAD_A_LIVE
+               ADDQ.B  #1,D0                ; increment for each packet,
+               ANDI.B  #7FH,D0              ; wrapping from 127 to 0.
+               MOVE.B  D0,SDS_PACKET_NUM    ; store new value for next time.
+;
+               MOVE.L  SDS_WORD_CNT,D2      ; countdown to x-ta-c ....
+               MOVEQ   #120,D3              ; ah, but 120 data bytes always.
+;
+SENDSDS_40
+               CLR.W   D4                   ; send zeroes if all samples gone.
+               TST.L   D2                   ; run out of sample data to send?
+               BEQ.S   SENDSDS_44           ; branch if yes, use zero data.
+               MOVE.W  RD_SAM_RAM,D4        ; read sample word - data is in
+                                            ; bits 15-4, bits 3-0 are zeroes.
+               SUBQ.L  #1,D2                ; decrement sample word count.
+SENDSDS_44
+               ADDI.W  #8000H,D4            ; SDS data format is 000-FFF,
+                                            ; not 2's compl (800-7FF)??!?!
+               MOVE.W  D4,D0                ; seven ls bits go first.
+               ROL.W   #7,D0
+               EOR.B   D0,D1
+               JSR     LOAD_A_LIVE
+               LSR.W   #2,D4                ; move five ls bits into place.
+               MOVEQ   #7FH,D0              ; mask bit 7 out, always.
+               AND.B   D4,D0                ; result ends up in D0.
+               EOR.B   D0,D1
+               JSR     LOAD_A_LIVE
+               SUBQ.W  #2,D3                ; two more data bytes gone -
+               BNE     SENDSDS_40           ; loop if full packet not yet sent.
+;
+               MOVE.B  D1,D0                ; now send "checksum" (data XOR),
+               JSR     LOAD_A_LIVE
+               MOVEQ   #0F7H,D0             ; and EOX to finish packet off.
+               JSR     LOAD_A_LIVE
+;
+               MOVE.L  D2,SDS_WORD_CNT      ; store updated samples-to-go count.
+;
+SENDSDS_EXIT
+               RTS
+;
+;
+;
+;
+;
+;
+;
+SDSOUTX_SCRN1
+               DC.B    "Sample not there"
+               DC.B    " - can't dump it"
+;
+;
+;
+SDSOUTX_SCRN2
+               DC.B    "Sending nnnnnnnn"
+               DC.B    "cccccc wds to go"
+;
+;
+;
+SDSOUTX_SCRN3
+               DC.B    "MIDI dump halted"
+               DC.B    "by you, the user"
+;
+;
+;
+SDSOUTX_SCRN4
+               DC.B    "MIDI dump halted"
+               DC.B    "by the receiver "
+;
+;
+;
+SDSOUTX_SCRN5
+               DC.B    "Sample transfer "
+               DC.B    "  is complete   "
+;
+;
+;
+SAM_PERIOD_TBL
+               DC.W    0FA00H          ; 15.625 KHz --> 64000 nsec = 00FA00H.
+               DC.W    07D00H          ; 31.250 KHz --> 32000 nsec = 007D00H.
+               DC.W    05DC0H          ; 41.667 KHz --> 24000 nsec = 005DC0H.
+                                       ; note - table values extended to 21 bits
+                                       ; before being packed into dump header.
+;
+;
+;
+;
+; Background processing states (SDS_STATE) defined.
+; All are byte values with bit 7 = 1 (ie, all non-zero to allow flag use).
+; All are multiples of four to allow optional direct branch table use.
+;
+;
+INIT_WAIT      EQU     80H             ; initial wait after sending dump header.
+OPEN_LOOP      EQU     84H             ; indicates we're running open-loop.
+CLOS_LOOP      EQU     88H             ; indicate we're running closed-loop.
+;
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+

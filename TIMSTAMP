@@ -1,0 +1,5 @@
+ .region highrom1
+ .export timstamp_strng
+timstamp_strng
+ dc.b "  10-08-92   5:00p  "
+

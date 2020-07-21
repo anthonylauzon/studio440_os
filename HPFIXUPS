@@ -1,0 +1,85 @@
+               .OPTION LIST=0
+********************************************************************************
+********************************************************************************
+***                                                                          ***
+***    TEXT SUBSTITUTIONS AND MACROS FOR HP64000-TO-UNIWARE COMPATIBILITY    ***
+***                                                                          ***
+********************************************************************************
+********************************************************************************
+
+
+;
+; SUPPRESS LISTING OF MACRO SOURCE EXPANSION,
+; BUT SHOW ALL RESULTING OBJECT CODE:
+;
+               .OPTION MACSTYLE=2
+
+
+
+
+
+
+
+;
+; SWITCHES:
+;
+
+SHOW_INCLUDES  #define 0               ; IF 0, SUPPRESS LISTING OF INCLUDE FILES.
+
+
+
+
+
+
+
+
+;
+; DIRECT SUBSTITUTIONS:
+;
+
+#define    TITLE       TTL
+
+#define    ABS_SHORT   .AWORD
+
+#define    ABS_LONG    .ALONG
+
+#define    SKIP        PAGE
+
+#define    GLB         .EXPORT
+
+#define    EXTERNAL    .IMPORT
+
+#define    ASC         DC.B
+
+#define    ORG         .ORG
+
+#define    EVEN        .ALIGN 2
+
+
+
+
+
+
+
+
+;
+; MACRO SUBSTITUTIONS:
+;
+
+
+HEX            MACRO
+
+               .FOR _VALUE IN \*
+               DC.W    0\{_VALUE}H
+               .ENDFOR
+
+               ENDM
+
+
+
+
+
+               .OPTION LIST=1
+
+
+

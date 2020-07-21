@@ -1,0 +1,724 @@
+               INCLUDE HPFIXUPS
+               TITLE   "SOFTDIAG"
+***************************************************************************************************
+***************************************************************************************************
+***                                                                                             ***
+***            440 SOFTWARE DIAGNOSTICS - FOR YOUR EYES ONLY ....                               ***
+***                                                                                             ***
+***************************************************************************************************
+***************************************************************************************************
+;
+NEG_EXT        EQU     0FFFFFF00H      ;USE IN MOVEQ INSTRUCTIONS WHERE ARG IS
+                                       ;80H OR LARGER - HP XASM DOES NOT HANDLE
+                                       ;SIGN-EXTEND CORRECTLY.  COSMETIC, KEEPS
+                                       ;ACTUAL BYTE VALUE CLEARER.
+;
+               ABS_SHORT
+;
+               INCLUDE FIELD_EQU       ;SUBFUNCTION/FIELD BLOCK DEFINITIONS.
+;
+               INCLUDE SEQDEFS         ;SEQUENCER CONSTANT DEFINITIONS.
+;
+               INCLUDE TRAPDEFS        ;SYSTEM FUNCTION ACCESS DEFINITIONS.
+;
+               INCLUDE LCD_FUNS        ;LCD/SCREEN_BUFFER SYSTEM FUNCTION DEFS.
+;
+;880202               GLB     SOFT_DIAG_SUB
+;880202               GLB     SEQ_PEEK_SUB
+               GLB     SEQ_ERROR_DAEMON,RECORD_DAEMON
+;
+               EXTERNAL  Q_STATUS      ;SEQUENCE DIRECTORY ELEMENTS.
+               EXTERNAL  Q_TOTAL_BARS
+;
+                                       ;EXTERNAL ROM.
+               EXTERNAL  WRITE_PARAM_STRING
+               EXTERNAL  UNPLUG_ALL_EDITS
+               EXTERNAL  INCR_PARAMETER
+               EXTERNAL  DECR_PARAMETER
+               EXTERNAL  GET_CUR_SEQ_DIR
+               EXTERNAL  SRC_EMPTY_SCRN
+;871216               EXTERNAL  ZERO_WASTE_RECORD
+               EXTERNAL  SEQ_NDRD_SETUP
+               EXTERNAL  SEQ_NDSTR_READ
+               EXTERNAL  SEQ_NDRD_EATER
+;871216               EXTERNAL  WASTELAND_WRITE
+               EXTERNAL  FROM_NUM_STRING
+               EXTERNAL  DENOM_STRINGS
+;
+                                       ;EXTERNAL RAM.
+               EXTERNAL  DIAGS_ENABLED
+               EXTERNAL  SEQ_ERROR_FLAG
+               EXTERNAL  XPORT_STATE
+               EXTERNAL  RECORDING
+               EXTERNAL  ERASING
+               EXTERNAL  CUR_SUB_BLOCK
+               EXTERNAL  SUBFUN_INSTALL
+;871216               EXTERNAL  SEQ_ELEMENT
+               EXTERNAL  SEQ_PEEK_BAR
+               EXTERNAL  SEQ_PEEK_CLOCK
+               EXTERNAL  SEQ_PEEK_COUNT
+               EXTERNAL  SEQ_PEEK_SEARCH
+               EXTERNAL  SCREEN_BUFFER
+               EXTERNAL  PARAM_HI_LIM
+               EXTERNAL  WASTELAND
+;
+;880202;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;880202;
+;880202; SUBFUNCTION TO ENABLE/DISABLE INTERNAL SOFTWARE DIAGNOSTICS:
+;880202;
+;880202SOFT_DIAG_SUB
+;880202               ASC     "SW DIAGNOSTICS: "
+;880202               ASC     "       xx       "
+;880202;
+;880202               DC.B    23
+;880202               DC.B    2
+;880202               DC.W    ACCESS+DIR_PTR
+;880202               DC.W    DIAGS_ENABLED
+;880202               DC.W    DISPLAY+DISP_VEC
+;880202               DC.L    WRITE_PARAM_STRING
+;880202               DC.W    DISPLAY+DISP_STRNG
+;880202               DC.L    DISAB_ENAB_STRING
+;880202               DC.W    EDIT+HI_LIMIT
+;880202               DC.W    1
+;880202               DC.W    SUBFUN_END
+;880202;
+;880202;
+;880202DISAB_ENAB_STRING
+;880202               ASC     "nosi"
+;880202;
+;880202;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; SORTA COMPACT SEQUENCER ERROR DISPLAY DAEMON/SUBFUNCTION:
+; DON'T REALLY NEED (AND CAN'T REALLY AFFORD) A UNIQUE TEXT STRING FOR
+; EACH ERROR CONDITION.
+;
+; DAEMON PORTION IS EXECUTED PERIODICALLY FROM ROTATIONAL BACKGROUND.
+; IF DIAGS_ENABLED(.B) AND SEQ_ERROR_FLAG(.B) CONTAIN NON-ZERO VALUES,
+; THE SUBFUNCTION IS INSTALLED - IT DISPLAYS THE VALUE OF THE ERROR
+; CODE, WHOSE SIGNIFICANCE IS CLEAR TO THOSE WHO HAVE THE TABLE OF
+; VALUES FROM SEQDEFS:FRANK.
+; TO AVOID UNNECESSARY HANG-UPS, THE SUBFUNCTION INSTALLATION IS NOT
+; DONE IF THIS SUBFUNCTION IS ALREADY THE INSTALLED ONE.
+; HITTING THE ENTER SWITCH WHILE THIS SUBFUNCTION IS INSTALLED WILL
+; CLEAR SEQ_ERROR_FLAG, ALLOWING OTHER SUBFUNCTIONS TO BE CALLED UP.
+;
+; THE LIMITATION OF THIS SYSTEM IS OBVIOUS:  IF AN ERROR OCCURS WHICH
+; PREVENTS THE OCCURRENCE OF NORMAL BACKGROUND EXECUTION, THE MESSAGE
+; WILL NOT BE DISPLAYED.   OH, WELL.
+;
+;
+SEQ_ERROR_DAEMON
+               TST.B   DIAGS_ENABLED        ;ARE WE ALLOWED TO BE LOOKING FOR ERRORS?
+               BEQ.S   SEQ_ERR_EXIT         ;EXIT IF NOT.
+               TST.B   SEQ_ERROR_FLAG       ;DO WE HAVE AN ERROR CONDITION WORTH MENTIONING?
+               BEQ.S   SEQ_ERR_EXIT         ;EXIT IF NOT.
+               LEA     SEQ_ERROR_SUB(PC),A0 ;GOT AN ERROR CONDITION -
+               CMP.L   CUR_SUB_BLOCK,A0     ;ARE WE ALREADY DISPLAYING IT?
+               BEQ.S   SEQ_ERR_EXIT         ;EXIT IF YES - DON'T KEEP REINSTALLING THE SUBFUNCTION.
+               MOVE.L  A0,CUR_SUB_BLOCK     ;ELSE - PUT UP THE SCREEN, SHAKE 'EM UP.
+               ST      SUBFUN_INSTALL
+;
+SEQ_ERR_EXIT
+               RTS
+;
+;
+;
+SEQ_ERROR_SUB
+               ASC     "* SYSTEM ERROR *"
+               ASC     "SEQUENCER: xxx  "
+;
+               DC.B    27                   ;ERROR CODE DISPLAY FIELD.
+               DC.B    3
+               DC.W    ACCESS+DIR_PTR
+               DC.W    SEQ_ERROR_FLAG
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    UNPLUG_ALL_EDITS     ;DON'T WANT ACCIDENTAL EDITS OF DISPLAYED ERROR CODE,
+               DC.W    EDIT+ENTR_VEC
+               DC.L    CLEAR_SEQ_ERROR_FLAG ;BUT DO WANT TO BE ABLE TO CLEAR IT INTENTIONALLY.
+               DC.W    SUBFUN_END
+;
+;
+;
+CLEAR_SEQ_ERROR_FLAG
+               SF      SEQ_ERROR_FLAG       ;SO WE CAN CALL UP OTHER SUBFUNCTIONS.
+               GLB     PEPPERS_PLEEZ
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;871013;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;871013;
+;871013; SPECIAL THING TO CATCH A SPECIAL BUG -
+;871013; JAM A MESSAGE INTO LCD IF RECORDING(.B) SOMEHOW GETS SET WITHOUT
+;871013; ASSOCIATED BIT BEING SET IN XPORT_STATE.
+;871013; DO SIMILAR PATROLLING OF ERASING(.B) FLAG.
+;871013; DAEMON-STYLE THING, CALLED EACH TIME THROUGH BACKGROUND ROTATION,
+;871013; BUT WE ACT ONLY IF SOFTWARE DIAGNOSTICS ARE ENABLED.
+;871013;
+;871013RECORD_DAEMON
+;871013               TST.B   DIAGS_ENABLED        ;ARE SOFTWARE DIAGNOSTICS ENABLED?
+;871013               BEQ.S   REC_DM_EXIT          ;EXIT IF NOT, SKIP THIS JIVE.
+;871013               MOVE.B  XPORT_STATE,D0       ;TAKE A GLANCE AT TRANSPORT STATUS/ENABLE FLAGS.
+;871013               TST.B   RECORDING            ;DO I THINK I'M SUPPOSED TO BE RECORDING?
+;871013               BEQ.S   REC_DM_40            ;BRANCH IF NOT, SEE ABOUT ERASING FLAG.
+;871013               BTST    #RECORD_BIT,D0       ;ELSE - DO I HAVE PERMISSION TO THINK THIS WAY?
+;871013               BEQ.S   REC_DM_G0            ;BRANCH IF NOT, REPORT TO DEAN'S OFFICE.
+;871013               TST.B   ERASING              ;WHAT THE HEY - THAT WAS OK, BUT IS ERASE ALSO ENABLED?
+;871013               BEQ.S   REC_DM_EXIT          ;NO - NO PROBLEM IS EVIDENT, GIT GONE.
+;871013               BRA.S   REC_DM_H0            ;ELSE - MAKE SOME NOISE ABOUT SIMULTANEOUS REC/ERASE.
+;871013;
+;871013REC_DM_40
+;871013               TST.B   ERASING              ;DO I THINK I'M SUPPOSED TO BE ERASING?
+;871013               BEQ.S   REC_DM_EXIT          ;BRANCH IF NOT - SO, LIKE, NO PROBLEM HERE.
+;871013               BTST    #ERASE_BIT,D0        ;AHH, YEH, DO I GOT PERMISSION?
+;871013               BNE.S   REC_DM_EXIT          ;YAH, GOT PERMISSION - NO TRUBBEL HERE.
+;871013               LEA     BAD_ER_SUB(PC),A0    ;ELSE - POST MESSAGE ABOUT UNAUTHORIZED ERASE MODE.
+;871013               BRA.S   REC_DM_K0
+;871013;
+;871013REC_DM_G0
+;871013               LEA     BAD_REC_SUB(PC),A0   ;RECORDING WITHOUT PERMISSION.
+;871013               BRA.S   REC_DM_K0
+;871013;
+;871013REC_DM_H0
+;871013               LEA     REC_AND_ER_SUB(PC),A0     ;RECORDING AND ERASING AT THE SAME TIME??!!!
+;871013;
+;871013REC_DM_K0
+;871013               MOVE.L  A0,CUR_SUB_BLOCK     ;SET UP MESSAGE AS A SUBFUNCTION,
+;871013               ST      SUBFUN_INSTALL       ;INSTALL THAT THING.
+;871013;
+;871013REC_DM_EXIT
+;871013               RTS
+;871013;
+;871013;
+;871013BAD_REC_SUB
+;871013               ASC     " YOW!  RECORDING"
+;871013               ASC     " WITHOUT ENABLE!"
+;871013               DC.W    0000H                ;NO-FIELDS DECLARATION.
+;871013;
+;871013BAD_ER_SUB
+;871013               ASC     " YOW!  ERASING  "
+;871013               ASC     " WITHOUT ENABLE!"
+;871013               DC.W    0000H                ;NO-FIELDS DECLARATION.
+;871013;
+;871013REC_AND_ER_SUB
+;871013               ASC     " YOW! RECORDING "
+;871013               ASC     "**AND** ERASING!"
+;871013               DC.W    0000H                ;NO-FIELDS DECLARATION.
+;871013;
+;871013;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; SPECIAL THING TO CATCH A SPECIAL BUG -
+; SET AN ERROR FLAG IF RECORDING(.B) SOMEHOW GETS SET WITHOUT
+; ASSOCIATED BIT BEING SET IN XPORT_STATE.
+; DO SIMILAR POLICING OF ERASING(.B) FLAG - ALSO, WATCH FOR BOTH FLAGS
+; BEING SET AT THE SAME TIME (ALSO HIGHLY ILLEGAL).
+; DAEMON-STYLE THING, CALLED EACH TIME THROUGH BACKGROUND ROTATION -
+; HOWEVER, WE TAKE THE QUICK EXIT IF SOFTWARE DIAGNOSTICS ARE DISABLED.
+;
+RECORD_DAEMON
+               TST.B   DIAGS_ENABLED        ;ARE SOFTWARE DIAGNOSTICS ENABLED?
+               BEQ.S   REC_DM_EXIT          ;EXIT IF NOT, SKIP THIS JIVE.
+               MOVE.B  XPORT_STATE,D0       ;TAKE A GLANCE AT TRANSPORT STATUS/ENABLE FLAGS.
+               TST.B   RECORDING            ;DO I THINK I'M SUPPOSED TO BE RECORDING?
+               BEQ.S   REC_DM_40            ;BRANCH IF NOT, SEE ABOUT ERASING FLAG.
+               BTST    #RECORD_BIT,D0       ;ELSE - DO I HAVE PERMISSION TO THINK THIS WAY?
+               BEQ.S   REC_DM_G0            ;BRANCH IF NOT, REPORT TO DEAN'S OFFICE.
+               TST.B   ERASING              ;WHAT THE HEY - THAT WAS OK, BUT IS ERASE ALSO ENABLED?
+               BEQ.S   REC_DM_EXIT          ;NO - NO PROBLEM IS EVIDENT, GIT GONE.
+               BRA.S   REC_DM_H0            ;ELSE - MAKE SOME NOISE ABOUT SIMULTANEOUS REC/ERASE.
+;
+REC_DM_40
+               TST.B   ERASING              ;DO I THINK I'M SUPPOSED TO BE ERASING?
+               BEQ.S   REC_DM_EXIT          ;BRANCH IF NOT - SO, LIKE, NO PROBLEM HERE.
+               BTST    #ERASE_BIT,D0        ;AHH, YEH, DO I GOT PERMISSION?
+               BNE.S   REC_DM_EXIT          ;YAH, GOT PERMISSION - NO TRUBBEL HERE.
+               MOVEQ   #ILLEGAL_ERASE,D0    ;ELSE - POST MESSAGE ABOUT UNAUTHORIZED ERASE MODE.
+               BRA.S   REC_DM_K0
+;
+REC_DM_G0
+               MOVEQ   #ILLEGAL_RECORD,D0   ;RECORDING WITHOUT PERMISSION.
+               BRA.S   REC_DM_K0
+;
+REC_DM_H0
+               MOVEQ   #REC_AND_ERASE,D0    ;RECORDING AND ERASING AT THE SAME TIME??!!!
+;
+REC_DM_K0
+               MOVE.B  D0,SEQ_ERROR_FLAG    ;SET FLAG INDICATING SEQUENCER ERROR CONDITION.
+;
+REC_DM_EXIT
+               RTS
+;
+;
+PEPPERS_PLEEZ  ;PIZZA  O(N),BRAIN_MAIN      ;PRETTY CIRIUS, LEE.
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; QUICKIE DIAGNOSTIC SUBFUNCTION FOR VIEWING INDIVIDUAL DATA ELEMENTS
+; WITHIN A SEQUENCE - INTENDED FOR SOFTWARE DEBUGGING USE.
+;
+;
+SEQ_PEEK_SUB
+               ASC     "bbb:ccc tttttttt"
+               ASC     "                "
+;
+               DC.B    0                    ;BAR NUMBER FIELD.
+               DC.B    3
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    SEQ_PEEK_BAR
+               DC.W    EDIT+LO_LIMIT        ;BAR NUMBERS BEGIN AT 1.
+               DC.W    1
+               DC.W    EDIT+CUSTOMIZE       ;SET HIGH LIMIT PER Q_TOTAL_BARS OF CURRENT_SEQUENCE.
+               DC.L    CUST_BAR_EDIT
+               DC.W    EDIT+ED_VEC          ;CLEAR SEQ_PEEK_CLOCK WHEN BAR NUMBER CHANGES,
+               DC.L    BAR_EDIT_VECTOR      ;SET BAR NUMBER AS PRIORITY SEARCH PARAMETER.
+               DC.W    EDIT+LINKED          ;REINSTALL UPON BAR NUMBER CHANGE, UPDATE WHOLE SCREEN.
+               DC.W    FIELD_END
+;
+               DC.B    4                    ;CLOCK NUMBER FIELD.
+               DC.B    3                    ;SORRY, NO BARS WITH MORE THAN 1000 CLOCKS PLEASE ....
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    SEQ_PEEK_CLOCK
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+HI_LIMIT        ;NOT BEST APPROACH, BUT ADEQUATE FOR NOW.
+               DC.W    999
+               DC.W    EDIT+ED_VEC          ;SET CLOCK NUMBER AS PRIORITY SEARCH PARAMETER.
+               DC.L    CLK_EDIT_VECTOR
+               DC.W    EDIT+LINKED          ;REINSTALL UPON CLOCK NUMBER CHANGE.
+               DC.W    FIELD_END
+;
+               DC.B    8                    ;SEQUENCE ELEMENT FIELD.
+               DC.B    8
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    SEQ_PEEK_COUNT
+               DC.W    DISPLAY+DISP_VEC     ;DISPLAY VECTOR COVERS MOST OF THE ACTION HERE.
+               DC.L    WRITE_SEQ_EVENT
+               DC.W    EDIT+HI_LIMIT
+               DC.W    7FFFH                ;MAX ALLOWED ON ACCOUNT OF SIGNED LIMIT COMPARISON.
+               DC.W    EDIT+CUSTOMIZE       ;ENFORCE INC/DEC EDITING ONLY IN THIS FIELD.
+               DC.L    UNPLUG_ALL_EDITS
+               DC.W    EDIT+INCR_VEC
+               DC.L    INCR_PARAMETER
+               DC.W    EDIT+DECR_VEC
+               DC.L    DECR_PARAMETER
+               DC.W    EDIT+ED_VEC          ;SET EVENT NUMBER AS PRIORITY SEARCH PARAMETER.
+               DC.L    COUNT_EDIT_VECTOR
+               DC.W    EDIT+LINKED          ;REINSTALL UPON EVENT COUNT EDIT.
+               DC.W    SUBFUN_END
+;
+;
+;
+CUST_BAR_EDIT
+               JSR     GET_CUR_SEQ_DIR      ;SET A0 AS POINTER TO CURRENT SEQUENCE DIRECTORY,
+               MOVE    Q_TOTAL_BARS(A0),D0  ;FETCH TOTAL BARS VALUE,
+               ADDQ    #1,D0                ;UP BY 1 SO WE CAN REACH ALL THE WAY TO END OF SEQ.
+               MOVE    D0,PARAM_HI_LIM
+               RTS
+;
+;
+;
+BAR_EDIT_VECTOR
+               CLR     SEQ_PEEK_CLOCK       ;WHEN MOVING TO NEW BAR, SEARCH TO BEGINNING OF BAR.
+               SF      SEQ_PEEK_SEARCH      ;INDICATES BAR NUMBER IS PRIORITY SEARCH PARAMETER.
+               RTS
+;
+;
+;
+CLK_EDIT_VECTOR
+               MOVE.B  #1,SEQ_PEEK_SEARCH   ;INDICATES CLOCK NUMBER IS PRIORITY SEARCH PARAMETER.
+               RTS
+;
+;
+;
+COUNT_EDIT_VECTOR
+               MOVE.B  #2,SEQ_PEEK_SEARCH   ;INDICATES EVENT NUMBER IS PRIORITY SEARCH PARAMETER.
+               RTS
+;
+;
+;
+;
+; ONE DISPLAY ROUTINE COVERS ALMOST ALL OF THE ACTION -
+; THIS IS DONE IN AN ATTEMPT TO MINIMIZE THE BRAIN-TWISTING EXERCISE
+; OF USING THE FORMAL APPROACH TO COVER ALL OF THE SPECIAL CASES.
+; WHO KNOWS - MAYBE IT ALSO KEEPS THE CODE SMALLER ....
+;
+; FOR REASONS WHICH SHOULD BECOME OBVIOUS, THIS STUFF SHOULD NOT BE
+; EXERCISED WHILE THE SEQUENCER IS IN ANY SEMBLANCE OF ACTIVITY -
+; SINCE THIS IS A PRIVATE THING JUST BETWEEN YOU 'N' ME, I WON'T TAKE
+; THE TIME TO INSTALL SAFEGUARDS - I TAKE IT YOU CAN BE TRUSTED ....
+;
+WRITE_SEQ_EVENT
+;
+               MOVEM.L D0-D7/A0-A6,-(A7)    ;SAVE 'EM ALL, NO TIME FOR DEEPER INVESTIGATION.
+;
+               JSR     GET_CUR_SEQ_DIR      ;MAKE SURE SEQUENCE EXISTS - NO STUPID CRASHES.
+               TST     Q_STATUS(A0)
+               BNE.S   WSE_20               ;GO ON, WE GOT A SEQUENCE HERE.
+               MOVE.L  #SRC_EMPTY_SCRN,A1   ;ELSE, POST ERROR MESSAGE AND EXIT.
+               CALL    LCD_FUNS,DSP_SCRN
+               BRA     WSE_Z0
+;
+WSE_20
+               JSR     SEQ_NDRD_SETUP       ;EACH TIME THRU, READ FROM BEGINNING OF SEQUENCE.
+               MOVE    #WASTELAND,A3        ;CLEAR BUFFER POINTER, ETC. - WE'LL USE A3 AND
+                                            ;WASTELAND TO BUFFER THE EVENT WE ZOOM IN ON.
+               MOVE.B  SEQ_PEEK_SEARCH,D3   ;FETCH CURRENT PRIORITY SEARCH PARAMETER.
+               MOVEQ   #1,D4                ;INITIALIZE SEARCH STATUS VARIABLES - BAR NUMBER,
+               CLR     D5                   ;CLOCK NUMBER,
+               CLR     D6                   ;EVENT POSITION COUNTER.
+;
+WSE_30
+               JSR     SEQ_NDSTR_READ       ;READ FIRST WORD OF NEXT EVENT INTO D7,
+               MOVE    D7,D0                ;COPY IT AND ISOLATE EVENT TYPE ID IN D0.
+               AND     #0FH,D0
+;
+WSE_40
+               CMP     #0FH,D0              ;HAVE WE HIT AN END-OF-SEQUENCE MARK?
+               BEQ.S   WSE_90               ;BRANCH IF YES - DISPLAY IT AND EXIT.
+               CMP     #8,D0                ;NOT AT END OF SEQUENCE - WE GOT A BAR MARKER HERE?
+               BEQ.S   WSE_70               ;BRANCH IF YES, PULL IT OUT AND LOOK AT IT.
+               CMP     #9,D0                ;HOWZABOUT TIME MARKER?
+               BEQ.S   WSE_80               ;BRANCH IF YES - LIKEWISE, I'M SURE.
+               CMP.B   #2,D3                ;NOT BAR/TIME MARK - LOOKING FOR SPECIFIC EVENT NUMBER?
+               BLT.S   WSE_60               ;BRANCH IF NOT - CLEARLY WE MUST MOVE ON TO NEXT EVENT,
+                                            ;IN ORDER TO FIND SPECIFIC BAR OR CLOCK NUMBER.
+;
+WSE_50
+               CMP     SEQ_PEEK_COUNT,D6    ;HAVE WE REACHED OUR TARGET EVENT?
+               BEQ.S   WSE_90               ;BRANCH IF YES, GO DISPLAY IT.
+;
+;871217               CMP     #0FH,D0              ;HAVE WE HIT END OF SEQUENCE?
+;871217               BNE.S   WSE_60               ;BRANCH IF NOT, CONTINUE -
+;871217               MOVE    D6,SEQ_PEEK_COUNT    ;ELSE - PULL EVENT-COUNT VARIABLE INTO LINE,
+;871217               ST      SUBFUN_INSTALL       ;LET'S GO OUT AND COME IN AGAIN FROM THE TOP.
+;871217               BRA     WSE_Z0
+;
+WSE_60
+               JSR     SEQ_NDRD_EATER       ;NOT THE EVENT WE WANT - READ PAST IT TO NEXT,
+               ADDQ    #1,D6                ;BUMP OUR EVENT COUNTER,
+               BRA     WSE_40               ;LOOP BACK AND CHIKIT OUT.
+;
+;
+WSE_70
+               SWAP    D7                   ;GOT A BAR MARKER - PULL IT OUT.
+               JSR     SEQ_NDSTR_READ
+               MOVE.L  D7,(A3)              ;BUFFER IT IN WASTELAND.
+               MOVE    D7,D4                ;NOTE THE BAR NUMBER AT WHICH WE HAVE ARRIVED.
+               CLR     D5                   ;ZERO THE CLOCK NUMBER ACCORDINGLY.
+               TST.B   D3                   ;LOOKING FOR A SPECIFIC BAR NUMBER?
+               BEQ.S   WSE_74               ;BRANCH IF YES, SEE IF THIS IS IT.
+               CMP.B   #1,D3                ;NO - LOOKING FOR SPECIFIC CLOCK IN TARGET BAR?
+               BEQ.S   WSE_78               ;BRANCH IF YES, CHECK THIS OUT.
+               CMP     SEQ_PEEK_COUNT,D6    ;ELSE, LOOKING FOR SPECIFIC EVENT POSITION -
+WSE_72
+               BEQ.S   WSE_A0               ;BRANCH IF THIS IS IT - FINISH THE DISPLAY.
+WSE_73
+               ADDQ    #1,D6                ;ELSE - BUMP OUR EVENT COUNTER,
+               BRA.S   WSE_30               ;LOOP BACK AND PLOW INTO NEXT EVENT.
+;
+WSE_74
+                                            ;LOOKING FOR SPECIFIC BAR:
+               CMP     SEQ_PEEK_BAR,D4      ;IS THIS THE BAR WE'RE LOOKING FOR?
+               BRA     WSE_72               ;IF YES - DISPLAY.  ELSE - BUMP EVENT COUNT, SEARCH ON.
+;
+WSE_78
+                                            ;LOOKING FOR SPECIFIC CLOCK IN TARGET BAR:
+               CMP     SEQ_PEEK_BAR,D4      ;IS THIS THE BAR WE'RE LOOKING FOR?
+               BLT     WSE_73               ;BRANCH IF NOT - WE GOT A WAYS TO GO.
+               BGT.S   WSE_A0               ;WHOOPS - WE PASSED IT.  DISPLAY WHAT WE'VE GOT.
+               CMP     SEQ_PEEK_CLOCK,D5    ;RIGHT BAR - HOW DO CLOCK NUMBERS STACK UP?
+               BLT     WSE_73               ;HAVEN'T YET HIT TARGET CLOCK - KEEP GOING.
+               BRA.S   WSE_A0               ;ELSE, AT OR PAST TARGET - DISPLAY THIS EVENT AND EXIT.
+;
+;
+WSE_80
+               MOVE    D7,(A3)              ;BUFFER TIME MARKER IN WASTELAND.
+               MOVE    D7,D5                ;ISOLATE AND STORE NEW CLOCK VALUE (BUT PRESERVE D7!).
+               LSR     #4,D5
+               TST.B   D3                   ;LOOKING FOR A SPECIFIC BAR?
+               BEQ.S   WSE_60               ;BRANCH IF YES, TIME MARKER IS NOT WHAT WE'RE AFTER.
+               CMP.B   #1,D3                ;NO - LOOKING FOR A SPECIFIC CLOCK IN TARGET BAR?
+               BEQ.S   WSE_78               ;BRANCH IF YES, BACK TO PROCEDURE TO HANDLE THIS.
+               BRA     WSE_50               ;ELSE, SEARCHING TO SPECIFIC EVENT COUNT.
+;
+;
+WSE_90
+               MOVE    D7,(A3)+             ;BUFFER FOUR WORDS FROM SEQUENCE INTO WASTELAND,
+               JSR     SEQ_NDSTR_READ       ;STARTING WITH FIRST WORD OF TARGET EVENT -
+               MOVE    D7,(A3)+             ;ALL POSSIBILITIES COVERED, AS FAR AS WE WILL DISPLAY
+               JSR     SEQ_NDSTR_READ       ;ANY OF THEM.
+               MOVE    D7,(A3)+
+               JSR     SEQ_NDSTR_READ
+               MOVE    D7,(A3)+
+               MOVE    #WASTELAND,A3        ;SET A3 BACK TO BOTTOM OF WASTELAND.
+;
+WSE_A0
+                                            ;TIME TO DISPLAY EVENT BUFFERED IN WASTELAND:
+               MOVE    D4,SEQ_PEEK_BAR      ;FIRST - UPDATE BAR AND CLOCK NUMBERS TO REFLECT THE
+               MOVE    D5,SEQ_PEEK_CLOCK    ;ACTUAL TIME POSITION OF THIS EVENT IN THE SEQUENCE,
+               MOVE    D6,SEQ_PEEK_COUNT    ;DO LIKEWISE FOR EVENT COUNTER,
+               EXG     D4,D0                ;THEN UPDATE SCREEN_BUFFER CONTENTS ACCORDINGLY,
+                                            ;SINCE WE MAY HAVE CHANGED FROM DISPLAYED VALUES
+                                            ;(BUT - DON'T LOSE EVENT TYPE THAT WAS IN D0!)
+               MOVEQ   #20H,D2              ;LEAD-ZERO BLANK, UNSIGNED, WORD, NO DECIMAL POINT.
+               MOVEQ   #0003H,D1            ;POSITION/LENGTH FOR BAR NUMBER.
+               CALL    LCD_FUNS,WR_VAL
+               MOVE    D5,D0
+               MOVE    #0403H,D1            ;POSITION/LENGTH FOR CLOCK NUMBER.
+               CLR     D2                   ;AS BEFORE, BUT NO LEADING-ZERO BLANKING.
+               CALL    LCD_FUNS,WR_VAL
+               MOVE    D4,D0                ;NOW - RETRIEVE EVENT TYPE CODE, DISPLAY THE EVENT.
+;
+               MOVE    #0808H,D1            ;POSITION/LENGTH FOR TEXT VERSION OF EVENT TYPE.
+               LSL     #3,D0                          ;MAKE 8-BYTE OFFSET BASED ON EVENT TYPE,
+               LEA.L   EVENT_TYPE_STRNG(PC,D0),A2     ;GET US A POINTER,
+               CALL    LCD_FUNS,WR_STRNG              ;PUT IT OUT.
+;
+               MOVE.L  #WSE_Z0,-(A7)        ;EVENT-SPECIFIC DISPLAY ROUTINES RETURN TO THIS LABEL -
+                                            ;PUT RETURN ADDRESS ON STACK, SINCE WE BRANCH TO 'EM.
+               LSR     #1,D0                     ;BACK TO FOUR-BYTE OFFSET PER EVENT TYPE -
+               JMP     EVENT_WRITE_TBL(PC,D0)    ;BRANCH TO ROUTINE FOR BOTTOM-LINE DISPLAY.
+;
+WSE_Z0
+               MOVEM.L (A7)+,D0-D7/A0-A6    ;BRINGUM ALL BACK NOW - REMEMBER, THIS IS ALL
+                                            ;BUILT INTO A DISPLAY VECTOR ....
+WSE_EXIT
+               RTS
+;
+;
+;
+EVENT_WRITE_TBL
+               BRA     WR_TYPE_0
+               BRA     WR_TYPE_1
+               BRA     WR_TYPE_2
+               BRA     WR_TYPE_3
+               BRA     WR_TYPE_4
+               BRA     WR_TYPE_5
+               BRA     WR_TYPE_6
+               BRA     WR_TYPE_7
+               BRA     WR_TYPE_8
+               BRA     WR_TYPE_9
+               BRA     WR_TYPE_A
+               BRA     WR_TYPE_B
+               BRA     WR_TYPE_C
+               BRA     WR_TYPE_D
+               BRA     WR_TYPE_E
+               BRA     WR_TYPE_F
+;
+;
+;
+;
+EVENT_TYPE_STRNG
+               ASC     "UNDEF   "      ; 0
+               ASC     "PAD ON  "      ; 1
+               ASC     "PAD OFF "      ; 2
+               ASC     "MIDI ON "      ; 3
+               ASC     "MIDI OFF"      ; 4
+               ASC     "MIDI CTL"      ; 5
+               ASC     "SYS EXCL"      ; 6
+               ASC     "UNDEF   "      ; 7
+               ASC     "BAR MARK"      ; 8
+               ASC     "TIMEMARK"      ; 9
+               ASC     "TAP TEMP"      ; A
+               ASC     "ACC/RIT "      ; B
+               ASC     "UART OFS"      ; C
+               ASC     "UNDEF   "      ; D
+               ASC     "UNDEF   "      ; E
+               ASC     "SEQ END "      ; F
+;
+;
+;
+;
+WR_TYPE_0
+WR_TYPE_7
+WR_TYPE_9
+WR_TYPE_D
+WR_TYPE_E
+WR_TYPE_F
+               RTS                          ;UNDEFINED, OR OTHERWISE NO COMMENT (IE, END OF SEQ).
+;
+;
+;
+;
+; PAD ON AND PAD OFF:   "T P SSa PI PA VL"
+; TRACK, PAD, SOUND/ALT, PITCH, PAN, VELOCITY (LEVEL OMITTED).
+;
+WR_TYPE_1
+WR_TYPE_2
+               BSR.S   WR_TRACK             ;WRITE TRACK NUMBER.
+;
+               MOVE.L  (A3),D3              ;FETCH TWO WORDS OF EVENT.
+               MOVE    #1E02H,D1            ;POSITION/LENGTH FOR VELOCITY.
+               BSR.S   WR_5_BIT_FIELD       ;WRITE VELOCITY, PAN, PITCH FROM RIGHT TO LEFT.
+               BSR.S   WR_5_BIT_FIELD
+               BSR.S   WR_5_BIT_FIELD
+;
+               SWAP    D3                   ;GET THE OTHER HALF, EH.
+;
+               LSR     #7,D3                ;LINE UP SOUND/ALT FIELD.
+               MOVE    D3,D0                ;ISOLATE IT IN D0.
+               AND     #3FH,D0
+               MULU    #3,D0                ;CREATE THREE-BYTE OFFSET.
+               MOVE.L  #FROM_NUM_STRING,A2  ;POINTER TO SOUND/ALT STRING TABLE.
+               ADD     D0,A2                ;NOW WE POINT TO DESIRED STRING.
+               MOVE    #1403H,D1            ;POSITION/LENGTH FOR SOUND/ALT FIELD.
+               CALL    LCD_FUNS,WR_STRNG    ;PUT IT OUT THERE.
+;
+               LSR     #6,D3                ;LAST BUT NOT LEAST, PAD NUMBER -
+               MOVE    D3,D0                ;ISOLATE PAD NUMBER IN D0,
+               AND     #7H,D0
+               ADDQ    #1,D0                ;OFFSET IT INTO A 1-8 VALUE,
+               MOVE    #1201H,D1            ;SET POSITION/LENGTH FOR PAD NUMBER FIELD.
+               MOVEQ   #20H,D2              ;LEAD-ZERO BLANK, UNSIGNED, WORD, NO DECIMAL POINT.
+               JUMP    LCD_FUNS,WR_VAL      ;PUT IT OUT THERE, RETURN THROUGH.
+;
+;
+WR_5_BIT_FIELD
+               MOVE    D3,D0                ;COPY DATA, ISOLATE A FIVE-BIT FIELD -
+               AND     #1FH,D0
+               MOVEQ   #20H,D2              ;LEAD-ZERO BLANK, UNSIGNED, WORD, NO DECIMAL POINT.
+               CALL    LCD_FUNS,WR_VAL      ;WRITE ITS VALUE.
+               SUB     #300H,D1             ;STEP POSITION OVER BY THREE,
+               LSR     #5,D3                ;SHIFT NEXT FIELD OVER FOR WRITE.
+               RTS
+;
+;
+;
+; WRITE TRACK NUMBER AT FAR LEFT:
+;
+WR_TRACK
+               MOVE    (A3),D0              ;FETCH AND ISOLATE IN D0.
+               AND     #70H,D0
+               LSR     #4,D0
+               ADDQ    #1,D0
+               MOVE    #1001H,D1            ;POSITION/LENGTH.
+               MOVEQ   #20H,D2              ;LEAD-ZERO BLANK, UNSIGNED, WORD, NO DECIMAL POINT.
+               JUMP    LCD_FUNS,WR_VAL      ;PUT IT OUT THERE, RETURN THROUGH.
+;
+;
+;
+;
+; MIDI NOTE-ON, NOTE-OFF EVENT:   "TU SC KK VV     "
+; TRACK/UART, STATUS/CHANNEL BYTE, KEY NUMBER BYTE, VELOCITY BYTE.
+; ACTUALLY - ALL MIDI IS DONE AS        "TU SC dd dd dd -" WHERE ALL BUT
+; SYSEX HAS ONLY THE FIRST TWO DATA BYTES, AND FOR SYSEX THE HYPHEN
+; INDICATES THE PRESENCE OF DATA BYTES BEYOND THE THREE DISPLAYED.
+; THIS ROUTINE IS USED BY THE MIDI SYSEX ROUTINE TO COVER ALL DISPLAY
+; WRITING THROUGH THE FIRST TWO DATA BYTES.
+;
+WR_TYPE_3
+WR_TYPE_4
+WR_TYPE_5
+               BSR     WR_TRACK             ;WRITE TRACK NUMBER.
+;
+               MOVE    (A3),D0              ;FETCH WORD CONTAINING UART BIT.
+               AND     #80H,D0              ;JUST THIS BIT, NO OTHER -
+               ROL.B   #1,D0                ;MAKE IT INTO A 1-BYTE OFFSET,
+               ADD.B   #'a',D0              ;CONVERT IT TO ASCII 'a' OR 'b',
+               MOVE.B  D0,SCREEN_BUFFER+17  ;PUT IT IN ITS PLACE.
+;
+               MOVE    #1302H,D1            ;WRITE STATUS/CHANNEL BYTE (HEX).
+               BSR.S   WR_HEX_FIELD
+               ADDQ    #1,A3                ;SKIP UART/TRACK/TYPE CODE BYTE - WE ALREADY GOT IT.
+               BSR.S   WR_HEX_FIELD         ;WRITE FIRST DATA BYTE,
+;881025               BRA.S   WR_HEX_FIELD         ;WRITE SECOND DATA BYTE AND RETURN THROUGH -
+;881025                                            ;NOTE THAT WE LEAVE THE LAST-DISPLAYED HEX VALUE IN D0
+;881025                                            ;WHERE IT CAN BE CHECKED BY THE SYSEX DISPLAY ROUTINE -
+;881025                                            ;LIKEWISE D1 POSITION/LENGTH IS LEFT AS IS.
+               NOP                          ;WRITE SECOND DATA BYTE AND RETURN THROUGH -
+                                            ;NOTE THAT WE LEAVE THE LAST-DISPLAYED HEX VALUE IN D0
+                                            ;WHERE IT CAN BE CHECKED BY THE SYSEX DISPLAY ROUTINE -
+                                            ;LIKEWISE D1 POSITION/LENGTH IS LEFT AS IS.
+                                            ;(THIS NOP IS A PLACE HOLDER FOR THE
+                                            ;ABOVE BRA.S, WHICH ASSEMBLED AS 'NOP'
+                                            ;UNDER HP64000 - STRICTLY FOR INITIAL
+                                            ;LINK MAP MATCH-UP, DELETE AFTERWARDS).
+;
+WR_HEX_FIELD
+               MOVE.B  (A3)+,D0             ;FETCH DATA BYTE, POINT AT NEXT.
+               CALL    LCD_FUNS,WR_HEX_VAL  ;WRITE AS HEX STRING PER D1 POSITION/LENGTH.
+               ADD     #300H,D1             ;ADVANCE TO NEXT STRING-WRITE POSITION.
+               RTS
+;
+;
+;
+;
+; MIDI SYSEX -
+; WE USE THE ABOVE PROCEDURE FOR GENERIC MIDI DISPLAY, THEN COME BACK
+; HERE AND CHECK THE LAST-DISPLAYED BYTE (STILL IN D0) TO SEE IF IT WAS
+; AN END-OF-EXCLUSIVE.  IF NOT, WE DISPLAY ONE MORE DATA BYTE,
+; THEN DISPLAY '*' IF THE NEXT BYTE IS EOX, OR '>' IF FURTHER DATA BYTES
+; ARE CONTAINED IN THE SYSEX MESSAGE.
+;
+WR_TYPE_6
+               BSR     WR_TYPE_3            ;WRITE TRACK/UART, STATUS/CHANNEL, TWO DATA BYTES -
+               CMP.B   #0F7H,D0             ;DID WE JUST DISPLAY AN EOX (SECOND DATA BYTE)?
+               BEQ.S   WR_TP6_EXIT          ;EXIT IF YES, NO MORE TO SHOW (POINTLESS MESSAGE).
+               BSR     WR_HEX_FIELD         ;ELSE - DISPLAY WHATEVER IT IS, STEP TO NEXT.
+               CMP.B   #0F7H,D0             ;DID WE JUST DISPLAY AN EOX (SECOND DATA BYTE)?
+               BEQ.S   WR_TP6_EXIT          ;EXIT IF YES, NO MORE TO SHOW (VERY SHORT MESSAGE).
+               MOVE.B  #'*',D0              ;LOAD CHARACTER FOR "NEXT BYTE IS EOX" -
+               CMP.B   #0F7H,(A3)           ;IS NEXT BYTE AN EOX, IN FACT?
+               BEQ.S   WR_TP6_20            ;BRANCH IF YES - GIVE 'EM THE '*'.
+               MOVE.B  #'>',D0              ;ELSE, INDICATE FURTHER DATA BYTES ARE PRESENT.
+WR_TP6_20
+               MOVE.B  D0,SCREEN_BUFFER+31
+WR_TP6_EXIT
+               RTS
+;
+;
+;
+;
+; BAR MARKER -         "      NN/DD     "
+;
+WR_TYPE_8
+               MOVE.B  #'/',SCREEN_BUFFER+18H    ;THIS IS FOR THE TIME-SIGNATURE.
+;
+               MOVE    (A3),D0              ;FETCH ENCODED DENOMINATOR -
+               AND     #70H,D0
+               LSR     #3,D0                ;CREATE 2-BYTE OFFSET.
+               MOVE.L  #DENOM_STRINGS,A2    ;SET UP POINTER TO APPROPRIATE STRING.
+               ADD     D0,A2
+               MOVE    #1902H,D1            ;POSITION/LENGTH.
+               CALL    LCD_FUNS,WR_STRNG
+;
+               MOVE.B  (A3),D0              ;LOAD TIME SIGNATURE NUMERATOR.
+               MOVE    #1602H,D1            ;POSITION/LENGTH.
+               MOVEQ   #20H,D2              ;LEAD-ZERO BLANK, UNSIGNED, WORD, NO DECIMAL POINT.
+               JUMP    LCD_FUNS,WR_VAL      ;PUT IT OUT, RETURN THROUGH.
+;
+;
+;
+;
+;
+; TAP TEMPO, ACCELERANDO/RITARDANDO EVENTS -
+; FOR NOW WE KEEP IT SIMPLE AND JUST DISPLAY THEM IN PURE HEX, UNCUT.
+;
+WR_TYPE_A
+WR_TYPE_B
+               MOVE.L  (A3),D0              ;FETCH TWO WORDS, DISPLAY AS IS.
+               MOVE    #1408H,D1            ;POSITION/LENGTH.
+               JUMP    LCD_FUNS,WR_HEX_VAL  ;WRITE IT OUT, RETURN THROUGH.
+;
+;
+;
+;
+; UART ADVANCE/DELAY MARKER -
+; FOR NOW WE KEEP IT SIMPLE AND JUST DISPLAY IT IN PURE HEX, UNCUT.
+;
+WR_TYPE_C
+               MOVE    (A3),D0              ;FETCH ONE WORD, DISPLAY AS IS.
+               MOVE    #1604H,D1            ;POSITION/LENGTH.
+               JUMP    LCD_FUNS,WR_HEX_VAL  ;WRITE IT OUT, RETURN THROUGH.
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+

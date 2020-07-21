@@ -1,0 +1,256 @@
+***************************************************************************************************
+***************************************************************************************************
+***                                                                                             ***
+***            MISCSUBS - MODEL 440 MISCELLANEOUS SUBROUTINES, HEY.                             ***
+***                                                                                             ***
+***************************************************************************************************
+***************************************************************************************************
+;
+;
+               .AWORD
+;
+;
+               INCLUDE EQUATES         ;HDW ADDR AND CONSTANT DEFS, .AWORD DIRECTIVE.
+;
+               .EXPORT REAL_TIMER
+               .EXPORT SCAN_SWITCHES
+               .EXPORT _GENL_SHUTDOWN
+;
+                                            ;ROM.
+               .IMPORT SET_ENTER_FLASH
+               .IMPORT SOLID_ENTER
+               .IMPORT KILL_ALL_VOICES
+               .IMPORT STOP_THE_SEQUENCER
+;
+                                            ; RAM addresses.
+               .IMPORT REAL_TIME
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; BACKGROUND-BASED REAL-TIME INTERVAL TIMER -
+; PASS ADDRESS OF TIMER WORD IN A0, PASS REAL-TIME INTERVAL IN D0.
+; IF (REAL_TIME)-(TIMER WORD) EXCEEDS INTERVAL VALUE,
+; RETURNS CARRY FLAG CLEAR AND TIMER WORD SET TO ZERO -
+; ELSE RETURNS CARRY FLAG SET, TIMER WORD VALUE UNCHANGED.
+; NOTE: TIMER WORD = 0 IS USED IN SOME CASES TO INDICATE TIMER NOT RUNNING - IN SUCH CASES,
+; IT MUST NOT BE SET = 0 WHILE TIMER IS BEING USED (E.G. REAL_TIME MAY = 0 AT START-UP TIME).
+; DESTROYS D0.
+;
+;
+REAL_TIMER
+               MOVE    D0,-(A7)             ;LATER FOR YOU ....(INTERVAL VALUE)....
+               MOVE    REAL_TIME,D0         ;HOW FAR ARE WE FROM STARTING TIME?
+               SUB     (A0),D0              ;TAKE DIFFERENCE BETWEEN THEN AND NOW,
+               CMP     (A7)+,D0             ;COMPARE, AND BEGONE -
+               BCS.S   RL_TMR_EXIT
+               CLR     (A0)                 ;IF TIME IS UP, CLEAR TIMER WORD TO INDICATE SUCH.
+RL_TMR_EXIT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; Switch matrix scan utility - quick-look type.
+; Independent of backgnd switch handler (SWITCH_SCAN/SWITCH_BOY/SWITCH_HITTER) -
+; no RAM variables are affected, interrupt-based debounce not employed.
+; If D0.W is negative on entry, loops until all switches are continuously open
+; for the duration of a built-in debounce delay (based on loop iteration count).
+; If D0.W = 0 upon entry, loops until a closed switch is encountered.
+; If D0.W is positive non-zero upon entry, scans switches once and returns.
+; In all cases, returns zero-relative switch code in D0.W (-1 = none closed) -
+; condition codes are MI if none closed, PL if closed switch detected.
+; All other registers preserved.
+;
+;
+SCAN_SWITCHES
+               MOVEM.L A0/D1-D3,-(A7)
+SCAN_SW_10
+               MOVE    #1000,D2             ;LENGTH OF TIME TO DETECT ALL-SWITCHES-UP CONDITION
+                                            ;IN TERMS OF SCAN_SW_20 LOOP (APPROX 0.05-0.1 SEC).
+SCAN_SW_20
+               MOVEQ   #6,D1                ;SEVEN ROWS OF SWITCHES TO SCAN - SCAN IN REVERSE.
+               MOVE.L  #SWITCH_INPUT+13,A0
+SCAN_SW_30
+               MOVE.B  (A0),D3              ;ANYBODY CLOSED?
+               BNE.S   SCAN_SW_40           ;BRANCH IF YES -
+               LEA     -2(A0),A0            ;ELSE, STEP DOWN TO NEXT ROW IF ANY,
+               DBRA    D1,SCAN_SW_30        ;GO BACK AND LOOK AT IT.
+;
+                                            ;NO CLOSED SWITCHES -
+               TST     D0                   ;ARE WE WAITING FOR A CLOSED SWITCH?
+               BEQ     SCAN_SW_20           ;BRANCH IF YEAH, SCAN AGAIN.
+               BPL.S   SCAN_SW_34           ; this branch if doing scan-once.
+               DBRA    D2,SCAN_SW_20        ;ELSE, TIMING ALL-SWITCHES-UP - BRANCH IF NOT TIME YET.
+SCAN_SW_34
+               MOVEQ   #-1,D0               ; return with "no switches" code.
+               BRA.S   SCAN_SW_Z0
+;
+SCAN_SW_40
+               TST     D0                   ;GOT A CLOSED SWITCH - IS THIS WHAT WE ARE AFTER?
+               BPL.S   SCAN_SW_50           ;BRANCH IF YES - decode and exit.
+               BRA     SCAN_SW_10           ;ELSE RESTART ALL-SWITCHES-UP TIMEOUT, KEEP SCANNING.
+SCAN_SW_50
+               MOVEQ   #8,D0                ;COMPUTE SWITCH NUMBER FOR CLOSED SWITCH -
+               MULU    D1,D0                ;THIS IS THE ROW COMPONENT,
+SCAN_SW_60
+               LSR.W   #1,D3                ;LITTLE LOOP HERE FOR THE COLUMN COMPONENT.
+               BCS.S   SCAN_SW_Z0           ; note - LSR happens at least once,
+               ADDQ    #1,D0                ; guarantees cc = PLUS on exit.
+               BRA     SCAN_SW_60
+;
+SCAN_SW_Z0
+               MOVEM.L (A7)+,A0/D1-D3
+SCAN_SW_EXIT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;
+; Access to sequencer single-event viewer.
+;
+;
+               INCLUDE FIELD_EQU
+;
+               .EXPORT CHEESE_STEAK_SUB
+;
+               .IMPORT DIAGS_ENABLED
+               .IMPORT ENTER_VEC
+               .IMPORT CUR_FUN_INDEX
+               .IMPORT SWITCH_HIT
+               .IMPORT CUR_SUB_BLOCK
+               .IMPORT PEPPERS_PLEEZ
+               .IMPORT SUBFUN_INSTALL
+               .IMPORT UNPLUG_ALL_EDITS
+;
+;
+CHEESE_STEAK_SUB
+               DC.B     "  Now Serving   "
+               DC.B     " (press ENTER)  "
+;
+               DC.B    15
+               DC.B    1
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    SORRY_CLOSED
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    HOAGIE_PLEEZ
+               DC.W    SUBFUN_END
+;
+HOAGIE_PLEEZ
+               TST.B   DIAGS_ENABLED
+               BEQ.S   OUTTA_MUSHROOMS
+                .ALONG
+               JSR     UNPLUG_ALL_EDITS
+               MOVE.L  #GO_TO_PHILLY,ENTER_VEC
+               JMP     SET_ENTER_FLASH
+                .AWORD
+OUTTA_MUSHROOMS
+               MOVE    CUR_FUN_INDEX,D0
+               ADDQ    #1,D0
+               MOVE    D0,SWITCH_HIT
+               BRA.S   SORRY_CLOSED
+GO_TO_PHILLY
+               MOVE.L  #PEPPERS_PLEEZ,CUR_SUB_BLOCK
+               ST      SUBFUN_INSTALL
+SORRY_CLOSED
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;
+; Perform all necessary shutdown of system at large in preparation for
+; an extended hiatus of background (and possibly realtime interrupt) execution.
+; Used during MIDI data transfer, disk transfer procedures, etc.
+; Preserves all registers - I think.
+;
+;
+_GENL_SHUTDOWN
+               .ALONG
+               JSR     UNPLUG_ALL_EDITS     ; nix all edit pathways.
+               .AWORD
+               JSR     STOP_THE_SEQUENCER   ; kill sequencer if running.
+               JSR     KILL_ALL_VOICES      ; no need to be hearing anything.
+               .ALONG
+               JSR     SOLID_ENTER          ; may not be in backgnd for a while,
+                                            ; jam ENTER LED on solid right now -
+                                            ; also forces transport LEDs immed
+                                            ; per pending STOP_THE_SEQ changes.
+               .AWORD
+               RTS
+;
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+

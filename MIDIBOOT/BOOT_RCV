@@ -1,0 +1,323 @@
+********************************************************************************
+********************************************************************************
+********************************************************************************
+****                                                                        ****
+****   Name:           boot_rcv                                             ****
+****   Description:    Receive procedure for MIDI bootstrap loader          ****
+****                   No assumptions about location                        ****
+****                                                                        ****
+****     Created by Matthew S. Isaacson for PointSource - 1991              ****
+****                                                                        ****
+********************************************************************************
+********************************************************************************
+********************************************************************************
+;
+;
+               .aword
+;
+;
+;
+               .export midiboot_begin
+               .export midiboot_end
+               .export bk_loop_entry
+               .export bk_loop_reent
+               .export bk_loop_idle
+;
+;
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;
+; Enter here to await the start of a download -
+; come back here after download is complete,
+; or after receiving non-download data,
+; to wait for another download to begin.
+; Assumes all interrupts disabled.
+;
+; Note: this version intended to run on emulator -
+; there is no other way out of this loop
+; (but see below, 921007-04:33pm).
+;
+;
+; 921007-04:33pm
+; this is documentation of an old change - about two years ago -
+; but i evidently failed to document it at the time:
+; this version of the bootstrap loader is hardwired to expect
+; a download occurring in two parts - ie, two complete download messages
+; covering non-contiguous sections of program space.
+; typically the first part is exception vectors in low memory,
+; while the other part is all other code, typically starting at 100h.
+; the details of the two downloads are not significant here -
+; what is significant is that after the second download is successfully
+; completed, the downloader will jump directly to 100h to begin execution
+; of the downloaded code.  emulator intervention is not required to exit
+; from the downloader loop in this case, and in fact, for this version
+; the emulator typically watches for execution at 100h as a signal of
+; bootstrap completion.
+;
+;
+;
+;
+;
+; customization for studio 440:
+;
+;
+uctl           equ     20000h
+udat           equ     20002h
+;
+;
+;
+;
+uinit          macro
+;
+               move.b  #17h,uctl  ; master reset of 6850 uart.
+               move.b  #15h,uctl  ; div-by-16 of 500khz to 31.25k baud clock,
+                                  ; format = 8 bit plus 1 stop bit (no parity),
+                                  ; disable rcv and xmt interrupts.
+               endm
+;
+;
+;
+;
+mw             macro
+
+mwloop\@
+               btst    #0,uctl         ; check for data in rx buf.
+               beq     mwloop\@        ; if nothing, go check again.
+               nop                     ; isolation.
+               nop                     ; isolation.
+
+               endm
+;
+;
+;
+;
+mr             macro
+               move.b  udat,d0         ; read rx buf into d0.b.
+               endm
+;
+;
+;
+;
+;
+;
+;
+;
+;
+;
+;
+;
+;
+;
+midiboot_begin
+;
+;
+bk_loop_entry
+;
+               move.w  #2700h,sr       ; no interrupts, at all.
+;
+               uinit                   ; init uart as required.
+;
+               clr.w   d7              ; transfer pass counter -
+                                       ; hard-wired for two-part download.
+;
+               nop                     ; isolation.
+               nop                     ; isolation.
+;
+;
+;
+;
+bk_loop_reent
+;
+               nop                     ; isolation.
+               nop                     ; isolation.
+;
+;
+;
+;
+bk_loop_idle
+               mw                      ; wait here for a MIDI byte.
+bk_hdr_0
+               mr                      ; read rx byte into d0.b.
+               cmpi.b  #0f0h,d0        ; byte 0 of MIDI download header?
+               bne     bk_loop_idle    ; nope, go back to waiting around.
+;
+               mw                      ; wait here for a MIDI byte.
+bk_hdr_1
+               mr                      ; read rx byte into d0.b.
+               cmpi.b  #7dh,d0         ; byte 1 of MIDI download header?
+               bne     bk_loop_idle    ; nope, go back to waiting around.
+;
+               mw                      ; wait here for a MIDI byte.
+bk_hdr_2
+               mr                      ; read rx byte into d0.b.
+               cmpi.b  #00h,d0         ; byte 2 of MIDI download header?
+               bne     bk_loop_idle    ; nope, go back to waiting around.
+;
+               mw                      ; wait here for a MIDI byte.
+bk_hdr_3
+               mr                      ; read rx byte into d0.b.
+               cmpi.b  #00h,d0         ; byte 3 of MIDI download header?
+               bne     bk_loop_idle    ; nope, go back to waiting around.
+;
+;
+                                       ; okay, we're locked in:
+;
+;
+;
+               nop                     ; isolation.
+;
+bk_saddr
+               mw                      ; wait here for a MIDI byte.
+bk_saddr_3
+               mr                      ; read rx byte into d0.b.
+               move.b  d0,d1           ; byte 3 of start address -
+               lsl.l   #8,d1           ; assemble addr in d1.l.
+;
+               mw                      ; wait here for a MIDI byte.
+bk_saddr_2
+               mr                      ; read rx byte into d0.b.
+               move.b  d0,d1           ; byte 2 of start address -
+               lsl.l   #8,d1           ; assemble addr in d1.l.
+;
+               mw                      ; wait here for a MIDI byte.
+bk_saddr_1
+               mr                      ; read rx byte into d0.b.
+               move.b  d0,d1           ; byte 1 of start address -
+               lsl.l   #8,d1           ; assemble addr in d1.l.
+;
+               mw                      ; wait here for a MIDI byte.
+bk_saddr_0
+               mr                      ; read rx byte into d0.b.
+               move.b  d0,d1           ; byte 0 of start address -
+               movea.l d1,a0           ; store start address in a0.l.
+;
+;
+bk_eaddr
+               mw                      ; wait here for a MIDI byte.
+bk_eaddr_3
+               mr                      ; read rx byte into d0.b.
+               move.b  d0,d1           ; byte 3 of end address -
+               lsl.l   #8,d1           ; assemble addr in d1.l.
+;
+               mw                      ; wait here for a MIDI byte.
+bk_eaddr_2
+               mr                      ; read rx byte into d0.b.
+               move.b  d0,d1           ; byte 2 of end address -
+               lsl.l   #8,d1           ; assemble addr in d1.l.
+;
+               mw                      ; wait here for a MIDI byte.
+bk_eaddr_1
+               mr                      ; read rx byte into d0.b.
+               move.b  d0,d1           ; byte 1 of end address -
+               lsl.l   #8,d1           ; assemble addr in d1.l.
+;
+               mw                      ; wait here for a MIDI byte.
+bk_eaddr_0
+               mr                      ; read rx byte into d0.b.
+               move.b  d0,d1           ; byte 0 of end address -
+               movea.l d1,a1           ; store end address in a1.l.
+;
+;
+                                       ; data time -
+                                       ; read and store data until
+                                       ; a0.l (current address) exceeds
+                                       ; a1.l (last download address.
+;
+               clr.l   d2              ; keep running checksum of data in d2.l.
+               clr.l   d0              ; for checksum computation, all of d0.l
+                                       ; stays = 0 except for ls byte.
+;
+bk_loop_data
+               mw                      ; wait here for a MIDI byte.
+bk_data_read
+               mr                      ; read rx byte into d0.b.
+               move.b  d0,(a0)+        ; store byte, update cur address ptr.
+               add.l   d0,d2           ; add byte onto running checksum.
+               cmpa.l  a0,a1           ; done downloading data?
+               bcc     bk_loop_data    ; stay in this loop if not.
+;
+;
+                                       ; all data downloaded -
+                                       ; time to receive checksum.
+;
+;
+               nop                     ; isolation.
+;
+               clr.l   d3              ; use d3 as (emulator visible) flag.
+;
+;
+bk_cksum
+               mw                      ; wait here for a MIDI byte.
+bk_cksum_3
+               mr                      ; read rx byte into d0.b.
+               move.b  d0,d1           ; byte 3 of checksum -
+               lsl.l   #8,d1           ; assemble checksum in d1.l.
+;
+               mw                      ; wait here for a MIDI byte.
+bk_cksum_2
+               mr                      ; read rx byte into d0.b.
+               move.b  d0,d1           ; byte 2 of checksum -
+               lsl.l   #8,d1           ; assemble checksum in d1.l.
+;
+               mw                      ; wait here for a MIDI byte.
+bk_cksum_1
+               mr                      ; read rx byte into d0.b.
+               move.b  d0,d1           ; byte 1 of checksum -
+               lsl.l   #8,d1           ; assemble checksum in d1.l.
+;
+               mw                      ; wait here for a MIDI byte.
+bk_cksum_0
+               mr                      ; read rx byte into d0.b.
+               move.b  d0,d1           ; byte 0 of checksum -
+               cmp.l   d1,d2           ; compare against local checksum.
+;
+               beq.s   bk_loop_ok_exit ; br if ok, leave error flag (d3) clear.
+               moveq   #-1,d3          ; else, set flag.
+;
+               nop                     ; isolation.
+               nop                     ; isolation.
+bk_loop_er_exit
+                                       ; cum by yah after checksum error -
+               bra     bk_loop_reent   ; head back to top, fall into idle loop.
+;
+;
+               nop                     ; isolation.
+               nop                     ; isolation.
+;
+bk_loop_ok_exit
+                                       ; cum by yah after checksum match -
+               tst.w   d7              ; first part of download?
+               bne.w   bk_coldboot     ; br if yes, go do coldboot.
+               addq.w  #1,d7           ; else bump xfr counter,
+               bra     bk_loop_reent   ; head back to top, fall into idle loop.
+;
+bk_coldboot
+               jmp     100h            ; hard-wired coldboot entry address.
+;
+;
+midiboot_end
+;
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+

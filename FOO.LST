@@ -1,0 +1,71 @@
+ hdr=68000 Assembler           Mon Mar 20 15:30:43 1989
+ subtitle=FOO
+ src=FOO
+		       	
+/00		       	 .REGION OFFSETS
+		       	
+       <00006800>      	 OFFSET 6800H
+		       	 .ALONG
+       <00006800>      	FUCK_YOU BRA _FUCK_YOU
+       <00006804>      	FUCK_ME BRA _FUCK_ME
+       <00006808>      	FUCK_THEM BRA _FUCK_THEM
+       <0000680C>      	FUCK_EVERYBODY BRA _FUCK_EVERYBODY
+       <00006810>      	EAT_SHIT JMP _EAT_SHIT
+       <00006816>      	DRINK_PISS JMP _DRINK_PISS
+       <0000681C>      	SUCK_MY_COCK BRA _SUCK_MY_COCK
+       <00006820>      	LICK_HER_CUNT JMP _LICK_HER_CUNT
+		       	 .AWORD
+		       	
+		       	 .IMPORT SOMEWHERES
+		       	
+		       	 INCLUDE HPFIXUPS
+		       	               .OPTION LIST=0
+		       	               .OPTION LIST=1
+		       	
+		       	
+		       	
+		       	 INCLUDE EQUATES
+		       	 .OPTION LIST=0
+		       	 .OPTION LIST="ON"
+		       	
+		       	 INCLUDE TRAPDEFS
+		       	 .OPTION LIST=0
+		       	 .OPTION LIST="ON"
+		       	
+		       	
+/00		       	 .REGION MAIN
+/01		      
+		       	
+000000 000200040006    	 HEX 2,4,6,8,0C,10,18,20
+000006 0008000C0010
+00000C 00180020
+000010 FF0CABCDEFAB    	 HEX FF0C,ABCD,EFAB,9,C,D,B,000C
+000016 0009000C000D
+00001C 000B000C
+000020 7083	       	 MOVEQ #83H,D0
+000022 7003	       	 MOVEQ #03H,D0
+		       	 .ALIGN 2
+		       	
+000024 4E400117	       	 CALL 1,23
+000028 4E410430	       	 JUMP 4,48
+		       	
+00002C 303C0010	       	 MOVE #23&0xF0,D0
+000030 30380000	       	 MOVE.W SYM1,D0
+000034 4EF80000	       	 JMP SOMEWHERES
+		       	
+		       	
+000038 4EB86800	       	 JSR FUCK_YOU
+00003C 4EB86804	       	 JSR FUCK_ME
+000040 4EB86808	       	 JSR FUCK_THEM
+000044 4EB8680C	       	 JSR FUCK_EVERYBODY
+000048 4EB86810	       	 JSR EAT_SHIT
+00004C 4EB86816	       	 JSR DRINK_PISS
+000050 4EB8681C	       	 JSR SUCK_MY_COCK
+000054 4EB86820	       	 JSR LICK_HER_CUNT
+		       	
+		       	
+/02		       	 .REGION SHORTRAM
+		       	
+000000 		       	SYM1 DS.W 1
+		       	
+ 0x58 bytes code/data,  0x2 uninitialized

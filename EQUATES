@@ -1,0 +1,373 @@
+               .OPTION LIST=SHOW_INCLUDES
+
+***************************************************************************************************
+***************************************************************************************************
+***                                                                                             ***
+***            EQUATES - MODEL 440 HARDWARE ADDR AND CONSTANT DEFS                              ***
+***                                                                                             ***
+***************************************************************************************************
+***************************************************************************************************
+;
+;
+               .AWORD               ;IN GENERAL.
+;
+;
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;              ROM, RAM ADDRESS DEFINITIONS
+;
+;
+;
+; FIRMWARE ROM IS LOCATED AT 0-1FFFFH (64K WORDS) -
+; BOTTOM QUARTER (0-7FFFH) IS ADDRESSABLE USING SHORT ADDRESSING MODE.
+;
+ROM_BEGIN      EQU     0
+ROM_END        EQU     20000H
+;
+;
+;
+; SYSTEM SCRATCHPAD RAM IS 0FFF80000H-0FFFFFFFFH (256K WORDS).
+; TOP 32K BYTES (0FFFF8000H-0FFFFFFFFH) ADDRESSABLE USING SHORT ADDRESSING MODE.
+;
+RAM_BEGIN      EQU     0FFF80000H
+RAM_END        EQU     000000000H      ;SEEMS KINDA FUNNY?  FOR STACK POINTER INITIALIZATION.
+RAM_LONG_LEN   EQU     20000H          ;RAM LENGTH EXPRESSED IN LONG-WORDS.
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               PAGE
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;                      PERIPHERAL HARDWARE - SUB-DECODER 0
+;   *****  NOTE: ALL PERIPHERAL HARDWARE REQUIRES LONG ADDRESSING MODE  *****
+;
+;
+; UARTS - CONNECTED TO UPPER DATA BUS:
+                                       ;UART A ("MAIN" UART):
+UART_A_CONTROL EQU     20000H          ;CONTROL REGISTER (WRITE).
+UART_A_STATUS  EQU     20000H          ;STATUS REGISTER (READ).
+UART_A_DATA    EQU     20002H          ;DATA REGISTER.
+;
+                                       ;UART B ("SUB" UART):
+UART_B_CONTROL EQU     20040H          ;CONTROL REGISTER (WRITE).
+UART_B_STATUS  EQU     20040H          ;STATUS REGISTER (READ).
+UART_B_DATA    EQU     20042H          ;DATA REGISTER.
+;
+;
+;
+; FLOPPY DISK CONTROLLER - CONNECTED TO UPPER DATA BUS:
+;
+DISK_STAT      EQU     20080H          ;STATUS REGISTER (READ).
+DISK_CMD       EQU     20080H          ;COMMAND REGISTER (WRITE).
+DISK_TRACK     EQU     20082H          ;TRACK REGISTER.
+DISK_SEC       EQU     20084H          ;SECTOR REGISTER.
+DISK_DATA      EQU     20086H          ;DATA REGISTER.
+;
+;
+;
+; TIMING CHIP (SMPTE) INTERFACE -
+; COMMUNICATIONS ARE ASYNCHRONOUS (INTERRUPT DRIVEN) WITH HANDSHAKE IN BOTH DIRECTIONS:
+;
+TC_WRITE       EQU     200C0H          ;ON UPPER DATA BUS - WRITING CLEARS THE SMPTE_WR_RDY FLAG
+                                       ;TO THE CPU (SET AGAIN BY TIMING CHIP WHEN BYTE IS READ)
+                                       ;AND GENERATES AN INTERRUPT TO THE TIMING CHIP.
+TC_READ        EQU     20101H          ;ON LOWER DATA BUS - READING CLEARS THE TC_READ INTERRUPT
+                                       ;TO THE CPU AND SETS THE CPU_WR_RDY FLAG TO THE TIMING CHIP.
+;
+;
+;
+; CLEAR 1-MSEC INTERRUPT:
+;
+CLR_1_MSEC     EQU     20140H          ;READ OR WRITE, DATA DON'T CARE.
+;
+;
+;
+; MISCELLANEOUS OUTPUT - 'HC273 ON UPPER DATA BUS,
+; ALL BITS ARE CLEARED TO 0 BY HARDWARE RESET:
+;
+MISC_OUT       EQU     20180H          ;D9-D8 -  SAMPLE FILTER SELECT:
+                                       ;         00 = 6KHz, 01 = 12KHz, 10 = 18KHz, 11 = GND INPUT.
+                                       ;
+                                       ;D10   -  DISK DRIVE SIDE 1 SELECT.
+                                       ;D11   -  6803M2 - PULLS DOWN 6803 P22 AT RESET TO ENSURE
+                                       ;         MODE 2 CHIP OPERATION, MUST BE SET HIGH TO ENABLE
+                                       ;         MSMPTE_CLK INPUT TO 6803 ON SAME PIN.
+                                       ;D12   -  AUDIO OUTPUT RELAY CONTROL (1 = ON).
+                                       ;D13   -  METRONOME NON-ACCENT BIT.
+                                       ;D14   -  METRONOME ACCENT BIT.
+                                       ;D15   -  1 = FULL DAISY-CHAIN, 0 = TWO-CHIP DAISY-CHAIN.
+;
+;
+;
+; CLEAR 24-PPQN INTERRUPT:
+;
+CLR_24_PPQN    EQU     201C0H          ;READ OR WRITE, DATA DON'T CARE.
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               PAGE
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;                      PERIPHERAL HARDWARE - SUB-DECODER 1
+;
+; ALL COMMUNICATIONS WITH ANALOG BOARD (BOARD 3) ARE HANDLED BY THIS SUB-DECODER,
+; HENCE ALL ADDRESSES IN THIS SUB-DECODE RANGE ACTIVATE THE ENBUS SIGNAL,
+; WHICH TURNS ON LINE TRANSCEIVERS BETWEEN CPU BOARD AND ANALOG BOARD DATA BUSSES.
+;
+;   *****  NOTE: ALL PERIPHERAL HARDWARE REQUIRES LONG ADDRESSING MODE  *****
+;
+;
+; CUSTOM CHIP LOCATIONS:
+;
+CHIP1          EQU     20200H
+CHIP2          EQU     20240H
+CHIP3          EQU     20280H
+CHIP4          EQU     202C0H
+;
+; CUSTOM CHIP REGISTER LOCATIONS (PER CHIP) -
+; CHIPS ARE CONNECTED TO LOWER DATA BUS:
+;
+MISC           EQU     01H
+PITCHLO        EQU     03H
+PITCHHI        EQU     05H
+ADDRHI         EQU     07H
+ADDRMID        EQU     09H
+ADDRLO         EQU     0BH
+DELAY          EQU     0DH
+HARDSYNC       EQU     0FH
+;
+;
+;
+; SAMPLE RAM / SAMPLE ADC INTERFACE TO CPU - DATA ON D15-D4, WITH D3-D0 = 0 DURING READ.
+;
+RD_SAM_RAM     EQU     20300H
+WR_SAM_RAM     EQU     20340H
+;
+SAMPLE_ADC     EQU     20380H               ;CLEARS EOC FLAG (SWITCH_INPUT PORT WHEN READ.
+;
+;
+;
+; VCA/VCF/PAN  DAC AND SAMPLE/HOLDS -
+; DATA WRITTEN (ON D15-D4) TO A CHANNEL ADDRESS IS PRESENTED DIRECTLY TO DAC,
+; AFTER WHICH A SAMPLE/HOLD CYCLE AUTOMATICALLY OCCURS ON THE ADDRESSED S/H CHANNEL.
+; NO MUSS, NO FUSS, NO SOFTWARE SEQUENCING OF SAMPLE/HOLD TO WASTE YOUR TIME:
+;
+C_V_OUT        EQU     203C0H               ;BASE ADDRESS FOR DAC-S/H CIRCUIT.
+;
+VCF_0          EQU     203C0H+0             ;INDIVIDUAL CHANNEL ADDRESSES.
+VCA_0          EQU     203C0H+2
+PAN_0          EQU     203C0H+4
+;
+VCF_1          EQU     203C0H+6
+VCA_1          EQU     203C0H+8
+PAN_1          EQU     203C0H+10
+;
+VCF_2          EQU     203C0H+12
+VCA_2          EQU     203C0H+14
+PAN_2          EQU     203C0H+16
+;
+VCF_3          EQU     203C0H+18
+VCA_3          EQU     203C0H+20
+PAN_3          EQU     203C0H+22
+;
+VCF_4          EQU     203C0H+24
+VCA_4          EQU     203C0H+26
+PAN_4          EQU     203C0H+28
+;
+VCF_5          EQU     203C0H+30
+VCA_5          EQU     203C0H+32
+PAN_5          EQU     203C0H+34
+;
+VCF_6          EQU     203C0H+36
+VCA_6          EQU     203C0H+38
+PAN_6          EQU     203C0H+40
+;
+VCF_7          EQU     203C0H+42
+VCA_7          EQU     203C0H+44
+PAN_7          EQU     203C0H+46
+;
+VOLUME_OUT     EQU     203C0H+48
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               PAGE
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;                      PERIPHERAL HARDWARE - SUB-DECODER 2
+;   *****  NOTE: ALL PERIPHERAL HARDWARE REQUIRES LONG ADDRESSING MODE  *****
+;
+;
+; MAIN LED PORT (AUTOREPEAT AND A/B LEDS ARE IN PAD_CONTROL PORT) -
+; 0 = ON, 1 = OFF.
+;
+LED_OUTPUT     EQU     20400H          ;D0-D3 -  KITS 1-4
+                                       ;D4-D7 -  BANKS 1-4
+                                       ;D8  -    SEQUENCER
+                                       ;D9  -    SAMPLING
+                                       ;D10 -    SYSTEM
+                                       ;D11 -    ENTER
+                                       ;D12 -    PAUSE
+                                       ;D13 -    ERASE
+                                       ;D14 -    PLAY
+                                       ;D15 -    RECORD
+;
+;
+;
+; PRESSURE PAD CONTROL - PAD DISCHARGE/ENABLE AND SELECTION FOR THRESHOLD SENSE, ADC CONVERSION.
+; ALSO, A FEW LEFTOVER CONTROL SIGNALS:
+;
+PAD_CONTROL    EQU     20440H          ;D0-D7  - 0 = DISCHARGE, 1 = ENABLE (PADS 0-7 RESPECTIVELY).
+                                       ;D10-D8 - SELECT PAD (0-7) FOR THRESHOLD SENSE, ADC READ.
+                                       ;D11    - 0 = DISCHARGE, 1 = ENABLE (AUDIO TRIG PEAK HOLD).
+                                       ;D12    - BACKLIGHT ENABLE (0 = OFF, 1 = ON).
+                                       ;D13    - PAD COMPARATOR THRESHOLD SWITCH FOR HYSTERESIS:
+                                       ;         0 = LOW ("OFF") THRESHOLD - APPROX. 0 VOLTS.
+                                       ;         1 = HIGH ("ON") THRESHOLD - SLIGHTLY POSITIVE.
+                                       ;D14    - AUTOREPEAT LED (0 = ON).
+                                       ;D15    - ALT-PARAMS LED (0 = ON).
+;
+;
+;
+; LCD - CONNECTED TO LOWER DATA BUS:
+;
+LCD_CONTROL    EQU     20481H          ;INSTRUCTION REGISTER.
+LCD_DATA       EQU     20483H          ;DATA REGISTER.
+;
+;
+;
+; CONTROLLER (POT/PAD) ADC - WRITE TO DESIGNATED ADDRESS (DATA DON'T CARE)
+; TO SELECT A SOURCE VIA INPUT MULTIPLEXER AND BEGIN A CONVERSION.
+; CONVERSION TIME ~ 150 USEC W.C. - READ CONVERSION RESULT ON D7-D0.
+;
+READ_CTRL      EQU     204C1H
+SELECT_CTRL    EQU     20500H
+;
+PADS           EQU     00H             ;OFFSETS FROM SELECT_CTRL.
+DATA           EQU     02H
+VOLUME         EQU     04H
+PAN            EQU     06H
+PITCH          EQU     08H
+LEVEL          EQU     0AH
+TRIG           EQU     0CH
+;
+;
+;
+; SWITCH INPUT - SEVEN ROWS OF FRONT PANEL SWITCHES READ ON D0-D7 AT CONSECUTIVE ADDRESSES.
+; ASSORTED FLAGS ON D8-D15 AT ALL SWITCH ROW ADDRESSES.
+;
+SWITCH_INPUT   EQU     20540H          ;D0-D7  - SWITCH MATRIX INPUT (0 = OPEN, 1 = CLOSED).
+                                       ;D8     - FOOTSWITCH 2 (0 = CLOSED, 1 = OPEN).
+                                       ;D9     - FOOTSWITCH 1 (0 = CLOSED, 1 = OPEN).
+                                       ;D10    - PLAY/STOP SWITCH (0 = CLOSED, 1 = OPEN).
+                                       ;D11    - PAD ON (1 = SELECTED PAD EXCEEDS THRESHOLD).
+                                       ;D12    - DRQ FROM SCSI CHIP (1 = ACTIVE).
+                                       ;D13    - 0, GROUND, NAUGHT, ZIP, OFF, LOW, ETC.
+                                       ;D14    - 1 = SMPTE_WR_RDY, 0 = NOT JUST YET.
+                                       ;D15    - LATCHED EOC FLAG FROM SAMPLE ADC (1 = ADC DONE).
+;
+;        FRONT PANEL SWITCH MATRIX:
+;
+;-------------------------------------------------------------------------------------------------
+; OFFSET |    D7    |    D6    |    D5    |    D4    |    D3    |    D2    |    D1    |    D0    |
+;-------------------------------------------------------------------------------------------------
+;  00H   |   BEND   | RELEASE  | SUSTAIN  |  ATTACK  |  OUTPUT  |  EDIT 2  |  EDIT 1  |  SAMPLE  |
+;(SAMPLE)|          |          |          |          |          |          |          |          |
+;-------------------------------------------------------------------------------------------------
+;  02H   | PLAYBACK |  EDIT 2  |  EDIT 1  |   SONG   |  TIMING  | RECORD 2 | RECORD 1 |  SETUP   |
+; (SEQ)  |          |          |          |          |          |          |          |          |
+;-------------------------------------------------------------------------------------------------
+;  04H   |  COUNT/  |  SMPTE   |  CLOCK   |   KITS   |   DISK   |  INPUTS  |  MIDI 2  |  MIDI 1  |
+;(SYSTEM)|   TAP    |          |          |          |          |          |          |          |
+;-------------------------------------------------------------------------------------------------
+;  06H   |    2     |    1     |    6     |    5     |    4     |    9     |    8     |    7     |
+;(KEYPAD)|          |          |          |          |          |          |          |          |
+;-------------------------------------------------------------------------------------------------
+;  08H   |  ENTER   |   +/-    |    <     |    >     |   INC    |   DEC    |    3     |    0     |
+; (DATA) |          |          |          |          |          |          |          |          |
+;-------------------------------------------------------------------------------------------------
+;  0AH   | NOT USED |  PAUSE   |   STOP   | FAST-FWD |   PLAY   |  REWIND  |  RECORD  |  ERASE   |
+; (DECK) |          |          |          |          |          |          |          |          |
+;-------------------------------------------------------------------------------------------------
+;  0CH   | NOT USED | NOT USED |  TAP IN  |  TEMPO   |  TEMPO   |   AUTO   |   ALT    | KIT/BANK |
+; (PERF) |          |          |          |   DOWN   |    UP    |  REPEAT  |  PARAMS  |          |
+;-------------------------------------------------------------------------------------------------
+;
+;
+;
+; SCSI INTERFACE (NCR 5380) - CONNECTED TO LOWER DATA BUS -
+; USES LOWER DATA STROBE (LDS) FOR READ (AS IT MUST), AND UDS FOR WRITE:
+;
+                                       ;THE FOLLOWING GENERATE CHIP-SELECT TO SCSI CHIP,
+                                       ;AND ARE USED FOR NON-DMA CPU-5380 COMMUNICATION:
+;
+SCSI_CUR_DATA  EQU     20581H          ;CURRENT SCSI DATA REGISTER (READ-ONLY).
+SCSI_DATA_OUT  EQU     20580H          ;OUTPUT DATA REGISTER (WRITE-ONLY).
+SCSI_ICMD_RD   EQU     20583H          ;INITIATOR COMMAND REGISTER (READ ADDRESS).
+SCSI_ICMD_WR   EQU     20582H          ;INITIATOR COMMAND REGISTER (WRITE ADDRESS).
+SCSI_MODE_RD   EQU     20585H          ;MODE REGISTER (READ ADDRESS).
+SCSI_MODE_WR   EQU     20584H          ;MODE REGISTER (WRITE ADDRESS).
+SCSI_TCMD_RD   EQU     20587H          ;TARGET COMMAND REGISTER (READ ADDRESS).
+SCSI_TCMD_WR   EQU     20586H          ;TARGET COMMAND REGISTER (WRITE ADDRESS).
+SCSI_CUR_STAT  EQU     20589H          ;CURRENT BUS STATUS REGISTER (READ-ONLY).
+SCSI_SEL_ENB   EQU     20588H          ;SELECT ENABLE REGISTER (WRITE-ONLY).
+SCSI_BS_REG    EQU     2058BH          ;BUS AND STATUS REGISTER (READ-ONLY).
+SCSI_DMA_SEND  EQU     2058AH          ;START DMA SEND REGISTER (WRITE-ONLY).
+SCSI_DATA_IN   EQU     2058DH          ;INPUT DATA REGISTER (READ-ONLY).
+SCSI_TDMA_RCV  EQU     2058CH          ;START DMA TARGET RECEIVE REGISTER (WRITE-ONLY).
+SCSI_RST_PRTY  EQU     2058FH          ;RESET PARITY/INTERRUPT REGISTER (READ-ONLY).
+SCSI_IDMA_RCV  EQU     2058EH          ;START DMA INITIATOR RECEIVE REGISTER (WRITE-ONLY).
+;
+;
+                                       ;THE FOLLOWING GENERATE DACK INSTEAD OF CHIP-SELECT,
+                                       ;AND ARE USED FOR PSEUDO-DMA DATA TRANSFERS:
+;
+SCSI_DMA_RD    EQU     205C1H          ;ADDRESS FOR PSEUDO-DMA DATA TRANSFERS FROM 5380 TO CPU.
+SCSI_DMA_WR    EQU     205C0H          ;ADDRESS FOR PSEUDO-DMA DATA TRANSFERS FROM CPU TO 5380.
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               PAGE
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;          PERIPHERAL HARDWARE - MAIN DECODE OUTPUT 3 (NO SUB-DECODER)
+;   *****  NOTE: ALL PERIPHERAL HARDWARE REQUIRES LONG ADDRESSING MODE  *****
+;
+;
+; CLOCK GENERATION -
+; 8254 COUNTER/TIMER USED TO GENERATE CLOCKS FOR SAMPLING, CPU RAM REFRESH,
+; TERMINAL SUPPORT UART (MSMPTE_CLK).  CONNECTED TO LOWER DATA BUS:
+;
+COUNTER_0      EQU     20601H          ;COUNTER 0 COUNT REGISTER -
+                                       ;COUNTER 0 IS CLOCKED AT 500KHz, GENERATES REFRESH CLOCK.
+COUNTER_1      EQU     20603H          ;COUNTER 1 COUNT REGISTER -
+                                       ;COUNTER 1 IS CLOCKED AT 8MHz, GENERATES MSMPTE CLOCK.
+COUNTER_2      EQU     20605H          ;COUNTER 2 COUNT REGISTER -
+                                       ;COUNTER 2 IS CLOCKED AT 8MHz, GENERATES SAMPLING CLOCK.
+COUNTER_CTRL   EQU     20607H          ;8254 CONTROL WORD REGISTER.
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;
+;
+copypro_enable equ     0
+;
+;
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               .OPTION LIST="ON"
+

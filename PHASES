@@ -1,0 +1,1585 @@
+               INCLUDE HPFIXUPS
+               TITLE "SEQUENCE TIMING PHASE TABLES, ETC." 
+*************************************************************************************************** 
+*************************************************************************************************** 
+***                                                                                             *** 
+***            TABLES AND TABLES OF TABLES OF PHASES WE GO THROUGH IN RECORD MODE               *** 
+***                                                                                             *** 
+*************************************************************************************************** 
+*************************************************************************************************** 
+; 
+               ABS_SHORT
+; 
+               GLB     PHASE_LENGTHS,PHASE_TABLES_TBL,SWING_PER_TBL 
+; 
+               GLB     FAZE_16_S0      ;SAFETY DEFAULT PHASE_LIST INITIAL VALUE (RESET_440).
+; 
+               EXTERNAL PHASE_0,PHASE_1,PHASE_2,PHASE_3,PHASE_4 
+; 
+; 
+; 
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV 
+; 
+PHASE_LENGTHS          ; THE NUMBER OF STAGES PER AUTOCORRECT VALUE.  USUALLY THE NUMBER OF CLICKS
+; PER AUTOCORRECT INTERVAL * 2 (TO TAKE INTO ACCOUNT SWING ON THE EVEN NUMBERED INTERVALS). 
+               DC.W    1               ;OFF 
+               DC.W    4               ;32 TRIPLET
+               DC.W    6               ;32
+               DC.W    8               ;16 TRIPLET
+               DC.W    12              ;16
+               DC.W    16              ;8 TRIPLET 
+               DC.W    24              ;8 
+               DC.W    32              ;4 TRIPLET 
+               DC.W    48              ;4 
+  
+  
+PHASE_TABLES_TBL       ; FOR EACH AUTOCORRECT VALUE, THERE IS A TABLE THAT NEEDS TO BE REFERENCED 
+; THAT CONTAINS FURTHER LABELS OF PHASE TABLES (1 PER SWING VALUE PER AUTOCORRECT INTERVAL) - BUT 
+; WE'RE GETTING AHEAD OF OURSELVES HERE.  THIS IS THE FIRST LINE, PER AUTOCORRECT INTERVAL. 
+               DC.L    AUTO_OFF        ;OFF 
+               DC.L    AUTO_32T        ;32 TRIPLET
+               DC.L    AUTO_32         ;32
+               DC.L    AUTO_16T        ;16 TRIPLET
+               DC.L    AUTO_16         ;16
+               DC.L    AUTO_8T         ;8 TRIPLET 
+               DC.L    AUTO_8          ;8 
+               DC.L    AUTO_4T         ;4 TRIPLET 
+               DC.L    AUTO_4          ;4 
+  
+  
+SWING_PER_TBL          ; TABLE PER AUTOCORRECT INTERVAL FOR SWING PERCENTAGES PER SWING VALUE 
+               DC.L    SW_OFF 
+               DC.L    SW_32T 
+               DC.L    SW_32
+               DC.L    SW_16T 
+               DC.L    SW_16
+               DC.L    SW_8T
+               DC.L    SW_8 
+               DC.L    SW_4T
+               DC.L    SW_4 
+; 
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA 
+               SKIP 
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV 
+; 
+;             BELOW ARE (BIG BREATH NOW) TABLES (PER AUTOCORRECT INTERVAL) OF THE PHASE TABLE TO
+;              USE, PER SWING POSSIBILITY.
+; 
+;             LET ME PUT IT ANOTHER WAY - FOR EVERY POSSIBLE COMBINATION OF AUTOCORRECT AND SWING,
+;              THERE NEEDS TO BE A PHASE TABLE TELLING THE RECORDING MECHANISM WHAT TO DO EVERY CLICK.
+; 
+AUTO_OFF
+               DC.L    FAZE_OFF_S0
+  
+AUTO_32T
+               DC.L    FAZE_32T_S0
+               DC.L    FAZE_32T_S1
+  
+AUTO_32 
+               DC.L    FAZE_32_S0 
+               DC.L    FAZE_32_S1 
+  
+AUTO_16T
+               DC.L    FAZE_16T_S0
+               DC.L    FAZE_16T_S1
+               DC.L    FAZE_16T_S2
+  
+AUTO_16 
+               DC.L    FAZE_16_S0 
+               DC.L    FAZE_16_S1 
+               DC.L    FAZE_16_S2 
+               DC.L    FAZE_16_S3 
+  
+AUTO_8T 
+               DC.L    FAZE_8T_S0 
+               DC.L    FAZE_8T_S1 
+               DC.L    FAZE_8T_S2 
+               DC.L    FAZE_8T_S3 
+               DC.L    FAZE_8T_S4 
+  
+AUTO_8
+               DC.L    FAZE_8_S0
+               DC.L    FAZE_8_S1
+               DC.L    FAZE_8_S2
+               DC.L    FAZE_8_S3
+               DC.L    FAZE_8_S4
+               DC.L    FAZE_8_S5
+               DC.L    FAZE_8_S6
+  
+AUTO_4T 
+               DC.L    FAZE_4T_S0 
+               DC.L    FAZE_4T_S1 
+               DC.L    FAZE_4T_S2 
+               DC.L    FAZE_4T_S3 
+               DC.L    FAZE_4T_S4 
+               DC.L    FAZE_4T_S5 
+               DC.L    FAZE_4T_S6 
+               DC.L    FAZE_4T_S7 
+               DC.L    FAZE_4T_S8 
+  
+AUTO_4
+               DC.L    FAZE_4_S0
+               DC.L    FAZE_4_S1
+               DC.L    FAZE_4_S2
+               DC.L    FAZE_4_S3
+               DC.L    FAZE_4_S4
+               DC.L    FAZE_4_S5
+               DC.L    FAZE_4_S6
+               DC.L    FAZE_4_S7
+               DC.L    FAZE_4_S8
+               DC.L    FAZE_4_S9
+               DC.L    FAZE_4_S10 
+               DC.L    FAZE_4_S11 
+               DC.L    FAZE_4_S12 
+; 
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA 
+               SKIP 
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV 
+; 
+;             AND FINALLY, THE ACTUAL AUTOCORRECT PHASE TABLES PER SWING VALUE PER AUTOCORRECT VALUE. 
+; 
+;             LET ME EXPLAIN PHASES.  THERE ARE 5, AND THEY DESCRIBE THE ACTIONS THE SEQUENCE 
+;              RECORDER DOES PER CLICK: 
+; 
+;              PHASE 0 - COPY ANY BUFFERED EVENTS TO NEW MEMORY BLOCK.  PLACE TIME MARK IN NEW
+;                      BLOCK (IF NEEDED).  COPY OLD EVENTS ON THIS CLICK TO THE NEW BLOCK.  AFTER 
+;                      THIS, IF ANYTHING NEW COMES IN, COPY TIME MARK AND NEW EVENTS TO NEW BLOCK.
+; 
+;              PHASE 1 - pre-correct.  IF ANY OLD EVENTS, COPY THEM AND TIME MARK TO NEW BLOCK. 
+;                      THEN, DIRECT NEW NOTES TO THE BUFFER, AND NEW NON-NOTES TO THE THE NEW 
+;                      BLOCK (TIME MARKED, IF NO OLD EVENTS THIS CLICK).
+; 
+;              PHASE 2 - correct.  IF ANYTHING BUFFERED, COPY TIME MARK AND THESE EVENTS TO THE 
+;                      NEW MEMORY BLOCK.  THEN, COPY ANY OLD EVENTS (SANS TIME MARK) TO NEW BLOCK.
+;                      AFTERWARDS, DIRECT NEW NOTES TO NEW BLOCK (SANS TIME MARK).  DIRECT NEW NON- 
+;                      NOTES TO THE BUFFER (SANS TIME MARK).
+; 
+;              PHASE 3 - post-correct.  IF OLD EVENTS, COPY TIME MARK AND THEN THEM TO THE BUFFER.
+;                      DIRECT NEW NOTES (SANS TIME MARK) TO THE NEW BLOCK.  DIRECT NEW NON-NOTES TO 
+;                      THE BUFFER (IF NO OLD EVENTS TO INVOKE A TIME-MARK, THEN PUT ONE IN).
+; 
+;              PHASE 4 - clean-up.  COPY BUFFER TO NEW MEM BLOCK.  IF ANY OLD EVENTS, COPY TIME 
+;                      MARK AND THEM TO TH ENEW BLOCK.  AFTERWARDS, DIRECT NEW NON-NOTES TO THE 
+;                      NEW BLOCK, AND NEW NOTES TO THE BUFFER.
+; 
+;             IN GENERAL, THE PHASES HAVE BEEN SET UP TO BE SLIGHTLY MORE FORGIVING IF THE USER 
+;              IS BEHIND THE BEAT (WE ARE IN CALIFORNIA, AFTER ALL).
+; 
+FAZE_OFF_S0    ;AUTOCORRECT OFF, SWING = 0
+               DC.W    PHASE_0
+  
+FAZE_32T_S0    ;AUTOCORRECT = 32T, SWING = 0
+               DC.W    PHASE_2
+               DC.W    PHASE_4
+               DC.W    PHASE_2
+               DC.W    PHASE_4
+  
+FAZE_32T_S1    ;AUTOCORRECT = 32T, SWING = 1
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_0
+  
+FAZE_32_S0     ;AUTOCORRECT = 32, SWING = 0 
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+  
+FAZE_32_S1     ;AUTOCORRECT = 32, SWING = 1 
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_2
+               DC.W    PHASE_4
+  
+FAZE_16T_S0    ;AUTOCORRECT = 16T, SWING = 0
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+  
+FAZE_16T_S1    ;AUTOCORRECT = 16T, SWING = 1
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+  
+FAZE_16T_S2    ;AUTOCORRECT = 16T, SWING = 2
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_2
+               DC.W    PHASE_4
+  
+FAZE_16_S0     ;AUTOCORRECT = 16, SWING = 0 
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+  
+FAZE_16_S1     ;AUTOCORRECT = 16, SWING = 1 
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+  
+FAZE_16_S2     ;AUTOCORRECT = 16, SWING = 2 
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+  
+FAZE_16_S3     ;AUTOCORRECT = 16, SWING = 3 
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+  
+FAZE_8T_S0     ;AUTOCORRECT = 8T, SWING = 0 
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+  
+FAZE_8T_S1     ;AUTOCORRECT = 8T, SWING = 1 
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+  
+FAZE_8T_S2     ;AUTOCORRECT = 8T, SWING = 2 
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+  
+FAZE_8T_S3     ;AUTOCORRECT = 8T, SWING = 3 
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+  
+FAZE_8T_S4     ;AUTOCORRECT = 8T, SWING = 4 
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+  
+FAZE_8_S0      ;AUTOCORRECT = 8, SWING = 0
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+  
+FAZE_8_S1      ;AUTOCORRECT = 8, SWING = 1
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+  
+FAZE_8_S2      ;AUTOCORRECT = 8, SWING = 2
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+  
+FAZE_8_S3      ;AUTOCORRECT = 8, SWING = 3
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+  
+FAZE_8_S4      ;AUTOCORRECT = 8, SWING = 4
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+  
+FAZE_8_S5      ;AUTOCORRECT = 8, SWING = 5
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+  
+FAZE_8_S6      ;AUTOCORRECT = 8, SWING = 6
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+  
+FAZE_4T_S0     ;AUTOCORRECT = 4T, SWING = 0 
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+  
+FAZE_4T_S1     ;AUTOCORRECT = 4T, SWING = 1 
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+  
+FAZE_4T_S2     ;AUTOCORRECT = 4T, SWING = 2 
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+  
+FAZE_4T_S3     ;AUTOCORRECT = 4T, SWING = 3 
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+  
+FAZE_4T_S4     ;AUTOCORRECT = 4T, SWING = 4 
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+  
+FAZE_4T_S5     ;AUTOCORRECT = 4T, SWING = 5 
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+  
+FAZE_4T_S6     ;AUTOCORRECT = 4T, SWING = 6 
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+  
+FAZE_4T_S7     ;AUTOCORRECT = 4T, SWING = 7 
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+  
+FAZE_4T_S8     ;AUTOCORRECT = 4T, SWING = 8 
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+  
+FAZE_4_S0      ;AUTOCORRECT = 4, SWING = 0
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+  
+FAZE_4_S1      ;AUTOCORRECT = 4, SWING = 1
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+  
+FAZE_4_S2      ;AUTOCORRECT = 4, SWING = 2
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+  
+FAZE_4_S3      ;AUTOCORRECT = 4, SWING = 3
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+  
+FAZE_4_S4      ;AUTOCORRECT = 4, SWING = 4
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+  
+FAZE_4_S5      ;AUTOCOREECT = 4, SWING = 5
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+  
+FAZE_4_S6      ;AUTOCORRECT = 4, SWING= 6 
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+  
+FAZE_4_S7      ;AUTOCORRECT = 4, SWING = 7
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+  
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+  
+FAZE_4_S8      ;AUTOCORRECT = 4, SWING = 8
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+  
+FAZE_4_S9      ;AUTOCORRECT = 4, SWING = 9
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+  
+FAZE_4_S10     ;AUTOCORRECT = 4, SWING = 10 
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+  
+FAZE_4_S11     ;AUTOCORRECT = 4, SWING = 11 
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+  
+FAZE_4_S12     ;AUTOCORRECT = 4, SWING = 12 
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_2
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_3
+               DC.W    PHASE_4
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+               DC.W    PHASE_1
+; 
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA 
+               SKIP 
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV 
+; 
+;             TABLES OF SWING PERCENTAGE PER SWING VALUE PER AUTOCORRECT VALUE (EASIER THAN CALCing IT) 
+; 
+SW_OFF
+               DC.W    50 
+  
+SW_32T
+               DC.W    50 
+               DC.W    75 
+  
+SW_32 
+               DC.W    50 
+               DC.W    67 
+  
+SW_16T
+               DC.W    50 
+               DC.W    63 
+               DC.W    75 
+  
+SW_16 
+               DC.W    50 
+               DC.W    58 
+               DC.W    67 
+               DC.W    75 
+  
+SW_8T 
+               DC.W    50 
+               DC.W    56 
+               DC.W    63 
+               DC.W    69 
+               DC.W    75 
+  
+SW_8
+               DC.W    50 
+               DC.W    54 
+               DC.W    58 
+               DC.W    63 
+               DC.W    67 
+               DC.W    71 
+               DC.W    75 
+  
+SW_4T 
+               DC.W    50 
+               DC.W    53 
+               DC.W    56 
+               DC.W    59 
+               DC.W    63 
+               DC.W    66 
+               DC.W    69 
+               DC.W    72 
+               DC.W    75 
+  
+SW_4
+               DC.W    50 
+               DC.W    52 
+               DC.W    54 
+               DC.W    56 
+               DC.W    58 
+               DC.W    60 
+               DC.W    63 
+               DC.W    65 
+               DC.W    67 
+               DC.W    69 
+               DC.W    71 
+               DC.W    73 
+               DC.W    75 
+; 
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA 

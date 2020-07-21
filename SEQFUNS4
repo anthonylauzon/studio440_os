@@ -1,0 +1,3613 @@
+               INCLUDE HPFIXUPS
+               TITLE "SEQFUNS4"
+***************************************************************************************************
+***************************************************************************************************
+***                                                                                             ***
+***            SEQFUNS4 - SUBFUNCTIONS UNDER "EDIT 2", "PLAYBACK" FUNCTION SWITCHES             ***
+***                                                                                             ***
+***************************************************************************************************
+***************************************************************************************************
+;
+NEG_EXT        EQU     0FFFFFF00H      ;USE IN MOVEQ INSTRUCTIONS WHERE ARG IS
+                                       ;80H OR LARGER - HP XASM DOES NOT HANDLE
+                                       ;SIGN-EXTEND CORRECTLY.  COSMETIC, KEEPS
+                                       ;ACTUAL BYTE VALUE CLEARER.
+;
+                ABS_SHORT
+;
+               INCLUDE SEQDEFS         ;SEQUENCER CONSTANT DEFINITIONS.
+;
+               INCLUDE FIELD_EQU       ;SUBFUNCTION/FIELD BLOCK DEFINITIONS.
+
+               GLB     NEW_SONG_SELECTED,INSTALL_SONG
+               GLB     BAR_SF_LIMIT
+               GLB     BAR_ST_LIMIT
+               GLB     ACC_SFROM_BAR
+               GLB     ACC_STHRU_BAR
+               GLB     DELETE_SEQ
+               GLB     EXTRACT_SEQ
+               GLB     INSERT_SEQ
+               GLB     NOTE_CHECK_W,XMIT_SONG_SEL
+               GLB     MEM_FULL_SCRN,SRC_EMPTY_SCRN
+               GLB     DISP_SEQ_EMPTY
+;
+               EXTERNAL  Q_TOTAL_BARS       ;SEQUENCE DIRECTORY ELEMENTS.
+               EXTERNAL  Q_MEM_USED
+               EXTERNAL  Q_STATUS
+               EXTERNAL  Q_TIME_NUM
+               EXTERNAL  Q_TIME_DENOM
+               EXTERNAL  Q_START_BLK
+               EXTERNAL  Q_INIT_TEMPO
+               EXTERNAL  Q_NAME
+               EXTERNAL  Q_RPT_COUNT
+               EXTERNAL  Q_RPT_START
+               EXTERNAL  Q_RPT_END
+;
+                                            ;EXTERNAL ROM.
+               EXTERNAL  SET_ENTER_FLASH
+               EXTERNAL  SOLID_ENTER
+               EXTERNAL  USER_STALL,GET_SONG_PTR
+               EXTERNAL  WRITE_VALUE,WRITE_PARAM_VALUE
+               EXTERNAL  WRITE_STRING
+               EXTERNAL  WRITE_SCREEN
+               EXTERNAL  WRITE_BCD_DIGITS
+               EXTERNAL  WORD_BIN_TO_BCD
+               EXTERNAL  WRITE_PARAM_STRING
+               EXTERNAL  WRITE_SONG_NAME
+               EXTERNAL  DISP_BUFFER
+               EXTERNAL  GET_SEQ_DIR_PTR
+               EXTERNAL  GET_CUR_SEQ_DIR
+               EXTERNAL  NOTHINGNESS
+               EXTERNAL  SEQ1_DRD_SETUP
+               EXTERNAL  SEQ_NDRD_SETUP
+               EXTERNAL  SEQX_NDRD_SETUP
+               EXTERNAL  SEQ1_DSTR_READ
+               EXTERNAL  SEQ_NDSTR_READ
+               EXTERNAL  SEQ_WRITE
+               EXTERNAL  SEQ1_RMW_EATER
+               EXTERNAL  SEQ_NDRMW_EATER
+               EXTERNAL  SEQ1_DRD_EATER
+               EXTERNAL  SEQ_NDRD_EATER
+               EXTERNAL  SEQ_TURNAROUND
+               EXTERNAL  SEQ_CONSOLIDATE
+               EXTERNAL  UPDATE_SEQ_SIZE
+               EXTERNAL  READ_TO_PUNCH
+               EXTERNAL  READ_TO_BAR_1
+               EXTERNAL  CHK_PUNCH_OUT
+               EXTERNAL  CHK_TRACK_NUM
+               EXTERNAL  S_CHK_TRACK_NUM
+               EXTERNAL  LOG_IN_OLD_MIDI
+               EXTERNAL  LOG_IN_OLD_PAD
+               EXTERNAL  LOG_OUT_OLD_MIDI
+               EXTERNAL  LOG_OUT_OLD_PAD
+               EXTERNAL  LOG_IN_NEW_MIDI
+               EXTERNAL  LOG_IN_NEW_PAD
+               EXTERNAL  LOG_OUT_NEW_MIDI
+               EXTERNAL  LOG_OUT_NEW_PAD
+               EXTERNAL  WRITE_OLD_M_ONS
+               EXTERNAL  WRITE_OLD_P_ONS
+               EXTERNAL  WRITE_OLD_M_OFFS
+               EXTERNAL  WRITE_OLD_P_OFFS
+               EXTERNAL  WRITE_NEW_M_ONS
+               EXTERNAL  WRITE_NEW_P_ONS
+               EXTERNAL  WRITE_NEW_M_OFFS
+               EXTERNAL  WRITE_NEW_P_OFFS
+               EXTERNAL  D_WRITE_NEW_M_OFFS
+               EXTERNAL  D_WRITE_NEW_P_OFFS
+               EXTERNAL  CHECK_OLD_MIDI
+               EXTERNAL  CHECK_OLD_PADS
+               EXTERNAL  SEQ_RUNNING_TEST
+               EXTERNAL  BAR_MARKER_HANDLER
+               EXTERNAL  WRITE_SEQ_NAME,ZERO_VAL
+;900621               EXTERNAL  WORKLOOP_SUB_3
+               EXTERNAL  SEQ_MEM_INIT,WRITE_TO_TC
+               EXTERNAL  SEQ_MEM_FULL
+               EXTERNAL  SEQ_CHANGE_SUB
+               EXTERNAL  BLIND_FLUSH_NOTE_BUFS
+               EXTERNAL  DISP_SCREEN
+               EXTERNAL  NULL_SEQ_TEST
+;                                               ;RAM,HEY
+               EXTERNAL  SEQ_DIR_99
+               EXTERNAL  FORMER_SEQUENCE
+               EXTERNAL  CUE_START
+               EXTERNAL  CUE_BAR
+               EXTERNAL  NOW_BAR,CURRENT_SONG
+               EXTERNAL  NOW_BEAT
+               EXTERNAL  PUNCH_IN_CLICK,TRACKS_MUTED
+               EXTERNAL  CLICKS_THIS_BAR
+               EXTERNAL  SUBFUN_INSTALL
+               EXTERNAL  CURRENT_SEQUENCE
+               EXTERNAL  TO_TRACK_NUM
+               EXTERNAL  FROM_TRACK_NUM
+               EXTERNAL  TO_SEQ_NUM
+               EXTERNAL  FROM_SEQ_NUM
+               EXTERNAL  S_FROM_BAR
+               EXTERNAL  S_THRU_BAR
+               EXTERNAL  D_FROM_BAR
+               EXTERNAL  D_THRU_BAR
+               EXTERNAL  PARAM_LO_LIM
+               EXTERNAL  PARAM_HI_LIM
+               EXTERNAL  CUR_SUB_BLOCK
+               EXTERNAL  BNC_TRK_NUM
+               EXTERNAL  SEQ_WR_PTR
+               EXTERNAL  DI_TEMP_1_B
+               EXTERNAL  DI_TEMP_5_B
+               EXTERNAL  DI_TEMP_7_B
+               EXTERNAL  DI_TEMP_9_B
+               EXTERNAL  BG_TEMP_1_B
+               EXTERNAL  BG_TEMP_5_B
+               EXTERNAL  STRING_AT_MIN
+               EXTERNAL  STRING_AT_MAX
+               EXTERNAL  XPORT_STATE
+               EXTERNAL  S_OR_S_FLAG,TOTAL_REPEATS,REPEATS_LEFT
+               EXTERNAL  TOTAL_SONG_EVENTS,SONG_STEP_NUM
+               EXTERNAL  SONG_EVENT,SONG_SEL_ENABLE
+               EXTERNAL  NOW_LAST_BAR
+               EXTERNAL  SETUP_STATE
+               EXTERNAL  NEW_SONG_NOW
+;
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; FOR STARTERS, GLOBAL DECLARATIONS FOR THE SUBFUNCTION BLOCKS -
+; THEY'RE ACCESSED FROM SWITCHBOY MODULE:
+;
+                                            ;SEQ_ED_2_GROUP.
+               GLB     SEQ_DELETE_SUB
+               GLB     SEQ_COPY_SUB
+               GLB     SEQ_INSERT_SUB
+               GLB     SEQ_ROTATE_SUB
+               GLB     SEQ_BOUNCE_SUB
+                                            ;PLAYBACK_GROUP.
+               GLB     SEQ_PLAYBACK_SUB
+               GLB     SONG_PLAYBACK_SUB
+               GLB     SEQ_CUE_SUB
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; THE SUBFUNCTION BLOCKS -
+; EACH BEGINS WITH THE DEFAULT SCREEN TEXT FOR THE SUBFUNCTION.
+;
+;
+;
+; SEQ_ED_2_GROUP:
+;
+SEQ_DELETE_SUB
+               ASC     "DELETE   SEQ.   "
+               ASC     "BARS     -->    "
+
+               DC.B    14                   ;SEQUENCE NUMBER FIELD.
+               DC.B    2
+               DC.W    ACCESS+SET_PTR
+               DC.L    ACC_TO_SEQ_NUM
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    DISPLAY+MAX_LIMIT
+               DC.W    99
+               DC.W    DISPLAY+MAX_STRNG
+               DC.L    DEL_ALL_STRING
+               DC.W    EDIT+ENTR_VEC
+               DC.L    DELETE_SEQ
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+
+;"FROM" BAR FIELD
+
+               DC.B    21
+               DC.B    3
+               DC.W    ACCESS+SET_PTR
+               DC.L    ACC_FROM_BAR
+               DC.W    ACCESS+WORD
+               DC.W    EDIT+ENTR_VEC
+               DC.L    DELETE_SEQ
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    BAR_DF_LIMIT
+               DC.W    FIELD_END
+
+;"THRU" BAR FIELD
+
+               DC.B    29
+               DC.B    3
+               DC.W    ACCESS+SET_PTR
+               DC.L    ACC_THRU_BAR
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WR_THRU_BAR
+               DC.W    EDIT+ENTR_VEC
+               DC.L    DELETE_SEQ
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    BAR_DT_LIMIT
+               DC.W    SUBFUN_END
+
+
+ACC_TO_SEQ_NUM  MOVE   CURRENT_SEQUENCE,TO_SEQ_NUM
+                MOVE.L #CURRENT_SEQUENCE,D0
+                RTS
+;
+;
+ACC_FROM_BAR   MOVE   TO_SEQ_NUM,D0            ;INITIALIZE DESTINATION FROM BAR
+               JSR     GET_SEQ_DIR_PTR
+               TST     Q_STATUS(A0)
+               BNE.S   ACC_FROM_BAR_1
+               CLR     D_FROM_BAR               ;IF EMPTY SEQUENCE THEN BAR LIMIT IS 0
+               BRA.S   ACC_FROM_BAR_2
+ACC_FROM_BAR_1 MOVE    D_FROM_BAR,D0
+               BEQ.S   ACC_FROM_B_15
+               CMP     Q_TOTAL_BARS(A0),D0
+               BLE.S   ACC_FROM_BAR_2
+ACC_FROM_B_15  MOVE    #1,D_FROM_BAR
+ACC_FROM_BAR_2 MOVE.L  #D_FROM_BAR,D0
+               RTS
+;
+;
+;
+ACC_THRU_BAR   MOVE    TO_SEQ_NUM,D0            ;ACCESS FOR DESTINATION "THRU" BAR
+               JSR     GET_SEQ_DIR_PTR
+               TST     Q_STATUS(A0)             ;IF EMPTY CLEAR OUT BARS
+               BNE.S   ACC_THRU_B_1
+               CLR     D_THRU_BAR
+               BRA.S   ACC_THRU_B_2
+ACC_THRU_B_1   MOVE    D_THRU_BAR,D0
+               BEQ.S   ACC_THRU_B_15
+               CMP     Q_TOTAL_BARS(A0),D0
+               BLE.S   ACC_THRU_B_2
+ACC_THRU_B_15  MOVE    Q_TOTAL_BARS(A0),D_THRU_BAR
+ACC_THRU_B_2   MOVE.L  #D_THRU_BAR,D0
+               RTS
+;
+;
+;
+;
+; THE IDEA HERE WAS TO USE A FULL-SEQUENCE DEFAULT FOR BAR NUMBERS -
+; MAY GET BACK TO THIS SOMEDAY, BUT NOT A VERY SIMPLE PROPOSITION ....
+;
+;11AUGACC_FROM_BAR
+;11AUG               MOVE    #1,D_FROM_BAR        ;DEFAULT TO START OF SEQUENCE.
+;11AUG               MOVE.L  #D_FROM_BAR,D0       ;RETURN POINTER TO THIS VAR.
+;11AUG               RTS
+;11AUG;
+;11AUG;
+;11AUG;
+;11AUGACC_THRU_BAR
+;11AUG               MOVE    #1,D_THRU_BAR        ;DEFAULT TO BAR 1 IN CASE SEQ IS EMPTY.
+;11AUG               MOVE    TO_SEQ_NUM,D0        ;ACCESS FOR DESTINATION "THRU" BAR NUMBER.
+;11AUG               JSR     GET_SEQ_DIR_PTR
+;11AUG               TST     Q_STATUS(A0)         ;IS SEQ EMPTY?
+;11AUG               BEQ.S   ACC_THRU_20          ;BRANCH IF YES, STICK WITH DEFAULT VALUE.
+;11AUG               MOVE    Q_TOTAL_BARS(A0),D_THRU_BAR    ;ELSE, DEFAULT TO END OF SEQUENCE.
+;11AUGACC_THRU_20
+;11AUG               MOVE.L  #D_THRU_BAR,D0       ;RETURN POINTER TO THIS VALUE.
+;11AUG               RTS
+;
+;
+;
+ACC_SFROM_BAR  MOVE    FROM_SEQ_NUM,D0          ;ACCESS FOR SOURCE "FROM" BAR
+               JSR     GET_SEQ_DIR_PTR
+               TST     Q_STATUS(A0)             ;IF EMPTY CLEAR OUT BAR
+               BNE.S   ACC_SFROM_B_1
+               CLR     S_FROM_BAR
+               BRA.S   ACC_SFROM_B_2
+ACC_SFROM_B_1  MOVE    S_FROM_BAR,D0
+               BEQ.S   ACC_SFROM_B_15
+               CMP     Q_TOTAL_BARS(A0),D0
+               BLE.S   ACC_SFROM_B_2
+ACC_SFROM_B_15 MOVE    #1,S_FROM_BAR
+ACC_SFROM_B_2  MOVE.L  #S_FROM_BAR,D0
+               RTS
+;
+;
+;
+ACC_STHRU_BAR  MOVE    FROM_SEQ_NUM,D0          ;ACCESS FOR SOURCE "THRU" BAR
+               JSR     GET_SEQ_DIR_PTR
+               TST     Q_STATUS(A0)
+               BNE.S   ACC_STHRU_B_1
+               CLR     S_THRU_BAR
+               BRA.S   ACC_STHRU_B_2
+ACC_STHRU_B_1  MOVE    S_THRU_BAR,D0
+               BEQ.S   ACC_STHRU_B_15
+               CMP     Q_TOTAL_BARS(A0),D0
+               BLE.S   ACC_STHRU_B_2
+ACC_STHRU_B_15 MOVE    Q_TOTAL_BARS(A0),S_THRU_BAR
+ACC_STHRU_B_2  MOVE.L  #S_THRU_BAR,D0
+               RTS
+;
+;
+;
+; EDIT-CUSTOMIZE ROUTINES TO SET BAR-NUMBER LIMITS:
+;
+BAR_SF_LIMIT
+               MOVE    #1,PARAM_LO_LIM           ;SET LOW LIMIT TO 0,
+               MOVE    S_THRU_BAR,PARAM_HI_LIM   ;SET UPPER LIMIT TO "THRU" BAR.
+                ABS_LONG
+               JMP     SET_ENTER_FLASH           ;SET "ENTER" LED GOING, RETURN THROUGH.
+                ABS_SHORT
+;
+;
+;
+BAR_ST_LIMIT
+               MOVE    S_FROM_BAR,PARAM_LO_LIM   ;SET LOW LIMIT TO "FROM" BAR -
+               MOVE    FROM_SEQ_NUM,D0           ;FETCH SOURCE SEQUENCE NUMBER.
+               BRA.S   BAR_XT_LIMIT              ;GO DO "THE REST".
+;
+;
+BAR_DT_LIMIT
+               MOVE    D_FROM_BAR,PARAM_LO_LIM   ;SET LOW LIMIT TO DESTINATION SEQ "FROM" BAR -
+               MOVE    TO_SEQ_NUM,D0             ;FETCH DESTINATION SEQUENCE NUMBER.
+                                                 ;FALL THROUGH FOR THE REST.
+;
+BAR_XT_LIMIT
+               JSR     GET_SEQ_DIR_PTR                ;POINT TO SEQ DIRECTORY BLOCK.
+               MOVE    Q_TOTAL_BARS(A0),PARAM_HI_LIM  ;SET UPPER LIMIT TO LAST BAR OF SEQUENCE.
+                ABS_LONG
+               JMP     SET_ENTER_FLASH                ;SET "ENTER" LED GOING, RETURN THROUGH.
+                ABS_SHORT
+;
+;
+;
+BAR_DF_LIMIT
+               MOVE    #1,PARAM_LO_LIM           ;SET LOW LIMIT TO ZERO,
+               MOVE    D_THRU_BAR,PARAM_HI_LIM   ;SET UPPER LIMIT TO "THRU" BAR.
+                ABS_LONG
+               JMP     SET_ENTER_FLASH           ;SET "ENTER" LED GOING, RETURN THROUGH.
+                ABS_SHORT
+
+;
+;
+;
+; DISPLAY VECTOR FOR "THRU" BAR NUMBER:
+;
+WR_THRU_BAR
+               CMP     #99,CURRENT_SEQUENCE      ;ARE WE SET TO DELETE ALL SEQUENCES?
+               BEQ.S   WR_THRU_END               ;BRANCH IF YES, WRITE "END" INSTEAD OF A NUMBER.
+                ABS_LONG
+               JMP     WRITE_PARAM_VALUE         ;ELSE USE DEFAULT DISPLAY VECTOR, RETURN THROUGH.
+                ABS_SHORT
+;
+WR_THRU_END
+               MOVEM.L D1/A2,-(A7)
+               MOVE.L  #THRU_END_STRING,A2       ;POINT TO POS/LENGTH SPEC -
+               MOVE    (A2)+,D1                  ;MOVE IT INTO D1, A2 NOW POINTS TO STRING -
+                ABS_LONG
+               JSR     WRITE_STRING              ;PUT IT OUT THAIR.
+                ABS_SHORT
+               MOVEM.L (A7)+,D1/A2
+               RTS
+;
+;
+DEL_ALL_STRING
+               DC.B    8
+               DC.B    8
+               ASC     "ALL SEQS"
+;
+THRU_END_STRING
+               DC.B    29
+               DC.B    3
+               ASC     "END"
+               EVEN
+;
+;
+DEL_SEQ_SCRN   ASC     "DELETING"
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; SEQUENCE-DELETE ROUTINE ("ENTER" VECTOR):
+; ALSO EMPLOYED AS PART OF "REPLACE WORK-LOOP" FUNCTION
+; - WHO HAS SWORN NOT TO CALL HERE IF TARGET SEQUENCE IS EMPTY!
+;
+DELETE_SEQ
+               JSR     SEQ_RUNNING_TEST     ;IS SEQUENCER RUNNING? (NOT COOL TO AUTO-STOP IT ....)
+               BNE     DEL_SEQ_Y0           ;EXIT IF YES (MESSAGE IS IN LCD ....)
+;
+               MOVE    TO_SEQ_NUM,D0        ;WHO DO WE BE DELETING (FROM)?
+               CMP     #99,D0               ;DELETE ALL SEQUENCES?
+               BNE.S   DELETE_ONE_SEQ       ;BRANCH IF NOT, LIMIT ATTENTION TO ONE SEQUENCE.
+               JSR     SEQ_MEM_INIT         ;ELSE - JUST INITIALIZE DIRECTORIES AS FOR POWER-UP,
+               BRA     DEL_SEQ_X_1          ;THEN GET GONE.
+;
+;
+;
+; NOT DELETING ALL SEQUENCES:
+;
+DELETE_ONE_SEQ
+               JSR     GET_CUR_SEQ_DIR      ;SET A0 AS POINTER TO SEQUENCE DIRECTORY BLOCK -
+               TST     Q_STATUS(A0)         ;DOES THIS SEQUENCE EXIST?
+               BNE.S   DEL_SEQ_00           ;BRANCH IF YES, GO ON -
+               BSR     DISP_SEQ_EMPTY       ;ELSE, TELL USER TO GO FISH,
+               BRA     DEL_SEQ_Y0           ;THEN BAIL OUT.
+;
+DEL_SEQ_00
+               MOVE    #2700H,SR            ;KILL INTERRUPTS FOR MAXIMUM SPEED.
+               BSR     SOLID_ENTER
+               MOVE    #0008H,D1                ;SETUP DELETING SCREEN
+               MOVE.L  #DEL_SEQ_SCRN,A2
+               BSR     WRITE_STRING
+               BSR     DISP_BUFFER
+;
+               SF      DI_TEMP_1_B          ;CLEAR "DELETE THROUGH END" FLAG.
+               MOVE    Q_TOTAL_BARS(A0),D1  ;FETCH NUMBER OF (WHOLE) BARS IN SEQUENCE -
+;
+               CMP     D_THRU_BAR,D1        ;ARE WE DELETING THRU END OF SEQ?
+               BGT.S   GENERIC_DELETE       ;BRANCH IF NOT - GO DO GENERIC DELETE.
+               ST      DI_TEMP_1_B          ;ELSE - SET FLAG TO SAY SUCH.
+               MOVE    D_FROM_BAR,D0        ;DELETING THRU END - ARE WE DELETING FROM START?
+               CMP     #1,D0
+               BNE.S   GENERIC_DELETE       ;BRANCH IF NOT - GO FOR GENERIC DELETE.
+               SKIP
+;
+;
+;
+; SPECIAL HANDLING FOR DELETING AN ENTIRE SEQUENCE:
+; WE DON'T TOUCH SEQUENCE DATA, JUST TWIDDLE MEMORY BLOCK LIST, ETC.
+;
+               JSR     SEQ1_DRD_SETUP       ;SET UP AS IF FOR DESCTRUCTIVE READ -
+                                            ;SEQUENCE IS NOW APPENDED TO FREE MEMORY SEQUENCE
+                                            ;VIA THE LINK LIST.
+               MOVE    #-1,Q_START_BLK(A0)  ;THIS MAKES THE SEQUENCE APPEAR COMPLETELY EMPTY -
+                                            ;FOR THE BENEFIT OF UPDATE_SEQ_SIZE, WHO WILL UPDATE
+                                            ;Q_MEM_USED (TO ZERO, WHAT ELSE).
+               CLR     Q_RPT_START(A0)      ;CLEAR OUT OTHER PARAMETERS IN DIRECTORY BLOCK,
+               CLR     Q_RPT_END(A0)
+               CLR.B   Q_RPT_COUNT(A0)
+               CLR     Q_TOTAL_BARS(A0)
+               CLR     Q_STATUS(A0)
+               MOVE.L  #EMPTYSEQ_STR,A1     ;WRITE "emptyseq" AS NAME.
+               MOVE.L  (A1),(A0)
+               MOVE.L  4(A1),4(A0)
+               SF      SETUP_STATE          ;NOW, WE'RE GOING TO STEP AROUND THE USUAL SEQ MEMORY
+                                            ;MANAGEMENT RULES AND GO STRAIGHT FOR UPDATE_SEQ_SIZE
+                                            ;WITHOUT DOING SEQ_TURNAROUND AND/OR SEQ_CONSOLIDATE -
+                                            ;MUST CLEAR THIS FLAG TO AVOID REJECTION OF OPERATION
+                                            ;BY UPDATE_SEQ_SIZE.
+               BRA     DEL_SEQ_X_00
+               SKIP
+;
+;
+;
+; "GENERIC" DELETE - ONE SEQUENCE, NOT THE WHOLE OF IT:
+;
+GENERIC_DELETE
+               JSR     SEQ1_DRD_SETUP       ;SET UP DESTRUCTIVE READ/WRITE OF SEQUENCE.
+;
+;
+;
+; SEARCH FOR DELETE-START BAR MARKER -
+; LOG NOTE EVENTS AS WE GO:
+;
+DELETE_SEQ_1
+               JSR     SEQ1_DSTR_READ           ;GET STATUS WORD
+               MOVE    D7,D0
+               AND     #0FH,D0                  ;GET ID #
+DEL_SEQ_1      BSR     NOTE_CHECK_B             ;LOG NOTE EVENTS TO "NEW" AND "OLD" BUFFERS
+               BNE.S   DEL_SEQ_1
+               CMP     #8,D0                    ;LOOK FOR BAR MARKER
+               BNE.S   DEL_SEQ_2
+               EXG     D6,D7                    ;SAVE BAR MARKER
+               JSR     SEQ1_DSTR_READ           ;GET BAR NUMBER
+               CMP     D_FROM_BAR,D7            ;SEE IF WERE AT START OF DELETE
+               BEQ.S   DEL_SEQ_3
+               EXG     D6,D7                    ;IF NOT SAVE BAR MARKER
+               JSR     SEQ_WRITE
+               EXG     D6,D7
+               JSR     SEQ_WRITE                ;AND SAVE BAR NUMBER
+               BRA.S   DELETE_SEQ_1             ;AND DO IT AGAIN
+DEL_SEQ_2      JSR     SEQ1_RMW_EATER
+               BRA.S   DEL_SEQ_1
+;
+;
+;
+; WE'VE HIT A BAR-MARKER WHICH IS IN OR ABOVE DELETE RANGE -
+; START DELETING:
+;
+DEL_SEQ_3      CMP     D_THRU_BAR,D7            ;SEE IF WERE AT END OF DELETE
+               BGT.S   DEL_SEQ_4
+               JSR     SEQ1_DSTR_READ           ;GET NEXT EVENT
+DEL_SEQ_30     MOVE    D7,D0
+               AND     #0FH,D0
+DEL_SEQ_31     BSR     NOTE_CHECK_OD            ;LOG NOTE EVENTS FOR LATER TURN ONS
+               BNE.S   DEL_SEQ_31
+               CMP     #8,D0                    ;LOOK FOR BAR MARKER
+               BNE.S   DEL_SEQ_32               ;EAT IT IF NOT A BAR MARKER
+               EXG     D6,D7                    ;SAVE THE BAR MARKER
+               JSR     SEQ1_DSTR_READ           ;GET BAR NUMBER
+               BRA.S   DEL_SEQ_3
+DEL_SEQ_32     CMP     #0FH,D0                  ;CHECK FOR END OF SEQUENCE
+               BEQ     DEL_SEQ_X
+               JSR     SEQ1_DRD_EATER
+               BRA.S   DEL_SEQ_31
+;
+;
+;
+; WE'VE ENCOUNTERED BAR MARKER THAT MARKS THE END OF DELETE RANGE -
+; BALANCE NOTE EVENTS, ADJUST BAR-NUMBER RELATED DIRECTORY PARAMETERS:
+;
+DEL_SEQ_4      EXG     D6,D7                    ;GET BAR MARKER
+               JSR     SEQ_WRITE                ;AND SAVE TO SEQUENCE
+               EXG     D6,D7                    ;GET BAR NUMBER
+               MOVE    D_THRU_BAR,D1            ;
+               SUB     D_FROM_BAR,D1            ;D1=# OF BARS DELETED
+               ADDQ    #1,D1
+               SUB     D1,D7                    ;ADJUST BAR NUMBER
+               JSR     SEQ_WRITE                ;SAVE BAR NUMBER
+               JSR     SEQ1_DSTR_READ           ;GET NEXT STATUS WORD
+               MOVE    D7,D0
+               AND     #0FH,D0
+               CMP     #11,D0                   ;CHECK FOR A/R EVENT
+               BNE.S   DEL_SEQ_401
+               JSR     SEQ_WRITE                ;SAVE A/R EVENT NEXT TO BAR MARKER
+               JSR     SEQ1_DSTR_READ       ;DON'T FORGET THAT SECOND WORD, CHUCKO!
+               JSR     SEQ_WRITE
+DEL_SEQ_401    MOVEM.L D0-D7,-(A7)
+               MOVE.L  A6,SEQ_WR_PTR
+                ABS_LONG
+               JSR     WRITE_NEW_M_OFFS         ;TURN OFF NOTES WHOSE NOTE OFFS WERE DELETED
+               JSR     WRITE_NEW_P_OFFS
+                ABS_SHORT
+               TST.B   DI_TEMP_1_B              ;DONT TURN ON ANY NOTES IF AT THE END OF SEQUENCE
+               BNE.S   DEL_SEQ_400
+                ABS_LONG
+               JSR     WRITE_OLD_M_ONS          ;TURN ON NOTES THAT WERE HELD ACROSS DELETED AREA
+               JSR     WRITE_OLD_P_ONS
+                ABS_SHORT
+DEL_SEQ_400    MOVEM.L (A7)+,D0-D7
+               MOVE.L  SEQ_WR_PTR,A6        ;RELOAD (UPDATED) SEQ WRITE POINTER.
+               CMP     #11,D0                   ;SEE IF IT WAS AN A/R EVENT
+               BEQ.S   DEL_SEQ_40               ;IF SO WE ALREADY WROTE IT TO SEQUENCER
+               CMP     #8,D0                    ;LOOK FOR BAR MARKER
+               BNE.S   DEL_SEQ_402
+               JSR     SEQ_WRITE                ;SAVE BAR MARKER
+               JSR     SEQ1_DSTR_READ           ;GET BAR NUMBER
+               SUB     D1,D7                    ;ADJUST IT
+               JSR     SEQ_WRITE                ;SAVE TO SEQUENCE
+               BRA.S   DEL_SEQ_40
+DEL_SEQ_402    JSR     SEQ1_RMW_EATER          ;EAT
+               BRA.S   DEL_SEQ_41
+
+DEL_SEQ_40     JSR     SEQ1_DSTR_READ
+               MOVE    D7,D0
+               AND     #0FH,D0
+DEL_SEQ_41     CMP     #8,D0                    ;CHECK FOR BAR MARKER
+               BNE.S   DEL_SEQ_42
+               JSR     SEQ_WRITE                ;SAVE BAR MARKER
+               JSR     SEQ1_DSTR_READ           ;GET BAR #
+               SUB     D1,D7                    ;ADJUST BAR #
+               JSR     SEQ_WRITE                ;SAVE IT
+               BRA.S   DEL_SEQ_40               ;DO IT AGAIN
+DEL_SEQ_42     CMP     #0FH,D0                  ;LOOK FOR END OF SEQUENCE
+               BEQ.S   DEL_SEQ_X                ;IF END THEN SPLIT
+               JSR     SEQ1_RMW_EATER           ;IF NOT EAT THIS EVENT
+               BRA.S   DEL_SEQ_41
+
+DEL_SEQ_X      JSR     SEQ_WRITE
+               JSR     GET_CUR_SEQ_DIR
+               SUB     D1,Q_TOTAL_BARS(A0)      ;ADJUST # OF BARS COUNT IN DIRECTORY
+;
+                                            ;ADJUST PLAYBACK REPEAT-LOOP LIMITS:
+                                            ;NOTE - REPEAT COUNT IS NOT CHANGED FOR ANY REASON.
+               MOVE    Q_RPT_END(A0),D0     ;FETCH REPEAT-END BAR NUMBER -
+               CMP     D_FROM_BAR,D0        ;WAS IT BEFORE THE DELETE ZONE?
+               BLT.S   DEL_SEQ_X_0          ;BRANCH IF YES, NO LOOP LIMIT ADJUSTMENT NEEDED.
+               CMP     D_THRU_BAR,D0        ;ELSE - WAS IT PAST DELETE ZONE?
+               BLE.S   DEL_DFLT_LOOP        ;BRANCH IF NOT, SET UP DEFAULT REPEAT LOOP.
+               MOVE    Q_RPT_START(A0),D0   ;ELSE,  FETCH REPEAT-START BAR NUMBER -
+               CMP     D_THRU_BAR,D0        ;WAS IT ALSO PAST THE DELETE ZONE?
+               BLE.S   DEL_DFLT_LOOP        ;BRANCH IF NOT, SET UP DEFAULT REPEAT LOOP.
+               SUB     D1,Q_RPT_START(A0)   ;ENTIRE LOOP WAS ABOVE DELETE ZONE, SHIFT IT DOWN.
+               SUB     D1,Q_RPT_END(A0)
+               BRA.S   DEL_SEQ_X_0          ;AND OUT WE GO.
+;
+DEL_DFLT_LOOP
+               MOVE    #1,Q_RPT_START(A0)             ;SOME PART OF REPEAT LOOP WAS DELETED -
+               MOVE    Q_TOTAL_BARS(A0),Q_RPT_END(A0) ;SET UP A DEFAULT REPEAT-LOOP.
+;
+;
+;
+; AND NOW, WE'RE DONE -
+;
+DEL_SEQ_X_0
+               JSR     SEQ_TURNAROUND       ;TIE UP ENDS OF SEQUENCE.
+;
+;
+; EXIT HERE IF AN ENTIRE SEQUENCE WAS DELETED:
+;
+DEL_SEQ_X_00
+               JSR     UPDATE_SEQ_SIZE      ;UPDATE MEMORY USAGE FIGURES.
+;
+               MOVE.L  #SEQ_DELETE_SUB,D0   ;ARE WE ACTUALLY IN "DELETE" SUBFUNCTION?
+               CMP.L   CUR_SUB_BLOCK,D0
+               BNE.S   DEL_SEQ_Z0           ;BRANCH IF NOT - MUST BE DOING WORK-LOOP RETURN -
+                                            ; .... OR SOMETHIN' ....
+                                            ;SKIP FREE-MEM DISPLAY, ETC. AND JUST RETURN -
+                                            ;WE AIN'T OUTA THE WOODS YET.
+;
+DEL_SEQ_X_1
+                                            ;ELSE, DONE - TIDY UP, DISPLAY NEW FREE-MEMORY STATUS:
+               JSR     SEQ_CHANGE_SUB       ;UPDATE PLAYBACK MACHINE STATUS AS IF WE CUED NEW SEQ.
+;
+               MOVE.L  #FREE_MEM_SCRN,A1    ;SHOW USER HOW MUCH SEQ MEMORY IS NOW FREE.
+                ABS_LONG
+               JSR     WRITE_SCREEN
+                ABS_SHORT
+               MOVE.L  #SEQ_DIR_99,A0
+               MOVE    Q_MEM_USED(A0),D0    ;NUMBER O' BLOCKS USED BY SEQUENCE -
+               LSR     #2,D0                ;DIVIDE BY 4 TO GET PERCENT USED,
+               MOVE    #1003H,D1            ;POSITION/LENGTH FOR WRITE,
+               MOVEQ   #20H,D2              ;LEADING-ZERO BLANKING CONTROL.
+                ABS_LONG
+               JSR     WRITE_VALUE
+               JSR     DISP_BUFFER
+                ABS_SHORT
+               MOVE    CURRENT_SEQUENCE,FORMER_SEQUENCE    ;SUPPRESS BACKGROUND NEW-SEQ CUE -
+                                                           ;IN CASE SEQ WAS NOT CURRENT_SEQUENCE.
+               MOVE    #2000H,SR            ;LET INTERRUPTS BACK IN.
+;
+DEL_SEQ_Y0
+               BSR     USER_STALL
+;
+DEL_SEQ_Z0
+                ABS_LONG
+               JSR     BLIND_FLUSH_NOTE_BUFS     ;WIPE 'EM ALL CLEAN AND DRY.
+                ABS_SHORT
+DEL_SEQ_EXIT
+               RTS
+;
+;
+;
+;
+FREE_MEM_SCRN
+               ASC     "SEQUENCE MEMORY:"
+               ASC     "   % IS NOW FREE"
+;
+;
+EMPTYSEQ_STR   ASC     "emptyseq"
+;
+;
+;
+; FOR GENERAL CONSUMPTION -
+; WHAT TO SAY WHEN USER WANTS TO EDIT AN EMPTY (NONEXISTENT) SEQUENCE:
+; BOPS A1.
+;
+DISP_SEQ_EMPTY
+               LEA     SEQ_EMPTY_SCRN(PC),A1     ;SET POINTER TO SCREEN TEXT,
+               BRA     DISP_SCREEN               ;WRITE IT TO LCD AND RETURN THROUGH.
+;
+SEQ_EMPTY_SCRN
+               ASC     "SEQUENCE EMPTY -"
+               ASC     "CANNOT BE EDITED"
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+SEQ_COPY_SUB
+               ASC     "COPY FROM SEQ.  "
+               ASC     "TR:  BR:   ->   "
+
+;FROM/TO SELECTION FIELD
+               DC.B    5
+               DC.B    4
+               DC.W    ACCESS+SET_PTR
+               DC.L    EVENT_ACC
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    TO_FROM_STR
+               DC.W    EDIT+HI_LIMIT
+               DC.W    1
+               DC.W    EDIT+ENTR_VEC
+               DC.L    GO_TO_COPY_TO
+               DC.W    EDIT+ED_VEC
+               DC.L    INS_COPY_2
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    FIELD_END
+
+;SEQUENCE NUMBER FIELD
+
+               DC.B    14
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    FROM_SEQ_NUM
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+HI_LIMIT
+               DC.W    98
+               DC.W    EDIT+ENTR_VEC
+               DC.L    GO_TO_COPY_TO
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+
+;TRACK NUMBER FIELD
+
+               DC.B    19
+               DC.B    1
+               DC.W    ACCESS+DIR_PTR
+               DC.W    FROM_TRACK_NUM
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+MIN_LIMIT
+               DC.W    0
+               DC.W    DISPLAY+MAX_LIMIT
+               DC.W    9
+               DC.W    DISPLAY+MAX_STRNG
+               DC.L    A_STRING
+               DC.W    DISPLAY+MIN_STRNG
+               DC.L    A_STRING
+               DC.W    EDIT+HI_LIMIT
+               DC.W    9
+               DC.W    EDIT+ENTR_VEC
+               DC.L    GO_TO_COPY_TO
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    FIELD_END
+
+;"FROM" BAR FIELD
+
+               DC.B    24
+               DC.B    3
+               DC.W    ACCESS+SET_PTR
+               DC.L    ACC_SFROM_BAR
+               DC.W    ACCESS+WORD
+               DC.W    EDIT+ENTR_VEC
+               DC.L    GO_TO_COPY_TO
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    BAR_SF_LIMIT
+               DC.W    FIELD_END
+
+;"THRU" BAR FIELD
+
+               DC.B    29
+               DC.B    3
+               DC.W    ACCESS+SET_PTR
+               DC.L    ACC_STHRU_BAR
+               DC.W    ACCESS+WORD
+               DC.W    EDIT+ENTR_VEC
+               DC.L    GO_TO_COPY_TO
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    BAR_ST_LIMIT
+               DC.W    SUBFUN_END
+
+COPY_SUB_2
+               ASC     "COPY  TO  SEQ.  "
+               ASC     "TR:  BR:   ->   "
+;
+;FROM/TO SELECTION FIELD
+               DC.B    5
+               DC.B    4
+               DC.W    ACCESS+DIR_PTR
+               DC.W    SONG_EVENT
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    TO_FROM_STR
+               DC.W    EDIT+HI_LIMIT
+               DC.W    1
+               DC.W    EDIT+ENTR_VEC
+               DC.L    COPY_SEQUENCE
+               DC.W    EDIT+ED_VEC
+               DC.L    INS_COPY_1
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    FIELD_END
+
+;SEQUENCE NUMBER FIELD
+;
+               DC.B    14
+               DC.B    2
+               DC.W    ACCESS+SET_PTR
+               DC.L    ACC_TO_SEQ_NUM
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+HI_LIMIT
+               DC.W    98
+               DC.W    EDIT+ENTR_VEC
+               DC.L    COPY_SEQUENCE
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+
+;TRACK NUMBER FIELD
+
+               DC.B    19
+               DC.B    1
+               DC.W    ACCESS+SET_PTR
+               DC.L    ACC_COPY_TRK
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+MIN_LIMIT
+               DC.W    0
+               DC.W    DISPLAY+MAX_LIMIT
+               DC.W    9
+               DC.W    DISPLAY+MAX_STRNG
+               DC.L    A_STRING
+               DC.W    DISPLAY+MIN_STRNG
+               DC.L    A_STRING
+               DC.W    EDIT+HI_LIMIT
+               DC.W    9
+               DC.W    EDIT+ENTR_VEC
+               DC.L    COPY_SEQUENCE
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    E_COPY_TRACK
+               DC.W    FIELD_END
+
+;"FROM" BAR FIELD
+
+               DC.B    24
+               DC.B    3
+               DC.W    ACCESS+SET_PTR
+               DC.L    ACC_FROM_BAR
+               DC.W    ACCESS+WORD
+               DC.W    EDIT+ENTR_VEC
+               DC.L    COPY_SEQUENCE
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    BAR_DF_LIMIT
+               DC.W    FIELD_END
+
+
+;"THRU" BAR FIELD
+
+               DC.B    29
+               DC.B    3
+               DC.W    ACCESS+SET_PTR
+               DC.L    ACC_THRU_BAR
+               DC.W    ACCESS+WORD
+               DC.W    EDIT+ENTR_VEC
+               DC.L    COPY_SEQUENCE
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    BAR_DT_LIMIT
+               DC.W    SUBFUN_END
+
+EVENT_ACC                                                       ;CLEAR OUT TO/FROM VARIABLE
+               CLR     SONG_EVENT
+               MOVE.L  #SONG_EVENT,D0
+               RTS
+
+INS_COPY_1     TST     SONG_EVENT
+               BNE.S   INS_COPY_10
+               MOVE.L  #SEQ_COPY_SUB,CUR_SUB_BLOCK              ;REINSTALL FIRST SCREEN
+               ST      SUBFUN_INSTALL
+INS_COPY_10    RTS
+
+INS_COPY_2     TST     SONG_EVENT
+               BEQ.S   INS_COPY_20
+GO_TO_COPY_TO
+               MOVE    #1,SONG_EVENT
+               MOVE.L  #COPY_SUB_2,CUR_SUB_BLOCK            ;REINSTALL SECOND SCREEN
+               ST      SUBFUN_INSTALL
+INS_COPY_20    RTS
+;
+;
+;
+;
+; THE IDEA HERE WAS TO USE A FULL-SEQUENCE DEFAULT FOR BAR NUMBERS -
+; MAY GET BACK TO THIS SOMEDAY, BUT NOT A VERY SIMPLE PROPOSITION ....
+;
+;11AUGACC_SFROM_BAR
+;11AUG               MOVE    #1,S_FROM_BAR        ;DEFAULT TO START OF SOURCE SEQUENCE -
+;11AUG               MOVE.L  #S_FROM_BAR,D0       ;RETURN POINTER TO THIS VARIABLE.
+;11AUG               RTS
+;11AUG;
+;11AUG;
+;11AUG;
+;11AUGACC_STHRU_BAR
+;11AUG               MOVE    #1,S_THRU_BAR        ;DEFAULT IN CASE SEQUENCE DOESN'T EXIST.
+;11AUG               MOVE    FROM_SEQ_NUM,D0      ;ACCESS FOR SOURCE "THRU" BAR NUMBER.
+;11AUG               JSR     GET_SEQ_DIR_PTR
+;11AUG               TST     Q_STATUS(A0)         ;DOES IT EXIST?
+;11AUG               BEQ.S   ACC_STHRU_20         ;BRANCH IF NOT, LEAVE THE ABOVE DEFAULT VALUE IN PLACE.
+;11AUG               MOVE    Q_TOTAL_BARS(A0),S_THRU_BAR    ;ELSE, DEFAULT TO END OF SEQUENCE.
+;11AUGACC_STHRU_20
+;11AUG               MOVE.L  #S_THRU_BAR,D0       ;RETURN POINTER TO THIS VARIABLE.
+;11AUG               RTS
+;
+;
+;
+E_COPY_TRACK   MOVE    FROM_TRACK_NUM,D0        ;INITIALIZE TO TRACK NUMBER LIMITS
+               BEQ.S   C_TRK_ACC_1
+               CMP     #9,D0                    ;SEE IF ALL TRACKS SELECTED IN FROM
+               BEQ.S   C_TRK_ACC_1
+               MOVE    #1,PARAM_LO_LIM
+               MOVE    #8,PARAM_HI_LIM
+               CLR.B   STRING_AT_MIN
+               CLR.B   STRING_AT_MAX
+                ABS_LONG
+C_TRK_ACC_0    JSR     SET_ENTER_FLASH
+                ABS_SHORT
+               RTS
+
+C_TRK_ACC_1    CLR     PARAM_HI_LIM
+               CLR     PARAM_LO_LIM
+               ST      STRING_AT_MIN
+               BRA.S   C_TRK_ACC_0
+
+ACC_COPY_TRK   MOVE    FROM_TRACK_NUM,D0        ;CHECK FOR ALL TRACKS SELECTED IN SOURCE
+               BEQ.S   ACC_COPY_TRK_1
+               CMP     #9,D0
+               BEQ.S   ACC_COPY_TRK_1
+               MOVE    TO_TRACK_NUM,D0          ;IF NOT THEN DESTINATION CANNOT BE ALL TRACKS
+               CMP     #0,D0
+               BNE.S   ACC_COPY_TRK_01
+               MOVE    #1,TO_TRACK_NUM
+               BRA.S   ACC_COPY_TRK_X
+ACC_COPY_TRK_01 CMP    #9,D0
+               BNE.S   ACC_COPY_TRK_X
+               MOVE    #8,TO_TRACK_NUM
+ACC_COPY_TRK_X MOVE.L  #TO_TRACK_NUM,D0
+               RTS
+
+ACC_COPY_TRK_1 CLR     TO_TRACK_NUM             ;IF FROM TRACK IS "ALL" SO SHALL BE TO TRACK
+               BRA.S   ACC_COPY_TRK_X
+
+
+A_STRING       DC.B    19
+               DC.B    1
+               ASC     "A "
+
+TO_FROM_STR    ASC     "FROM TO "
+
+COPY_SCRN      ASC     "  COPYING ....  "
+               ASC     "                "
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; THIS BE THE ROUTINE THAT DOES IT (SEQUENCE COPYING, THAT IS):
+; WHICH IS TO SAY, IT'S THE "SEQUENCE COPY" ENTER-SWITCH VECTOR.
+; THE EXTRACT_SEQ SUBROUTINE IS ALSO USED FOR WORK-LOOP EXTRACTION.
+;
+COPY_SEQUENCE
+               JSR     SEQ_RUNNING_TEST     ;IS SEQUENCER RUNNING? (NOT COOL TO AUTO-STOP IT ....)
+               BNE     COPY_SEQ_STALL       ;EXIT IF YES (MESSAGE IS IN LCD ....)
+;
+               BSR     NULL_SEQ_TEST        ;IS USER TRYING TO COPY TO THE null seqUENCE?
+               BNE     COPY_SEQ_STALL       ;EXIT IF YES (MESSAGE IS IN LCD ....)
+;
+               BSR     CHECK_MEM_FULL       ;CHECK TO SEE WHETHER THERE IS ADEQUATE FREE SEQ MEMORY
+                                            ;FOR THE COPY - NORMALLY WE JUST NEED "ANY" FREE SPACE,
+                                            ;BUT IF COPYING WITHIN ONE SEQUENCE THEN FREE MEMORY
+                                            ;MUST EXCEED THE SIZE OF THE SEQUENCE ITSELF IN ORDER
+                                            ;TO GUARANTEE INTEGRITY OF THE SOURCE DATA ....
+;
+               BNE     COPY_SEQ_DX_02       ;EXIT AND POST MESSAGE IF FREE MEMORY IS NOT ADEQUATE -
+                                            ;A1 CONTAINS POINTER TO ERROR MESSAGE TEXT.
+;
+COPY_SEQ_10
+               MOVE.L  #COPY_SCRN,A1        ;ELSE, GOING FOR IT - TELL USER WHAT WE'RE DOING ....
+               BSR     DISP_SCREEN
+               BSR     SOLID_ENTER
+               MOVE    #2700H,SR
+;
+                                            ;CLEAR OUT VARIOUS REGS USED IN COPY ROUTINE:
+               SUB.L   A1,A1                ;HOLDS NUMBER OF CLOCKS IN CURRENT SOURCE COPY BAR.
+               SUB.L   A2,A2                ;HOLDS NUMBER OF CLOCKS FROM BEGINNING OF SOURCE COPY
+                                            ;SEGMENT TO BEGINNING OF CURRENT SOURCE COPY BAR -
+                                            ;TAKES LOOPING OF SOURCE COPY SEGMENT INTO ACCOUNT
+                                            ;(THIS OCCURS WHEN DEST COPY SEGMENT IS LARGER THAN
+                                            ;SOURCE COPY SEGMENT).
+               SUB.L   A3,A3                ;SAME AS A2, BUT CURRENT UP TO MOST RECENTLY PARSED
+                                            ;TIME MARKER FROM SOURCE SEQUENCE.
+               CLR.L   D1                   ;D1-D3 ARE THE DESTINATION SEQUENCE ANALOGS OF A1-A3.
+               CLR.L   D2
+               CLR.L   D3
+               CLR.L   DI_TEMP_1_B          ;(.L) HOLDS DEST SEQ BAR MARKER ASIDE WHERE NECESSARY.
+               CLR.L   DI_TEMP_5_B          ;(.B) FLAG, SET WHEN END OF DEST SEQ COPY SEG REACHED.
+               CLR.L   BG_TEMP_1_B          ;(.L) HOLDS DEST SEQ A-R EVENT ASIDE WHERE NECESSARY.
+               CLR.L   BG_TEMP_5_B          ;(.B) SET IF MEM-FULL CONDITION FORCES PREMATURE HALT
+                                            ;OF A COPY INTO AN EXISTING SEQUENCE, TO ENSURE THAT AN
+                                            ;ERROR MESSAGE IS DISPLAYED - SINCE ERASE_TIME ROUTINE
+                                            ;MAY REMOVE THE MEM-FULL CONDITION BEFORE WE GET OUT.
+;
+               MOVE    FROM_SEQ_NUM,D0      ;TEST SOURCE SEQUENCE STATUS -
+               JSR     GET_SEQ_DIR_PTR      ;SET A0 AS POINTER TO ITS DIR BLOCK.
+               TST     Q_STATUS(A0)         ;DOES IT EXIST?
+               BEQ     COPY_SRC_EMPTY       ;BRANCH IF NOT - POST ERROR MESSAGE AND EXIT.
+               JSR     GET_CUR_SEQ_DIR      ;DOES DESTINATION SEQUENCE EXIST?
+               TST     Q_STATUS(A0)
+               BNE.S   COPY_SEQ_20          ;BRANCH IF YES - HEAD INTO GENERALIZED COPY ROUTINE.
+;
+                                            ;DESTINATION SEQUENCE DOESN'T EXIST:
+               BSR     EXTRACT_SEQ          ;SPECIAL ROUTINE CREATES NEW SEQUENCE, COPIES INTO IT.
+                                            ;(NOTE - REQUIRES A0 SETUP AS DONE JUST ABOVE ....)
+               BEQ     COPY_SEQ_DX_01       ;BRANCH IF NORMAL COMPLETION, WRITE STANDARD MESSAGE.
+               MOVE.L  #MEM_FULL_SCRN,A1    ;ELSE, TELL USER THAT MEMORY FILLED UP WHILE COPYING.
+               BRA     COPY_SEQ_DX_02
+               SKIP
+;
+;
+; GENERALIZED COPY - DESTINATION SEQUENCE ALREADY EXISTS.
+; AND WE'VE ONLY JUST BEGUN ....
+;
+; DO NON-DESTRUCTIVE READ THROUGH SOURCE SEQUENCE UNTIL COPY-SEGMENT
+; START BAR IS REACHED - LOG ITS NOTE EVENTS INTO "OLD" BUFFERS.
+; DO DESTRUCTIVE READ/WRITE THROUGH DESTINATION SEQUENCE UNTIL THE
+; COPY-SEGMENT START BAR IS REACHED - LOG NOTE EVENTS INTO "NEW" BUFS.
+;
+COPY_SEQ_20
+               BSR     FAST_TO_S_BAR        ;READ THRU SOURCE SEQ TO START OF COPY SEGMENT.
+               JSR     BAR_MARKER_HANDLER   ;D7.L CONTAINS THIS BAR MARKER - DECODE IT.
+               MOVE    CLICKS_THIS_BAR,A1   ;A1 = LENGTH IN CLOCKS OF THIS BAR OF SOURCE SEQUENCE.
+;
+               JSR     SEQ1_DRD_SETUP       ;SET UP DESTRUCTIVE READ/WRITE OF DESTINATION SEQUENCE.
+COPY_SEQ_24
+               JSR     SEQ1_DSTR_READ       ;READ ID WORD OF NEXT EVENT.
+COPY_SEQ_28
+               BSR     CHK_TRACK_NUM        ;ISOLATE ID CODE IN D0 - SEE IF EVENT IS A PERFORMANCE
+                                            ;EVENT MEETING "COPY TO" TRACK SPECIFICATION.
+               BEQ.S   COPY_SEQ_2C          ;BRANCH IF NOT - SEE IF IT'S A BAR MARKER.
+               BSR     NOTE_CHECK_NDW       ;ELSE - LOG NOTES INTO "NEW" BUFS, COPY THEM OVER.
+               BNE.S   COPY_SEQ_28          ;BRANCH, LOOP IF IT WAS A NOTE EVENT - IT'S BEEN LOGGED
+                                            ;AND COPIED, WE'RE ALREADY LOOKING AT NEXT EVENT.
+COPY_SEQ_2C
+               CMP     #8,D0                ;IS THIS EVENT A BAR MARKER?
+               BNE.S   COPY_SEQ_2G          ;BRANCH IF NOT - JUST COPY THROUGH IT TO NEXT EVENT.
+               JSR     SEQ_WRITE            ;ELSE - WRITE BAR MARKER FIRST WORD TO SEQUENCE,
+               SWAP    D7                   ;ASSEMBLE FULL BAR MARKER IN D7.L -
+               JSR     SEQ1_DSTR_READ       ;READ AND COPY BAR NUMBER ....
+               JSR     SEQ_WRITE
+               CMP     D_FROM_BAR,D7        ;IS THIS THE DESTINATION SEQ COPY-SEGMENT START BAR?
+               BEQ.S   COPY_SEQ_30          ;BRANCH IF YES, GO ON TO NEXT PHASE OF COPY FUNCTION.
+               BRA.S   COPY_SEQ_24          ;ELSE - LOOP BACK, RESUME WITH NEXT EVENT.
+;
+COPY_SEQ_2G
+               JSR     SEQ1_RMW_EATER       ;COPY THROUGH EVENT TO NEXT, FETCH/DECODE ITS ID -
+               BRA.S   COPY_SEQ_28          ;GO BACK AND CHECK IT OUT.
+               SKIP
+;
+;
+;
+; WE'VE HIT THE DESTINATION SEQUENCE COPY-SEGMENT START BAR:
+; D7.L CONTAINS THIS BAR MARKER, WHICH HAS ALREADY BEEN COPIED OVER.
+; COPY OVER ANY A-R EVENT PRESENT IN DESTINATION SEQUENCE (IT MUST NEVER
+; GET SEPARATED FROM ITS BAR MARKER), THEN DO SOME NOTE-EVENT ADJUSTING
+; IN THE DESTINATION SEQUENCE TO GET THE COPY STARTED.
+;
+COPY_SEQ_30
+               MOVE    (A5),D0              ;TEST-READ NEXT DEST SEQ EVENT ID WORD,
+               AND     #0FH,D0              ;ISOLATE ITS ID CODE -
+               CMP     #11,D0               ;IS IT AN A-R EVENT?
+               BNE.S   COPY_SEQ_34          ;BRANCH IF NOT, LEAVE IT WHERE IT IS UNTIL LATER.
+               JSR     SEQ1_DSTR_READ       ;ELSE - READ AND COPY IT NOW, KEEP IT
+               JSR     SEQ_WRITE            ;TOGETHER WITH ITS BAR-MARKER AT ALL TIMES.
+               JSR     SEQ1_DSTR_READ       ;THAT'S TWO WORDS, NOW - DON'T FUCK IT UP ....
+               JSR     SEQ_WRITE
+COPY_SEQ_34
+               MOVE.L  A6,SEQ_WR_PTR        ;STASH WRITE POINTER FOR USE BY NOTE-WRITE ROUTINES.
+               MOVEM.L D0-D7/A1-A3,-(A7)    ;OUT OF BLIND FEAR, PROTECT ALL OF THESE REGISTERS.
+                ABS_LONG
+               JSR     WRITE_NEW_M_OFFS     ;TURN OFF ALL NOTES THAT WERE ON IN DESTINATION SEQ
+               JSR     WRITE_NEW_P_OFFS     ;ON TARGET TRACK(S) - COPY FUNCTION WIPES OUT ALL
+                                            ;PERF EVENTS WHICH WERE PRESENT IN THE TARGET AREA.
+               JSR     WRITE_OLD_M_ONS      ;TURN ON NOTES THAT ARE ON AT START OF SOURCE SEQUENCE
+               JSR     WRITE_OLD_P_ONS      ;COPY SEGMENT.
+                ABS_SHORT
+               MOVEM.L (A7)+,D0-D7/A1-A3    ;RESTORE REGISTERS.
+               MOVE.L  SEQ_WR_PTR,A6        ;RETRIEVE (UPDATED) SEQUENCE WRITE POINTER.
+;
+               JSR     BAR_MARKER_HANDLER   ;PROCESS THE DEST SEQ COPY SEGMENT START BAR MARKER.
+               MOVE    CLICKS_THIS_BAR,D1   ;D1 = LENGTH IN CLOCKS OF THIS BAR OF DEST SEQUENCE -
+               EXT.L   D1                   ;LEAVE IT LONG FOR USE IN CLOCK-ACCOUNTING.
+               SKIP
+;
+; MAIN LOOP OF GENERALIZED COPY FUNCTION:
+; WITHIN THIS LOOP, PARSING OF A BAR- OR TIME-MARKER IN SOURCE SEQUENCE
+; PROMPTS US TO PUSH THE DESTINATION SEQUENCE READ/WRITE POINT AHEAD
+; UNTIL IT IS AT OR PAST THE CORRESPONDING POINT - IT IS ALWAYS KEPT AT
+; LEAST CAUGHT UP TO THE READ POINT OF THE SOURCE SEQUENCE.
+; WHENEVER THIS MOVEMENT-IN-TIME IS DONE, WE RETURN TO THE TOP OF THIS
+; LOOP TO SEE IF WE'VE COMPLETED THE COPY.
+;
+COPY_SEQ_4
+;
+               CMP.L   A3,D3                ;COMPARE LOGGED TIME IN SOURCE, DEST COPY SEGMENTS -
+               BGT.S   COPY_SEQ_400         ;BRANCH IF DEST SEQ COPY SEGMENT IS PARSED FURTHER THAN
+                                            ;THAT OF SOURCE SEQ - GET THE SOURCE SEQ CAUGHT UP,
+                                            ;COPYING ANYTHING WHICH OUGHTA BE COPIED AS WE GO.
+               TST.B   DI_TEMP_5_B          ;ELSE - HAVE WE HIT THE END OF DEST SEQ COPY SEGMENT?
+               BNE     COPY_SEQ_CLEANUP     ;BRANCH IF YES - TIE UP THE DESTINATION SEQUENCE, EXIT.
+;
+COPY_SEQ_400
+               JSR     SEQ_NDSTR_READ       ;READ ID WORD OF NEXT SOURCE SEQ EVENT,
+               MOVE    D7,D0                ;ISOLATE THE ID CODE IN D0.
+               AND     #0FH,D0
+;
+;
+; NOTE - TRACK-ROTATE FUNCTION JUMPS IN AT THIS POINT WITH READ AND
+; WRITE PROCESSES CUED UP AS APPROPRIATE:
+;
+COPY_SEQ_40
+               CMP     #8,D0                ;IS SOURCE EVENT A BAR MARKER?
+               BNE.S   COPY_SEQ_41          ;BRANCH IF NOT, GO SEE IF IT'S A TIME MARKER.
+COPY_SEQ_401
+               SWAP    D7                   ;ELSE - ASSEMBLE SOURCE BAR MARKER IN D7.L -
+               JSR     SEQ_NDSTR_READ
+;
+                                            ;UPDATE SOURCE SEQUENCE COPY-SEGMENT CLOCK LOGGING:
+               ADDA.L  A1,A2                ;ADD NUMBER OF CLOCKS IN THE SOURCE SEQ BAR WE JUST HIT
+                                            ;THE END OF ONTO THE TOTAL OF SOURCE SEQ COPY SEGMENT
+                                            ;CLOCKS LOGGED AS OF THE BEGINNING OF THAT BAR -
+                                            ;THIS BRINGS US UP TO THE BAR MARKER WE JUST HIT.
+               MOVE.L  A2,A3                ;AT THIS POINT, TOTAL CLOCKS LOGGED IN SOURCE SEQ COPY
+                                            ;SEGMENT EQUALS TOTAL LOGGED UP TO START OF THE (NEW)
+                                            ;CURRENT SOURCE SEQ COPY BAR, SINCE THAT'S WHERE WE BE.
+;
+               MOVEM.L D1-D7,-(A7)          ;STASH DEST SEQ COPY-BAR LENGTH, SOURCE SEQ BAR MARK -
+               JSR     BAR_MARKER_HANDLER   ;PROCESS NEW SOURCE SEQ COPY-BAR BAR MARKER -
+               MOVE    CLICKS_THIS_BAR,A1   ;A1 = LENGTH IN CLOCKS OF THIS BAR OF SOURCE SEQUENCE.
+               MOVEM.L (A7)+,D1-D7          ;RETRIEVE VARIABLES STASHED ABOVE.
+;
+               MOVE.L  D7,-(A7)             ;PROTECT SOURCE SEQ BAR MARKER AGAIN,
+               BSR     ADVANCE_DEST         ;READ THRU DEST SEQ UNTIL ITS COPY-SEGMENT TIME EQUALS
+                                            ;(OR IS PAST) SOURCE SEQ COPY-SEGMENT TIME (NOTE THAT
+                                            ;WE MAY WELL ALREADY BE AT SUCH A POINT).
+               MOVE.L  (A7)+,D7             ;BRING BACK THE SOURCE SEQ BAR MARKER.
+;
+               TST     D0                   ;BEFORE WE CARRY ON ANY FURTHER - DID WE JUST HIT
+                                            ;THE BITTER END OF THE DESTINATION SEQUENCE?
+               BNE.S   COPY_SEQ_40A         ;BRANCH IF YES, GOTTA BAIL OUT OF COPY IMMEDIATELY.
+;
+               CMP     S_THRU_BAR,D7        ;WAS LAST BAR THE END OF THE SOURCE SEQ COPY SEGMENT?
+               BLE     COPY_SEQ_4           ;BRANCH IF NOT, KEEP ON AS WE WERE.
+;
+                                            ;ELSE, LOOP THE SOURCE SEQ COPY SEGMENT TO CONTINUE:
+               MOVE.L  A6,SEQ_WR_PTR        ;STASH WRITE POINTER FOR USE BY NOTE-WRITE ROUTINES.
+               MOVEM.L D0-D7/A2-A3,-(A7)    ;STASHA BUNCHA REGISTERS,
+                ABS_LONG
+               JSR     WRITE_OLD_M_OFFS     ;WRITE "OFFS" FOR NOTES STILL ON IN SOURCE COPY SEG -
+               JSR     WRITE_OLD_P_OFFS     ;WE'RE MAKING A DISCONTINUOUS JUMP IN SEQUENCE TIME.
+                ABS_SHORT
+               MOVEM.L (A7)+,D0-D7/A2-A3    ;BRINGUM BACK REGISTERS,
+               BSR     FAST_TO_S_BAR        ;AGAIN READ TO START OF SOURCE SEQUENCE COPY-SEGMENT,
+               JSR     BAR_MARKER_HANDLER   ;PROCESS NEW SOURCE SEQ COPY-BAR BAR MARKER -
+               MOVE    CLICKS_THIS_BAR,A1   ;A1 = LENGTH IN CLOCKS OF THIS BAR OF SOURCE SEQUENCE.
+               MOVEM.L D0-D7/A1-A3,-(A7)    ;STASHUM EVEN MORE REGS THIS TIME (PROTECT NEW A1),
+                ABS_LONG
+               JSR     WRITE_OLD_M_ONS      ;WRITE "ONS" FOR NOTES ON AT START OF SOURCE COPY-SEG.
+               JSR     WRITE_OLD_P_ONS
+                ABS_SHORT
+               MOVEM.L (A7)+,D0-D7/A1-A3    ;BRING-UM BACK REGISTERS.
+               MOVE.L  SEQ_WR_PTR,A6        ;RETRIEVE (UPDATED) SEQUENCE WRITE POINTER.
+               BRA     COPY_SEQ_4           ;GO BACK TO TOP O' LOOP AND SEE WHAT'S WHAT.
+;
+;
+COPY_SEQ_41
+               CMP     #9,D0                ;SOURCE EVENT NOT BAR MARKER - IS IT A TIME MARKER?
+               BNE.S   COPY_SEQ_42          ;BRANCH IF NOT, GO SEE IF IT'S A COPY-ABLE EVENT.
+COPY_SEQ_411
+               LSR     #4,D7                ;ELSE - ISOLATE THE TIME VALUE (CLOCK NUMBER) -
+               EXT.L   D7
+               ADD.L   A2,D7                ;ADD IT TO COUNT OF CLOCKS LOGGED IN SOURCE SEQUENCE
+                                            ;COPY-SEGMENT UP TO BEGINNING OF THIS BAR - GIVES US
+                                            ;CORRESPONDING VALUE FOR THE TIME MARKER AND ANY EVENTS
+                                            ;WHICH ARE BEHIND IT.
+               MOVE.L  D7,A3                ;UPDATE A3 WITH POSITION IN SOURCE SEQ COPY-SEGMENT.
+;
+               BSR     ADVANCE_DEST         ;READ THRU DEST SEQ UNTIL ITS COPY-SEGMENT TIME EQUALS
+                                            ;(OR IS PAST) SOURCE SEQ COPY-SEGMENT TIME (NOTE THAT
+                                            ;WE MAY WELL ALREADY BE AT SUCH A POINT).
+               TST     D0                   ;BEFORE WE CARRY ON ANY FURTHER - DID WE JUST HIT
+                                            ;THE BITTER END OF THE DESTINATION SEQUENCE?
+               BEQ     COPY_SEQ_4           ;BRANCH IF NOT, LET'S KEEP ON WITH WHAT WE WERE DOING.
+;
+                                            ;ELSE, GOTTA BAIL OUT OF COPY IMMEDIATELY:
+COPY_SEQ_40A
+               MOVE.L  A6,SEQ_WR_PTR        ;STASH WRITE POINTER FOR USE BY NOTE-WRITE ROUTINES.
+                ABS_LONG
+               JSR     WRITE_OLD_M_OFFS     ;WRITE "OFFS" FOR NOTES STILL ON IN SOURCE COPY SEG.
+               JSR     WRITE_OLD_P_OFFS
+                ABS_SHORT
+               MOVE.L  SEQ_WR_PTR,A6        ;RETRIEVE (UPDATED) SEQUENCE WRITE POINTER.
+               MOVEQ   #0FH,D7              ;NOW - EXPLICITLY WRITE THE "END OF SEQ" MARKER,
+               JSR     SEQ_WRITE
+               BRA     COPY_SEQ_CL_60       ;THEN EXIT (SKIP CONSOLIDATE SINCE AT END OF SEQ).
+;
+;
+;
+COPY_SEQ_42
+                                            ;SOURCE EVENT WAS NOT BAR-MARKER OR TIME-MARKER:
+               BSR     S_CHK_TRACK_NUM      ;SEE IF IT'S A PERFORMANCE EVENT MATCHING "COPY FROM"
+                                            ;TRACK SPECIFICATION (AND ISOLATE ITS ID CODE IN D0) -
+               BNE.S   COPY_SEQ_43          ;BRANCH IF YES, GO ON AHEAD AND COPY IT TO DEST SEQ.
+               JSR     SEQ_NDRD_EATER       ;ELSE, READ THRU SRC TO NEXT EVENT, FETCH/DECODE ID -
+               BRA     COPY_SEQ_40          ;LOOP PARTWAY BACK UP (SINCE SEQ COPY TIME NOT CHANGED)
+                                            ;AND SEE WHAT SHOULD BE DONE WITH THIS EVENT.
+;
+;
+; WE'VE GOT A SOURCE SEQUENCE EVENT TO COPY:
+;
+COPY_SEQ_43
+                                            ;GONNA COPY THIS SOURCE EVENT, FOR SURE - MAYBE:
+               TST.B   SEQ_MEM_FULL         ;HAS SEQUENCE MEMORY BECOME FULL LATELY?
+               BNE.S   COPY_SEQ_73          ;BRANCH IF YES - SHIT OUT O' LUCK.
+               MOVE    TO_TRACK_NUM,D4      ;THIS TIME FOR SURE - ARE WE COPYING TO "ALL" TRACKS?
+               BEQ.S   COPY_SEQ_72          ;BRANCH IF YES, LEAVE SOURCE EVENT ON ORIGINAL TRACK.
+               CMP     #9,D4
+               BEQ.S   COPY_SEQ_72          ;LIKEWISE FOR THE OTHER "TO ALL TRACKS" SETTING.
+               SUBQ    #1,D4                ;ELSE - RENDER "TO" TRACK NUMBER IN 0-7 FORM,
+               LSL     #4,D4                ;IMPLANT IT INTO SOURCE EVENT.
+               AND     #0FF8FH,D7
+               OR      D4,D7
+COPY_SEQ_72
+               BSR     NOTE_CHECK_W         ;IF NOTE EVENT - LOG IT TO "OLD" BUFFER (USING NEW
+                                            ;TRACK NUMBER, IF IT WAS CHANGED, BY THE WAY), COPY IT
+                                            ;INTO DEST SEQ, READ TO NEXT SOURCE EVENT, FETCH AND
+                                            ;DECODE ITS ID -
+               BNE     COPY_SEQ_40          ;BRANCH IF WAS A NOTE EVENT AND ALL O' THAT GOT DONE -
+               JSR     SEQ_NDRMW_EATER      ;ELSE, COPY IT TO DEST SEQ, READ THROUGH SOURCE TO NEXT
+                                            ;EVENT, FETCH/DECODE ITS ID -
+               BRA     COPY_SEQ_40          ;LOOP BACK UP AND SEE WHAT NEW EVENT IS (LOOP PARTWAY,
+                                            ;SINCE NEITHER SOURCE NOR DEST TIME CHANGED).
+;
+;
+; ATTEMPT TO COPY A SOURCE EVENT TO DESTINATION SEQ HAS ENCOUNTERED
+; "SEQ_MEM_FULL" CONDITION:
+;
+COPY_SEQ_73
+               MOVE.L  A6,SEQ_WR_PTR        ;STASH WRITE POINTER FOR USE BY NOTE-WRITE ROUTINES.
+                ABS_LONG
+               JSR     WRITE_OLD_M_OFFS     ;WRITE "OFFS" FOR NOTES STILL ON IN SOURCE COPY SEG -
+               JSR     WRITE_OLD_P_OFFS     ;WE WON'T BE LOGGING OR COPYING ANY MORE AFTER THIS.
+               JSR     BLIND_FLUSH_NOTE_BUFS     ;CLEAR ALL BUFS OUT SO EXIT PROCEDURE WON'T ADD
+                                                 ;ANY EXTRANEOUS STUFF.
+                ABS_SHORT
+               MOVE.L  SEQ_WR_PTR,A6        ;RETRIEVE (UPDATED) SEQUENCE WRITE POINTER.
+               ST      BG_TEMP_5_B          ;SET FLAG TO INVOKE ERROR MESSAGE UPON EXIT.
+               BRA.S   COPY_SEQ_CLEANUP     ;SKIP DOWN TO NORMAL EXIT PROCEDURE - IT'LL REINSERT
+                                            ;ANY DESTINATION SEQ TIMING EVENTS BEING HELD ASIDE
+                                            ;BEFORE IT GOES ON WITH WRAP-UP OF SEQUENCE.
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; OUT WE GO!  LEMME COUNT THE WAYS .... NEVER MIND, YOU COUNT THEM.
+;
+;
+COPY_SRC_EMPTY
+               MOVE.L  #SRC_EMPTY_SCRN,A1   ;TELL USER HE'S A FOOL FOR COPYING AN EMPTY SEQUENCE.
+               BRA.S   COPY_SEQ_DX_02
+;
+;
+;
+; NORMAL EXIT PATH - TAKEN WHEN THE "HIT END OF DEST SEQ COPY-SEGMENT"
+; FLAG GETS PICKED UP AT THE TOP OF THE MAIN COPY LOOP:
+; (ALSO TAKEN IF WE RUN OUT OF FREE SEQ MEMORY BEFORE DONE COPYING.)
+;
+COPY_SEQ_CLEANUP
+               MOVE.L  DI_TEMP_1_B,D7       ;DEST SEQUENCE TIME- OR BAR-MARKER MAY BE HELD HERE -
+               BEQ.S   COPY_SEQ_CL_40       ;BRANCH IF NEITHER (MEM-FULL EXIT, MOST LIKELY).
+               TST     D7                   ;IF LOW-ORDER WORD IS CLEAR,
+               BEQ.S   COPY_SEQ_CL_20       ;THEN BRANCH - WE'RE TALKING TIME MARKER.
+               SWAP    D7                   ;ELSE, BAR-MARKER - WRITE HI WORD, THEN LOW WORD.
+               JSR     SEQ_WRITE
+               SWAP    D7
+               JSR     SEQ_WRITE
+               MOVE.L  BG_TEMP_1_B,D7       ;ALSO HOLDING ASIDE AN A-R EVENT WHICH GOES WITH B-M?
+               BEQ.S   COPY_SEQ_CL_40       ;BRANCH IF NOT, HEAD ON OUT -
+               SWAP    D7                   ;ELSE, PUT IT BACK INTO DEST SEQ RIGHT AFTER BAR MARK -
+               JSR     SEQ_WRITE            ;REMEMBER, BOZOS - THAT'S TWO WORDS ....
+COPY_SEQ_CL_20
+               SWAP    D7
+               JSR     SEQ_WRITE
+;
+COPY_SEQ_CL_40
+               MOVE.L  A6,SEQ_WR_PTR        ;STASH WRITE POINTER FOR USE BY NOTE-WRITE ROUTINES.
+                ABS_LONG
+               JSR     WRITE_OLD_M_OFFS     ;WRITE "OFFS" FOR COPIED SOURCE SEQ NOTES STILL "ON".
+               JSR     WRITE_OLD_P_OFFS
+               JSR     WRITE_NEW_M_ONS      ;WRITE "ONS" FOR EXISTING DESTINATION SEQ NOTES WHICH
+               JSR     WRITE_NEW_P_ONS      ;BEGAN IN COPY-SEGMENT (AND THUS WERE ERASED) BUT WHICH
+                                            ;WERE SUSTAINED PAST THE END OF THE COPY-SEGMENT.
+                                            ;NOTE THAT IF COPY-SEGMENT EXTENDED TO END OF DEST SEQ,
+                                            ;THIS SHOULD GENERATE NO NOTE-ON EVENT DATA - LIKEWISE
+                                            ;IF COPY WAS ABORTED BY SEQ MEM GETTING FILLED UP.
+                ABS_SHORT
+               MOVE.L  SEQ_WR_PTR,A6        ;RETRIEVE (UPDATED) SEQUENCE WRITE POINTER.
+               JSR     SEQ_CONSOLIDATE      ;CONSOLIDATE THE DESTINATION SEQUENCE.
+;
+;
+; BAILOUT UPON HITTING END OF DEST SEQ COMES HERE TO SKIP CONSOLIDATE:
+;
+COPY_SEQ_CL_60
+               JSR     SEQ_TURNAROUND       ;TIE UP THE ENDS OF THE SEQUENCE,
+               JSR     UPDATE_SEQ_SIZE      ;UPDATE MEMORY USAGE FIGURES.
+;
+                                            ;HOWEVER - THIS IS A MIXED ADVANTAGE, SINCE CHANCES ARE
+                                            ;THAT PLAYBACK WILL GO AHEAD AND PUT THEM BACK IN AGAIN
+                                            ;(IF AUTOCORRECT ENABLED), WHICH IN TURN HAS AN ADVERSE
+                                            ;EFFECT UPON CONSOLIDATE TIME FOLLOWING PLAYBACK.
+;
+;
+; SEQUENCE DUPLICATE ROUTINE ALSO THIS WAY DOES EXIT (IF SUCCESSFUL):
+;
+COPY_SEQ_DX_01
+               BSR     ERASE_TIME           ;GET RID OF EXCESS TIME MARKERS IN SEQUENCE -
+                                            ;THESE WOULD COME ABOUT BECAUSE ALL TIME MARKERS FROM
+                                            ;SOURCE SEQUENCE ARE COPIED AS ENCOUNTERED, SINCE WE
+                                            ;DON'T KNOW WHETHER SUBSEQUENT EVENTS (IF THERE ARE
+                                            ;ANY) WILL MATCH "COPY FROM" TRACK SPECIFICATION.
+;
+               MOVE.L  CUR_SUB_BLOCK,D0     ;ARE WE ACTUALLY IN THE "TRACK ROTATE" SUBFUNCTION?
+               CMP.L   #SEQ_ROTATE_SUB,D0   ;BRANCH IF YES, SKIP SOME OF THE FOLLOWING FORMALITIES.
+               BEQ.S   COPY_SEQ_DX_03       ;BRANCH IF YES - SKIP THE FORMALITIES AND RETURN.
+;
+                                                 ;ELSE - WE'RE REALLY DONE:
+               LEA     COPY_DONE_SCRN(PC),A1     ;DISPLAY COMPLETION MESSAGE ....
+               TST.B   BG_TEMP_5_B               ;DID WE RUN OUT OF FREE SEQ MEM WHILE DOING THIS?
+               BEQ.S   COPY_SEQ_DX_02            ;BRANCH IF NOT, USE NORMAL MESSAGE -
+               LEA     COPY_FULL_SCRN(PC),A1     ;ELSE, BEAR THE BAD NEWS.
+;
+;
+; MOST EVRY-ONE EXITS THIS WAY WITH MESSAGE-TEXT POINTER IN A1,
+; - INCLUDING ALL GROSS-ERROR CONDITIONS:
+;
+COPY_SEQ_DX_02
+                ABS_LONG
+               JSR     DISP_SCREEN          ;PUT OUT THAT MESSAGE.
+                ABS_SHORT
+               MOVE      #2000H,SR          ;LET THERE BE INTERRUPTS.
+;
+COPY_SEQ_DX_03
+                ABS_LONG
+               JSR     BLIND_FLUSH_NOTE_BUFS     ;WIPE ALL NOTE BUFFERS CLEAN AND DRY.
+                ABS_SHORT
+               JSR     SEQ_CHANGE_SUB       ;PLUG "NEW" DESTINATION SEQUENCE INTO PLAYBACK THING.
+;
+;
+; EXIT HERE IF SEQUENCER IS RUNNING - MESSAGE IS ALREADY IN LCD:
+;
+COPY_SEQ_STALL
+               BSR     USER_STALL
+;
+COPY_SEQ_EXIT
+               RTS
+;
+;
+;
+COPY_DONE_SCRN
+               ASC     " COPY COMPLETED "
+               ASC     "PRESS ANY SWITCH"
+;
+SRC_EMPTY_SCRN
+               ASC     " NOT POSSIBLE - "
+               ASC     "SOURCE SEQ EMPTY"
+;
+COPY_FULL_SCRN
+               ASC     "RAN OUT OF ROOM,"
+               ASC     "COPY INCOMPLETE "
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; POSITION SOURCE SEQUENCE READ AT BEGINNING OF SOURCE COPY-SEGMENT:
+;
+; DOES NON-DESTRUCTIVE READ STARTING FROM BEGINNING OF SOURCE SEQUENCE.
+; LOGS NOTE EVENTS WHICH ARE ON SPECIFIED SOURCE COPY TRACK(S) INTO
+; "OLD" BUFFERS - IF COPYING TO A SINGLE DESTINATION TRACK (AS OPPOSED
+; TO "ALL" TRACKS), EVENTS ARE TAGGED WITH DESTINATION TRACK NUMBER
+; BEFORE BEING LOGGED.
+; READING STOPS ON THE BAR-NUMBER WORD OF THE BAR MARKER WHICH MARKS THE
+; BEGINNING OF THE SOURCE SEQUENCE COPY SEGMENT.
+; RETURNS WITH THIS BAR MARKER IN D7.L, BAR MARKER ID CODE IN D0.
+;
+FAST_TO_S_BAR
+               MOVE    FROM_SEQ_NUM,D0      ;FETCH SOURCE SEQUENCE NUMBER,
+               JSR     SEQX_NDRD_SETUP      ;SET UP NON-DESTRUCTIVE READ.
+;
+FTSB_20
+               JSR     SEQ_NDSTR_READ       ;READ EVENT ID WORD.
+FTSB_40
+               BSR     S_CHK_TRACK_NUM      ;SEE IF IT'S A PERFORMANCE EVENT MATCHING "COPY FROM"
+                                            ;TRACK SPECIFICATION (AND ISOLATE ITS ID CODE IN D0) -
+               BEQ.S   FTSB_80              ;BRANCH IF NOT - GO SEE IF IT'S A BAR MARKER.
+               MOVE    TO_TRACK_NUM,D4      ;ELSE - WHICH TRACK(S) ARE WE COPYING "TO"?
+               BEQ.S   FTSB_60              ;BRANCH IF "ALL" - DON'T MESS WITH EVENT TRACK NUMBER.
+               CMP     #9,D4                ;CHECK BOTH POSSIBILITIES FOR "COPY TO ALL TRACKS".
+               BEQ.S   FTSB_60
+               SUBQ    #1,D4                ;ELSE - BEFORE LOGGING THE EVENT, ALTER IT SO THAT IT
+               LSL     #4,D4                ;APPEARS TO BE ON THE COPY "TO" TRACK.
+               AND     #0FF8FH,D7
+               OR      D4,D7
+FTSB_60
+               BSR     NOTE_CHECK           ;IF NOTE EVENT - LOG IT IN "OLD" BUF, READ THROUGH IT
+                                            ;TO NEXT EVENT, FETCH AND DECODE THE NEXT EVENT'S ID -
+               BNE.S   FTSB_40              ;BRANCH IF THESE THINGS WERE IN FACT DONE - LOOP BACK,
+                                            ;WE'RE ALREADY LOOKING AT THE NEXT EVENT.
+FTSB_80
+               CMP     #8,D0                ;IS THIS EVENT A BAR MARKER?
+               BNE.S   FTSB_A0              ;BRANCH IF NOT - READ THROUGH IT TO NEXT EVENT.
+               SWAP    D7                   ;ELSE - ASSMEBLE FULL BAR MARKER IN D7.
+               JSR     SEQ_NDSTR_READ
+               CMP     S_FROM_BAR,D7        ;ARE WE AT THE START OF SOURCE SEQUENCE COPY-SEGMENT?
+               BEQ.S   FTSB_EXIT            ;BRANCH IF YES, EXIT - OUR KWEST FULFILLED.
+               BRA     FTSB_20              ;ELSE - LOOP BACK, PICK UP NEXT EVENT, RESUME SEARCH.
+;
+FTSB_A0
+               JSR     SEQ_NDRD_EATER       ;READ THROUGH TO NEXT EVENT, FETCH/DECODE ITS ID -
+               BRA     FTSB_40              ;LOOP BACK AND CHECK IT OUT.
+;
+FTSB_EXIT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; ADVANCE DESTINATION SEQUENCE (COPY-POINT) IN TIME:
+;
+; WE CALL HERE WHEN THERE IS (OR MIGHT SOON BE) A SOURCE SEQUENCE EVENT
+; TO BE COPIED INTO THE DESTINATION SEQUENCE AT A POINT IN (SEQUENCE)
+; TIME LATER THAN WHERE WE CURRENTLY ARE IN THE DESTINATION SEQUENCE.
+; ASSUMING THAT WE KNOW THE SEQUENCE TIME ASSOCIATED WITH THE SOURCE
+; SEQUENCE EVENT WHICH IS UP NEXT, WE PARSE THE DESTINATION SEQUENCE
+; UNTIL WE REACH OR PASS THE EQUIVALENT POINT IN IT.
+; AS A HANDY BY-PRODUCT, WE ERASE ANY PERFORMANCE EVENTS WE ENCOUNTER
+; ON THE SPECIFIED DESTINATION SEQUENCE "COPY TO" TRACK(S).
+;
+; MECHANICAL DETAILS:
+; SOURCE SEQ TIME IS "TOTAL CLOCKS SINCE START OF SOURCE COPY-SEGMENT"
+; VALUE WHICH IS MAINTAINED IN A3.L - THE CORRESPONDING VALUE FOR THE
+; DESTINATION SEQUENCE IS MAINTAINED IN D3.L.
+; WE READ THROUGH DEST SEQ (DESTRUCTIVELY, OF COURSE), UPDATING THE D3
+; VALUE AS WE GO, UNTIL IT EQUALS OR EXCEEDS THE A3 SOURCE SEQ VALUE -
+; THIS DEPENDS ON WHETHER OR NOT A TIMING EVENT (TIME OR BAR MARKER)
+; ALREADY EXISTS IN THE DESTINATION SEQUENCE AT THE PRECISE POINT AT
+; WHICH THE SOURCE EVENT IS TO BE POKED IN.
+; IN THE "EXCEEDS" CASE, WE HOLD ASIDE THE BAR MARKER OR TIME MARKER
+; IN QUESTION (IN DI_TEMP_1_B.L) SO THAT THE SOURCE EVENT(S) CAN BE
+; DROPPED IN BEFORE IT - IF IT'S A BAR MARKER, THEN WE ALSO COPY ASIDE
+; ANY A-R EVENT WHICH FOLLOWS IT (INTO BG_TEMP_1_B.L), SINCE A-R EVENTS
+; MUST ALWAYS STAY TOGETHER WITH THEIR BAR MARKERS.
+; (CORRESPONDINGLY, WHEN WE ARE CALLED, OUR FIRST ACTION IS TO CHECK
+; THESE VARIABLES TO SEE IF ANYTHING IS BEING HELD ASIDE IN THEM WHICH
+; SHOULD BE DROPPED BACK INTO THE SEQUENCE BEFORE ROLLING IT FORWARD.)
+; IN ADDITION, A NEW TIME MARKER IS CREATED IN THE DESTINATION SEQUENCE
+; WHICH CORRESPONDS TO THE "SEQUENCE TIME" OF THE POINT AT WHICH THE
+; INSERTION OF SOURCE EVENT(S) IS TO OCCUR.
+; ON THE OTHER HAND, IF WE FIND A TIMING EVENT AT THE PRECISE SPOT WE'RE
+; SEARCHING FOR, WE COPY IT BACK INTO THE SEQUENCE RIGHT AWAY AND RETURN
+; WITH THOSE VARIABLES EMPTY - THE SOURCE EVENT(S) CAN THEN BE INSERTED
+; AFTER THIS TIMING EVENT, AND NO NEW TIME MARKER NEED BE CREATED.
+;
+; GORY REGISTER DETAILS - THE FOLLOWING ARE USED AS INPUT ARGUMENTS:
+; A3.L INDICATES POSITION (CLOCKS) OF CURRENT SOURCE SEQ EVENT TO BE
+; INSERTED, RELATIVE TO BEGINNING OF THE SOURCE SEQUENCE COPY-SEGMENT.
+; D3.L INDICATES POSITION (CLOCKS) OF LAST-PARSED DEST SEQ TIMING EVENT
+; (INCLUDING ANY WHICH IS BEING HELD ASIDE PER ABOVE DISCUSSION),
+; RELATIVE TO THE BEGINNING OF THE DESTINATION SEQUENCE COPY-SEGMENT.
+; D2.L IS SAME AS D3, BUT ONLY WITH RESPECT TO THE LAST BAR-MARKER SEEN.
+; D1.L HOLDS THE TOTAL NUMBER OF CLOCKS CONTAINED IN THE CURRENT DEST
+;      SEQUENCE BAR.
+;
+; D3 WILL BE UPDATED BY US - ALSO D1-D2, IF WE HIT A BAR MARKER.
+; AS FOR OTHER REGISTERS - D0, D5, D7 (AT LEAST) ARE DESTROYED.
+;
+; FINALLY, IF WE HIT THE END OF THE DESTINATION SEQUENCE COPY SEGMENT,
+; WE SET DI_TEMP_5_B(.B) TO INDICATE THIS.
+;
+; WE RETURN, ALWAYS, LIKE A REAL SUBROUTINE SHOULD.  WE DO THIS WITH
+; D0 = 0 IF WE DIDN'T HIT END OF DEST SEQ, OR NOT = 0 IF WE DID -
+; BEYOND THAT, DI_TEMP_5_B(.B) SET IF WE HIT END OF DEST COPY-SEGMENT,
+; LIKE I JUST GOT FINISHED SAYING A FEW LINES EARLIER.
+;
+ADVANCE_DEST
+               CMP.L   A3,D3                ;FIRST OF ALL - ARE WE ALREADY WHERE WE WANNA BE?
+               BGE     ADV_DEST_C0          ;BRANCH IF YES - STRAIGHTEN OUT TIMING INFO AND RETURN.
+;
+               TST.B   DI_TEMP_5_B          ;HAVE WE ALREADY HIT THE END OF DEST SEQ COPY-SEGMENT?
+               BNE     ADV_DEST_G0          ;RETURN IF YES, VIA THE "NOT END OF SEQ" EXIT PATH -
+                                            ;I.E., RETURN D0 = 0.
+;
+                                            ;OKAY - NO REASON TO BAIL, GONNA ROLL DEST SEQ FORWARD:
+               MOVE.L  DI_TEMP_1_B,D7       ;BEFORE WE DO - HOLDING A TIME OR BAR MARKER ASIDE?
+               BEQ.S   ADV_DEST_20          ;BRANCH IF NOT - GO START READING THROUGH SEQUENCE.
+                                            ;ELSE, PUT IT BACK IN WHERE IT BELONGS FIRST -
+               TST     D7                   ;BUT JUST WHAT IS THIS .... "IT"?
+               BEQ.S   ADV_DEST_10          ;LO WORD CLEAR MEANS TIME MARKER IN HI WORD - BRANCH.
+               SWAP    D7                   ;ELSE - BARF MARKER - WRITE HI WORD, THEN LO WORD.
+               JSR     SEQ_WRITE
+               SWAP    D7
+               JSR     SEQ_WRITE
+               MOVE.L  BG_TEMP_1_B,D7       ;DID WE ALSO HOLD ASIDE AN A-R EVENT WITH BAR MARKER?
+               BEQ.S   ADV_DEST_20          ;BRANCH IF NOT - GO ON AND START READIN'.
+               SWAP    D7                   ;ELSE - WRITE HI WORD, THEN LO WORD.
+               JSR     SEQ_WRITE
+ADV_DEST_10
+               SWAP    D7
+               JSR     SEQ_WRITE
+;
+;
+; TOP OF MAIN READ LOOP:
+;
+ADV_DEST_20
+               JSR     SEQ1_DSTR_READ       ;READ DEST SEQ EVENT ID WORD,
+               MOVE    D7,D0                ;ISOLATE THE ID CODE IN D0.
+               AND     #0FH,D0
+ADV_DEST_30
+               CMP     #0FH,D0              ;DID WE HIT THE END OF DESTINATION SEQ? (NEVER SHOULD)
+               BEQ     ADV_DEST_EXIT        ;BRANCH IF YES, EXIT WITH D0 NOT = 0 TO INDICATE THIS.
+               CMP     #8,D0                ;ELSE - IS IT A BAR MARKER?
+               BNE.S   ADV_DEST_70          ;BRANCH IF NOT, SEE IF IT'S A TIME MARKER.
+;
+                                            ;WE DONE HIT A BAR MARKER:
+               SWAP    D7                   ;READ IT OUT, ASSEMBLE IT IN D7.L -
+               JSR     SEQ1_DSTR_READ
+               CMP     D_THRU_BAR,D7        ;HAVE WE HIT THE END OF DESTINATION SEQ COPY-SEGMENT?
+               BLE.S   ADV_DEST_40          ;BRANCH IF NOT - STILL IN THE RUNNING.
+               ST      DI_TEMP_5_B          ;ELSE, SET FLAG TO SAY WE'RE DONE - COPYING, THAT IS.
+ADV_DEST_40
+               MOVE.L  D2,D5                ;SAVE RELATIVE POSITION OF THE PREVIOUS BAR MARKER -
+                                            ;WE'LL NEED IT IF WE HAVE TO CREATE A NEW TIME MARKER.
+               ADD.L   D1,D2                ;UPDATE THIS VALUE TO THAT OF THE BAR MARKER JUST READ.
+               MOVE.L  D2,D3                ;UPDATE CURRENT DESTINATION TOTAL CLOCK COUNT.
+;
+               MOVE.L  D7,DI_TEMP_1_B       ;SAVE COPY OF BAR MARKER IN CASE WE MUST HOLD IT ASIDE,
+               MOVE.L  D7,-(A7)             ;STASH THIS BAR MARKER WHILE WE DECODE IT.
+               JSR     BAR_MARKER_HANDLER
+               MOVE    CLICKS_THIS_BAR,D1   ;D1 = LENGTH IN CLOCKS OF THIS BAR OF DEST SEQUENCE -
+               EXT.L   D1                   ;LEAVE IT LONG FOR USE IN CLOCK-ACCOUNTING.
+               MOVE    (A5),D0              ;"PREVIEW" THE ID WORD OF NEXT DEST SEQ EVENT -
+               AND     #0FH,D0              ;ISOLATE ITS ID CODE.
+               CMP     #11,D0               ;IS IT AN A-R, THEN?
+               BNE.S   ADV_DEST_50          ;BRANCH IF NOT, LEAVE IT WHERE IT IS UNTIL LATER.
+               JSR     SEQ1_DSTR_READ       ;ELSE - READ IT OUT IN CASE WE MUST HOLD IT ASIDE TOO.
+               SWAP    D7
+               JSR     SEQ1_DSTR_READ
+               MOVE.L  D7,BG_TEMP_1_B       ;SAVE A COPY HERE - JUST IN CASE.
+               BRA.S   ADV_DEST_60
+ADV_DEST_50
+               CLR.L   BG_TEMP_1_B          ;NO A-R EVENT NEARBY - CLEAR ITS HOLDING CELL.
+ADV_DEST_60
+               MOVE.L  (A7)+,D7             ;RETRIEVE THAT NEW BAR MARKER AT LAST,
+;
+               MOVEQ   #8,D0                ;RESTORE D0 WITH ID CODE FOR A BAR MARKER EVENT.
+               BRA.S   ADV_DEST_80          ;G'WAN CHECK THE TIME.
+;
+ADV_DEST_70
+               CMP     #9,D0                ;EVENT NOT A BAR MARKER - IS IT A TIME MARKER?
+               BNE.S   ADV_DEST_A0          ;BRANCH IF NOT - SEE IF IT'S A PERFORMANCE EVENT ON
+                                            ;(ONE OF) THE "COPY TO" TRACK(S) AND SHOULD BE ERASED.
+               MOVE    D7,D4                ;ELSE - EXTRACT THE TIME VALUE (CLOCK NUMBER).
+               LSR     #4,D4
+               EXT.L   D4                   ;MAKE IT A LONG-WORD VALUE.
+               MOVE.L  D2,D5                ;SAVE RELATIVE POSITION OF CURRENT DEST SEQ BAR MARK -
+                                            ;WE'LL NEED IT IF WE HAVE TO CREATE A NEW TIME MARKER.
+                                            ;NOTE THAT WE WON'T CHANGE D2 HERE - VALUE IS COPIED
+                                            ;INTO D5 FOR COMPATIBILITY WITH THE BAR MARKER CASE.
+               ADD.L   D2,D4                ;ADD BAR POSITION TO TIME MARKER CLOCK VALUE.
+               MOVE.L  D4,D3                ;UPDATE CURRENT DESTINATION SEQUENCE TOTAL CLOCK COUNT.
+               SWAP    D7                   ;SAVE TIME MARKER IN HI WORD, WITH LO WORD = 0.
+               CLR     D7
+               MOVE.L  D7,DI_TEMP_1_B
+;
+;
+;
+; WE'VE ENCOUNTERED AND HANDLED A DESTINATION SEQ BAR OR TIME MARKER -
+; IT'S IN D7.L (IN STASH FORMAT), AND ITS TYPE ID CODE ISOLATED IN D0.
+; IN ADDITION, A COPY HAS BEEN STASHED IN DI_TEMP_7_B(.L), ASSUMING THAT
+; WE MIGHT DETERMINE THAT IT MARKS A POINT IN TIME BEYOND THE ONE WE
+; WERE TRYING TO REACH, AND WE WILL EXIT WITH THIS INFO HELD ASIDE.
+; NOW LET'S FIGURE OUT WHAT WE WANNA DO WITH THIS STUFF:
+;
+ADV_DEST_80
+               CMP.L   A3,D3                ;HOW DOES DEST SEQ TIME STACK UP AGAINST SOURCE TIME?
+               BGE.S   ADV_DEST_C0          ;BRANCH IF SAME OR LATER - WE'VE GONE FAR ENOUGH.
+               CLR.L   DI_TEMP_1_B          ;ELSE, CLEAR TIMING INFO HELD-ASIDE FLAG - WE'VE GOT TO
+                                            ;PUT IT BACK IN AND KEEP READING THROUGH DEST SEQ.
+               CMP     #8,D0                ;SO - WAS IT A BAR MARKER?
+               BNE.S   ADV_DEST_90          ;BRANCH IF NOT, MUSTA BEEN A TIME MARKER.
+               SWAP    D7                   ;ELSE - WRITE IT BACK INTO SEQUENCE, HI-WORD/LO-WORD.
+               JSR     SEQ_WRITE
+               SWAP    D7
+               JSR     SEQ_WRITE
+               MOVE.L  BG_TEMP_1_B,D7       ;DID WE SAVE AN A-R EVENT ALONG WITH BAR MARKER?
+               BEQ     ADV_DEST_20          ;BRANCH IF NOT, GO ON BACK TO TOP OF READ LOOP.
+               SWAP    D7                   ;ELSE - WRITE IT BACK INTO SEQUENCE, HI-WORD/LO-WORD.
+               JSR     SEQ_WRITE
+ADV_DEST_90
+               SWAP    D7
+               JSR     SEQ_WRITE
+               BRA     ADV_DEST_20          ;GO ON BACK TO TOP OF READ LOOP, FETCH NEXT EVENT.
+;
+;
+;
+; DESTINATION SEQUENCE READ HAS ENCOUNTERED A NON-TIMING EVENT -
+; SHOULD IT STAY OR SHOULD IT GO?
+; (EITHER WAY, WE LOOP BACK UP AND CONTINUE READING.)
+;
+ADV_DEST_A0
+               BSR     CHK_TRACK_NUM        ;ISOLATE ID CODE IN D0 - SEE IF EVENT IS A PERFORMANCE
+                                            ;EVENT MEETING "COPY TO" TRACK SPECIFICATION.
+               BEQ.S   ADV_DEST_B0          ;BRANCH IF NOT - COPY IT BACK IN, GET NEXT EVENT.
+;
+                                            ;IT'S ON (A) "COPY TO" TRACK - ERASE IT:
+               BSR     NOTE_CHECK_ND        ;IF NOTE EVENT - LOG IT IN "NEW" BUF, READ IT OUT AND
+                                            ;DISCARD IT, FETCH AND DECODE THE NEXT EVENT'S ID -
+               BNE     ADV_DEST_30          ;BRANCH IF THESE THINGS WERE IN FACT DONE - LOOP BACK,
+                                            ;WE'RE ALREADY LOOKING AT THE NEXT EVENT.
+               JSR     SEQ1_DRD_EATER       ;ELSE - NO LOGGING, JUST READ IT OUT, GET NEXT EVENT.
+               BRA     ADV_DEST_30          ;LOOP BACK AND DEAL WITH NEXT EVENT.
+;
+ADV_DEST_B0
+               JSR     SEQ1_RMW_EATER       ;EVENT NOT ON "COPY TO" TRACK - COPY IT BACK IN TO
+                                            ;SEQUENCE, FETCH/DECODE NEXT EVENT'S ID -
+               BRA     ADV_DEST_30          ;LOOP BACK AND DEAL WITH NEXT EVENT.
+;
+;
+;
+; WELL, WE'RE THERE - DEST SEQ IS UP TO OR PAST SOURCE SEQ:
+; (WE COME IN WITH Z FLAG SET PER THE OUTCOME OF {DEST-SOURCE} TEST.)
+;
+ADV_DEST_C0
+               BNE.S   ADV_DEST_F0          ;IF NOT EQUAL, THEN DEST MUST BE PAST SOURCE - BRANCH.
+               MOVE.L  DI_TEMP_1_B,D7       ;ELSE, PUT BACK THE TIMING EVENT WE JUST PULLED OUT -
+                                            ;ANY COPIED EVENTS WILL GO IN BEHIND IT.
+               TST     D7                   ;WAS IT A TIME MARKER?  (INDICATED BY LO WORD = 0)
+               BEQ.S   ADV_DEST_D0          ;BRANCH IF YES.
+               SWAP    D7                   ;ELSE, BAR MARKER - WRITE HI WORD, THEN LO WORD.
+               JSR     SEQ_WRITE
+               SWAP    D7
+               JSR     SEQ_WRITE
+               MOVE.L  BG_TEMP_1_B,D7       ;DID WE ALSO HOLD ASIDE AN A-R EVENT?
+               BEQ.S   ADV_DEST_E0          ;BRANCH IF NOT -
+               SWAP    D7                   ;ELSE, BAR MARKER - WRITE HI WORD, THEN LO WORD.
+               JSR     SEQ_WRITE
+ADV_DEST_D0
+               SWAP    D7
+               JSR     SEQ_WRITE
+ADV_DEST_E0
+;
+               CLR.L   DI_TEMP_1_B          ;CLEAR THE TIMING EVENT HOLDING CELL,
+               CLR.L   BG_TEMP_1_B          ;LIKEWISE FOR A-R EVENT HOLDING CELL.
+               BRA.S   ADV_DEST_G0          ;RETURN WITH D0 = 0 (NOT AT END OF DEST SEQUENCE).
+;
+;
+;
+; LAST TIMING EVENT READ FROM DESTINATION SEQUENCE IS LATER THAN THE
+; SOURCE SEQUENCE TIME WE WERE TRYING TO LINE UP WITH -
+; WE MUST GENERATE A NEW TIME MARKER IN DESTINATION SEQUENCE FOR THE
+; SOURCE EVENT(S) TO BE COPIED INTO IT, THEN EXIT WITH DESTINATION SEQ
+; TIMING INFO STILL HELD ASIDE:
+;
+ADV_DEST_F0
+               MOVE.L  A3,D7                ;FETCH SOURCE SEQUENCE RELATIVE POSITION,
+               SUB.L   D5,D7                ;SUBTRACT RELATIVE POS OF DEST SEQ CURRENT BAR MARK -
+                                            ;THIS GIVES US POSITION OF THE SOURCE EVENT RELATIVE TO
+                                            ;THE START OF THE CURRENT DESTINATION SEQUENCE BAR.
+               LSL     #4,D7                ;USE THIS VALUE DIRECTLY TO CREATE NEW TIME MARKER.
+               ADD     #9,D7                ;TACK ON THE TIME MARKER ID CODE,
+               JSR     SEQ_WRITE            ;WRITE TIME MARKER INTO SEQUENCE.
+;
+;
+ADV_DEST_G0
+               CLR.L   D0                   ;RETURN D0 = 0 FOR NORMAL EXIT - DIDN'T HIT END OF SEQ.
+;
+;
+; AND OUT WE GO.
+;
+ADV_DEST_EXIT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; SPECIAL VERSION OF SEQUENCE COPY ROUTINE -
+; FOR CASES WHERE DESTINATION SEQUENCE DOES NOT YET EXIST.
+; WE CREATE A NEW SEQUENCE AND COPY INTO IT.
+; ENTER WITH A0 POINTING TO THE DESTINATION SEQUENCE DIRECTORY BLOCK.
+;
+; NORMALLY RETURNS Z FLAG TRUE - RETURNS Z FLAG FALSE IF THE COPY HAD TO
+; BE TERMINATED BEFORE COMPLETION OWING TO SEQ MEMORY BECOMING FULL.
+;
+EXTRACT_SEQ
+               MOVE    #-1,Q_START_BLK(A0)  ;THIS VALUE AS A MEMORY BLOCK LINK INDEX INDICATES
+                                            ;END OF STRING - I.E., SEQUENCE OF LENGTH ZERO -
+                                            ;AND CAUSES THE RIGHT THINGS TO BE DONE BY RD/WR SETUP.
+               MOVE.L  A0,-(A7)             ;STASH DEST SEQ DIR BLOCK POINTER FOR USE AFTER WE ARE
+                                            ;DONE COPYING DATA INTO DEST SEQ.
+               JSR     SEQ1_DRD_SETUP       ;SET UP FOR WRITING INTO NEW SEQUENCE.
+               MOVE    S_FROM_BAR,D2        ;IN D2, COMPUTE NUMBER OF BARS SKIPPED FROM SOURCE SEQ
+               SUBQ    #1,D2                ;START TO START OF SOURCE COPY-SEGMENT - IT'LL BE USED
+                                            ;TO ADJUST COPIED BAR MARKERS IN THE NEW SEQUENCE.
+               BSR     FAST_TO_S_BAR        ;DO NON-DESTRUCTIVE READ FROM START OF SOURCE SEQUENCE
+                                            ;UP TO START OF COPY SEGMENT - LOG NOTES IN "OLD" BUFS.
+               SWAP    D7                   ;RETURNS WITH BAR MARKER IN D7.L - WRITE FIRST WORD.
+               JSR     SEQ_WRITE
+               MOVEQ   #1,D7                ;THIS IS FIRST BAR OF NEW SEQ, GIVE IT BAR NUMBER = 1.
+               JSR     SEQ_WRITE
+;
+               JSR     SEQ_NDSTR_READ       ;READ ID WORD OF NEXT SOURCE SEQ EVENT,
+               MOVE    D7,D0                ;ISOLATE ITS ID CODE IN D0.
+               AND     #0FH,D0
+               CMP     #11,D0               ;IS IT AN A-R EVENT?
+               BNE.S   EXTRACT_000          ;BRANCH IF NOT - LEAVE IT WHERE IT IS FOR NOW.
+               JSR     SEQ_WRITE            ;ELSE, MUST KEEP IT TOGETHER WITH ITS BAR MARKER -
+               JSR     SEQ_NDSTR_READ       ;COPY IT TO NEW SEQUENCE RIGHT NOW.
+               JSR     SEQ_WRITE            ;AND THAT'S TWO WORDS, BOYS.
+EXTRACT_000
+               MOVEM.L  D0-D7,-(A7)         ;STASHA BUNCHA REGISTERS.
+               MOVE.L  A6,SEQ_WR_PTR        ;STASH WRITE POINTER FOR USE BY NOTE-WRITE ROUTINES.
+                ABS_LONG
+               JSR     WRITE_OLD_M_ONS      ;WRITE NOTE-ONS IN DESTINATION SEQUENCE FOR NOTES HELD
+               JSR     WRITE_OLD_P_ONS      ;ON AT THE START OF THE SOURCE SEQUENCE COPY-SEGMENT.
+                ABS_SHORT
+               MOVE.L  SEQ_WR_PTR,A6        ;RETRIEVE (UPDATED) SEQUENCE WRITE POINTER.
+               MOVEM.L (A7)+,D0-D7          ;AND THEM REGGIE-STIRS, TOO.
+               CMP     #11,D0               ;WAS LAST EVENT READ FROM SOURCE SEQUENCE AN A-R EVENT?
+               BNE.S   EXTRACT_0            ;BRANCH IF NOT - EVENT STILL NEEDS TO BE DEALT WITH.
+;
+EXTRACT_00
+               JSR     SEQ_NDSTR_READ       ;READ ID WORD OF NEXT SOURCE SEQUENCE EVENT.
+EXTRACT_0
+               TST.B   SEQ_MEM_FULL         ;HAS SEQUENCE MEMORY BECOME FULL LATELY?
+               BNE.S   EXTRACT_X            ;BRANCH IF YES - WRAP UP SEQ, THEN DELETE IT AND EXIT.
+               BSR     S_CHK_TRACK_NUM      ;ELSE - SEE IF IT'S A PERF EVENT MATCHING "COPY FROM"
+                                            ;TRACK SPECIFICATION (AND ISOLATE ITS ID CODE IN D0) -
+               BNE.S   EXTRACT_1            ;BRANCH IF YES, GO COPY IT.
+               CMP     #6,D0                ;ELSE - WAS IT A PERFORMANCE EVENT ANYWAY?
+               BLE.S   EXTRACT_4            ;BRANCH IF YES, JUST READ THROUGH IT TO NEXT EVENT.
+               CMP     #8,D0                ;NOT PERFORMANCE EVENT - WAS IT (GASP) A BAR MARKER?
+               BNE.S   EXTRACT_3            ;BRANCH IF NOT - COPY ANYTHING ELSE "AS IS".
+;
+               JSR     SEQ_WRITE            ;BAR MARKER - COPY FIRST WORD UNCHANGED.
+               JSR     SEQ_NDSTR_READ       ;READ BAR NUMBER WORD -
+               MOVE    D7,D0                ;SAVE COPY OF BAR NUMBER FOR END-OF-COPY-SEGMENT TEST,
+               SUB     D2,D7                ;ADJUST IT FOR WRITE INTO DESTINATION SEQUENCE,
+               JSR     SEQ_WRITE            ;WRITE IT OUT THERE.
+               CMP     S_THRU_BAR,D0        ;HAVE WE GONE PAST THE END OF SOURCE SEQ COPY-SEGMENT?
+               BGT.S   EXTRACT_X            ;BRANCH IF YES - TIE THINGS UP, EXIT.
+               BRA.S   EXTRACT_00           ;ELSE - BACK TO TOP, FETCH AND HANDLE NEXT EVENT.
+;
+EXTRACT_1
+                                            ;GOT A SOURCE PERFORMANCE EVENT WE WANNA COPY TO DEST:
+               MOVE    TO_TRACK_NUM,D1      ;FETCH "COPY TO" TRACK SETTING -
+               BEQ.S   EXTRACT_2            ;BRANCH IF COPY TO "ALL" TRACKS, DON'T ALTER THE EVENT.
+               CMP     #9,D1                ;CHECK BOTH POSSIBILITIES FOR "COPY TO ALL TRACKS".
+               BEQ.S   EXTRACT_2
+               SUBQ    #1,D1                ;ELSE, COPYING TO ONE TRACK - SUPERIMPOSE THIS TRACK
+               LSL     #4,D1                ;NUMBER ON THE EVENT BEING COPIED.
+               AND     #0FF8FH,D7
+               OR      D1,D7
+EXTRACT_2
+               BSR     NOTE_CHECK_W         ;IF NOTE EVENT - LOG IT TO "OLD" BUFFER (USING NEW
+                                            ;TRACK NUMBER, IF IT WAS CHANGED, BY THE WAY), COPY IT
+                                            ;INTO DEST SEQ, READ TO NEXT SOURCE EVENT, FETCH AND
+                                            ;DECODE ITS ID -
+               BNE     EXTRACT_0            ;BRANCH IF WAS A NOTE EVENT AND ALL O' THAT GOT DONE -
+                                            ;GO BACK UP AND DEAL WITH NEXT EVENT - ELSE,
+EXTRACT_3
+               JSR     SEQ_NDRMW_EATER      ;NON-NOTE EVENT - COPY IT TO DEST SEQ, READ THROUGH
+                                            ;SOURCE SEQ TO NEXT EVENT, FETCH/DECODE ITS ID -
+               BRA     EXTRACT_0            ;LOOP BACK UP AND SEE WHAT NEW EVENT IS.
+;
+EXTRACT_4
+               JSR     SEQ_NDRD_EATER       ;READ THROUGH A PERFORMANCE EVENT NOT ON SOURCE SEQ
+                                            ;"COPY FROM" TRACK - FETCH/DECODE NEXT EVENT'S ID WORD.
+               BRA     EXTRACT_0            ;LOOP BACK UP AND SEE WHAT NEW EVENT IS.
+;
+;
+;
+; WE'RE DONE - WE HIT THE END OF THE SOURCE SEQUENCE COPY-SEGMENT,
+; OR ELSE RAN OUT OF FREE MEMORY - GO THROUGH SAME MOTIONS EITHER WAY:
+;
+EXTRACT_X
+               MOVE.L  A6,SEQ_WR_PTR        ;STASH WRITE POINTER FOR USE BY NOTE-WRITE ROUTINES.
+                ABS_LONG
+               JSR     WRITE_OLD_M_OFFS     ;BALANCE ANY REMAINING SUSTAINED NOTES BY WRITING
+               JSR     WRITE_OLD_P_OFFS     ;MATCHING NOTE-OFF EVENTS FOR THEM.
+                ABS_SHORT
+               MOVE.L  SEQ_WR_PTR,A6        ;RETRIEVE (UPDATED) SEQUENCE WRITE POINTER.
+               MOVEQ   #0FH,D7              ;WRITE THE END OF SEQUENCE MARKER.
+               JSR     SEQ_WRITE
+               JSR     SEQ_TURNAROUND       ;TIE UP THE ENDS OF THE SEQUENCE,
+               JSR     UPDATE_SEQ_SIZE      ;UPDATE MEMORY USAGE FIGURES.
+;
+;
+; NOW DIDDLE DIRECTORY BLOCK PARAMETERS:
+;
+               MOVE    FROM_SEQ_NUM,D0      ;SET A0 AS POINTER TO SOURCE SEQUENCE DIR BLOCK -
+               JSR     GET_SEQ_DIR_PTR      ;WE'LL USE DIRECT OR MODIFIED COPIES OF SOME PARAMS.
+               MOVE.L  (A7)+,A1             ;RETRIEVE DESTINATION SEQ DIR BLOCK POINTER INTO A1.
+               MOVE    Q_INIT_TEMPO(A0),Q_INIT_TEMPO(A1)   ;COPY INITIAL TEMPO OF SOURCE SEQ.
+               MOVE.L  Q_TIME_NUM(A0),Q_TIME_NUM(A1)       ;COPY INITIAL TIME SIG (NUM AND DENOM).
+               MOVE.L  Q_NAME(A0),Q_NAME(A1)               ;COPY ITS NAME.
+               MOVE.L  Q_NAME+4(A0),Q_NAME+4(A1)
+               MOVE    #0FFFFH,Q_STATUS(A1)                ;SET STATUS WORD TO SAY "SEQ EXISTS".
+;
+               MOVE    S_THRU_BAR,D0        ;CALCULATE THE NUMBER OF BARS IN THE NEW SEQUENCE,
+               SUB     S_FROM_BAR,D0
+               ADDQ    #1,D0
+               MOVE    D0,Q_TOTAL_BARS(A1)  ;SET "TOTAL BARS" PARAMETER - ALSO DEFAULT LOOP END ...
+;
+               MOVE.B  Q_RPT_COUNT(A0),D4   ;DEFAULT TO SAME NUMBER OF REPEATS AS USED IN SOURCE.
+               MOVE    Q_RPT_START(A0),D1   ;FETCH SOURCE SEQ REPEAT LOOP START BAR NUMBER,
+               SUB     D2,D1                ;ADJUST IT BY NUMBER OF SOURCE BARS SKIPPED FROM START.
+               BMI.S   EXTRCT_X_20          ;BR IF LOOP START NOT INCL IN COPY - SET DEFAULT LOOP.
+               MOVE    Q_RPT_END(A0),D3     ;FETCH SOURCE SEQ REPEAT LOOP END BAR NUMBER,
+               SUB     D2,D3                ;ADJUST IT BY NUMBER OF SOURCE BARS SKIPPED FROM START.
+               CMP     D0,D3                ;SEE IF LOOP END WAS WITHIN COPY-SEGMENT -
+               BLE.S   EXTRCT_X_40          ;BRANCH IF YES - SET UP THE ADJUSTED LOOP IN NEW SEQ.
+EXTRCT_X_20
+               MOVEQ   #1,D1                ;LOOP NOT COMPLETELY COPIED - DEFAULT START TO BAR 1,
+               MOVE    D0,D3                ;DEFAULT LOOP END TO END OF SEQUENCE,
+               ST      D4                   ;DEFAULT TO INFINITE LOOPING.
+EXTRCT_X_40
+               MOVE    D1,Q_RPT_START(A1)   ;INSTALL REPEAT LOOP PARAMETERS AS DETERMINED ABOVE.
+               MOVE    D3,Q_RPT_END(A1)
+               MOVE.B  D4,Q_RPT_COUNT(A1)
+;
+               TST.B   SEQ_MEM_FULL         ;DID WE STOP BEFORE DONE OWING TO MEMORY SHORTAGE?
+               BEQ.S   EXTRCT_X_EXIT        ;BRANCH IF NOT, RETURN WITH "OK" Z FLAG.
+               MOVE    #1,D_FROM_BAR             ;ELSE - DELETE THE NEW SEQUENCE,
+               MOVE    Q_TOTAL_BARS(A1),D_THRU_BAR
+               BSR     DELETE_SEQ
+               ST      D0                        ;RETURN "NOT Z" TO INDICATE THIS RESULT.
+;
+EXTRCT_X_EXIT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; ERASE SUPERFLUOUS TIME MARKERS IN CURRENT_SEQUENCE -
+; NAMELY, THOSE DIRECTLY FOLLOWED BY BAR MARKER OR ANOTHER TIME MARKER.
+; USED UPON EXIT FROM COPY FUNCTION.
+;
+ERASE_TIME     JSR     SEQ1_DRD_SETUP
+ERASE_TIME_0   JSR     SEQ1_DSTR_READ           ;GET FIRST WORD OF SEQUENCE
+               MOVE    D7,D0
+               AND     #0FH,D0
+ERASE_TIME_1   CMP     #0FH,D0
+               BEQ.S   ERASE_TIME_X
+               CMP     #9,D0                    ;IS IT A TIME MARKER
+               BNE.S   ERASE_TIME_2             ;IF NOT KEEP LOOKING
+ERASE_TIME_15  MOVE    D7,D1                    ;IF IT IS THEN SAVE TIME MARKER
+               JSR     SEQ1_DSTR_READ           ;SEE IF NEXT WORD IS ALSO A TIME MARKER
+               MOVE    D7,D0
+               MOVE    D7,D2
+               AND     #0FH,D0
+               CMP     #9,D0
+               BEQ.S   ERASE_TIME_15            ;IF IT IS A TIME MARKER THEN DONT SAVE THE PREVIOUS TIME MARKER
+               CMP     #8,D0                    ;ALSO ERASE TIME MARKER IF NEXT WORD IS A BAR MARKER
+               BEQ.S   ERASE_TIME_2
+               CMP     #0FH,D0
+               BEQ.S   ERASE_TIME_X             ;IF END OF SEQUENCE THEN WE ARE DONE
+               MOVE    D1,D7                    ;IF NOT A TIME MARKER
+               JSR     SEQ_WRITE                ;THEN SAVE PREVIOUS TIME MARKER
+               MOVE    D2,D7                    ;GET BACK SECOND EVENT
+ERASE_TIME_2   JSR     SEQ1_RMW_EATER           ;AND SAVE TO SEQUENCE
+               BRA.S   ERASE_TIME_1
+;
+ERASE_TIME_X   JSR     SEQ_WRITE                ;SAVE END OF SEQUENCE MARKER
+               JSR     SEQ_TURNAROUND
+               JSR     UPDATE_SEQ_SIZE
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+SEQ_INSERT_SUB
+               ASC     "INSERT FROM S.  "
+               ASC     "BARS     -->    "
+
+;FROM/TO SELECTION FIELD
+               DC.B    7
+               DC.B    4
+               DC.W    ACCESS+SET_PTR
+               DC.L    CLEAR_FROMTO
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    TO_FROM_STR
+               DC.W    EDIT+HI_LIMIT
+               DC.W    1
+               DC.W    EDIT+ENTR_VEC
+               DC.L    GO_TO_INSERT_TO
+               DC.W    EDIT+ED_VEC
+               DC.L    IN_SEQ_INS_2
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    FIELD_END
+
+;SEQUENCE NUMBER FIELD
+
+               DC.B    14
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    FROM_SEQ_NUM
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    DISPLAY+MAX_LIMIT
+               DC.W    99
+               DC.W    DISPLAY+MAX_STRNG
+               DC.L    XX_EMPTY_BAR_STRING
+               DC.W    EDIT+HI_LIMIT
+               DC.W    99
+               DC.W    EDIT+ENTR_VEC
+               DC.L    GO_TO_INSERT_TO
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+
+;"FROM" BAR FIELD
+
+               DC.B    21
+               DC.B    3
+               DC.W    ACCESS+SET_PTR
+               DC.L    ACC_SFROM_BAR
+               DC.W    ACCESS+WORD
+               DC.W    EDIT+ENTR_VEC
+               DC.L    GO_TO_INSERT_TO
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    BAR_SF_LIMIT
+               DC.W    FIELD_END
+
+;"THRU" BAR FIELD
+
+               DC.B    29
+               DC.B    3
+               DC.W    ACCESS+SET_PTR
+               DC.L    ACC_STHRU_BAR
+               DC.W    ACCESS+WORD
+               DC.W    EDIT+ENTR_VEC
+               DC.L    GO_TO_INSERT_TO
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    BAR_ST_LIMIT
+               DC.W    SUBFUN_END
+
+INSERT_SUB_2
+               ASC     "INSERT INTO S.  "
+               ASC     "START AT BAR    "
+
+;FROM/TO SELECTION FIELD
+               DC.B    7
+               DC.B    4
+               DC.W    ACCESS+DIR_PTR
+               DC.W    SONG_EVENT
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    TO_FROM_STR
+               DC.W    EDIT+HI_LIMIT
+               DC.W    1
+               DC.W    EDIT+ENTR_VEC
+               DC.L    INSERT_SEQ
+               DC.W    EDIT+ED_VEC
+               DC.L    IN_SEQ_INS_1
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    FIELD_END
+;
+               DC.B    14                   ;DESTINATION SEQUENCE NUMBER FIELD.
+               DC.B    2
+               DC.W    ACCESS+SET_PTR
+               DC.L    ACC_TO_SEQ_NUM
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+HI_LIMIT
+               DC.W    98
+               DC.W    EDIT+ENTR_VEC
+               DC.L    INSERT_SEQ
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+;
+;"START AT" BAR FIELD
+
+               DC.B    29
+               DC.B    3
+               DC.W    ACCESS+SET_PTR
+               DC.L    ACC_INS_AT_BAR
+               DC.W    ACCESS+WORD
+               DC.W    EDIT+ENTR_VEC
+               DC.L    INSERT_SEQ
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    LIMIT_IDT_BAR
+               DC.W    SUBFUN_END
+
+
+CLEAR_FROMTO   CLR     SONG_EVENT
+               MOVE.L  #SONG_EVENT,D0
+               RTS
+
+IN_SEQ_INS_1   TST     SONG_EVENT
+               BNE.S   IN_SEQ_INS_10
+               MOVE.L  #SEQ_INSERT_SUB,CUR_SUB_BLOCK       ;REINSTALL FIRST SCREEN
+               ST      SUBFUN_INSTALL
+IN_SEQ_INS_10  RTS
+
+IN_SEQ_INS_2   TST     SONG_EVENT
+               BEQ.S   IN_SEQ_INS_20
+GO_TO_INSERT_TO
+               MOVE    #1,SONG_EVENT
+               MOVE.L  #INSERT_SUB_2,CUR_SUB_BLOCK         ;REINSTALL SECOND SCREEN
+               ST      SUBFUN_INSTALL
+IN_SEQ_INS_20  RTS
+;
+;
+;
+ACC_INS_AT_BAR
+               MOVE    TO_SEQ_NUM,D0        ;CHECK DESTINATION SEQ STATUS -
+               JSR     GET_SEQ_DIR_PTR
+               TST     Q_STATUS(A0)         ;DOES IT EXIST?
+               BNE.S   ACC_INSAT_10         ;BRANCH IF YES, GO ON -
+               MOVE    #1,D_THRU_BAR        ;ELSE, SAY WE START AT BAR 1 - WON'T ACT, IN REALITY.
+               BRA.S   ACC_INSAT_50         ;SET UP POINTER TO THIS VARIABLE, EXIT.
+;
+ACC_INSAT_10
+               MOVE    Q_TOTAL_BARS(A0),D_THRU_BAR    ;DEFAULT TO INSERTION AT END OF DEST SEQ.
+               ADDQ    #1,D_THRU_BAR
+ACC_INSAT_50
+               MOVE.L  #D_THRU_BAR,D0       ;RETURN POINTER TO THIS VAR IN D0(.L).
+               RTS
+;
+;
+;
+LIMIT_IDT_BAR
+               MOVE    #1,PARAM_LO_LIM      ;NEVER CAN INSERT AT BAR NUMBER LESS THAN 1, EH?
+               MOVE    #1,PARAM_HI_LIM      ;DEFAULT UPPER LIMIT SAME, IN CASE DEST SEQ IS EMPTY.
+               MOVE    TO_SEQ_NUM,D0        ;HOW BIG'S THE DESTINATION SEQ?
+               JSR     GET_SEQ_DIR_PTR      ;POINT TO ITS DIRECTORY BLOCK USING A0 -
+               TST     Q_STATUS(A0)         ;DOES IT EXIST?
+               BEQ.S   LIM_IDT_20           ;BRANCH IF NOT - OUR ABOVE DEFAULT IS APPLICABLE.
+               MOVE    Q_TOTAL_BARS(A0),PARAM_HI_LIM ;ELSE, SET UPPER LIMIT TO LAST BAR PLUS ONE.
+               ADDQ    #1,PARAM_HI_LIM
+LIM_IDT_20
+                ABS_LONG
+               JSR     SET_ENTER_FLASH
+                ABS_SHORT
+               RTS
+;
+;
+;
+INSERT_SCRN    ASC     " INSERTING .... "
+               ASC     "                "
+;
+;
+XX_EMPTY_BAR_STRING
+               DC.B    14
+               DC.B    2
+               ASC     "xx"
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; "SEQUENCE INSERT" ROUTINE:
+; ENTER SWITCH VECTOR ROUTINE FOR SEQUENCE "INSERT" FUNCTION,
+; ALSO USED BY WORK-LOOP RETURN FUNCTION.
+;
+INSERT_SEQ
+               JSR     SEQ_RUNNING_TEST     ;IS SEQUENCER RUNNING? (NOT COOL TO AUTO-STOP IT ....)
+               BNE     INS_SEQ_STALL        ;EXIT IF YES (MESSAGE IS IN LCD ....)
+;
+               BSR     NULL_SEQ_TEST        ;IS USER TRYING TO INSERT INTO THE null seqUENCE?
+               BNE     INS_SEQ_STALL        ;EXIT IF YES (MESSAGE IS IN LCD ....)
+;
+               BSR     CHECK_MEM_FULL       ;CHECK TO SEE WHETHER THERE IS ADEQUATE FREE SEQ MEMORY
+                                            ;FOR INSERT - SINCE WORKING WITHIN ONE SEQ, FREE MEMORY
+                                            ;MUST EXCEED THE SIZE OF THE SEQUENCE ITSELF IN ORDER
+                                            ;TO GUARANTEE INTEGRITY OF THE SOURCE DATA ....
+;
+               BNE     INSERT_SX_01         ;EXIT AND POST MESSAGE IF FREE MEMORY IS NOT ADEQUATE -
+                                            ;A1 CONTAINS POINTER TO ERROR MESSAGE TEXT.
+;
+;
+INSERT_SEQ_0
+               MOVE    FROM_SEQ_NUM,D0      ;SETUP FOR NON-DESTRUCTIVE READ OF SOURCE SEQ.
+               JSR     GET_SEQ_DIR_PTR
+               TST     Q_STATUS(A0)         ;AH, BUT - IS THIS SEQUENCE EMPTY?
+               BNE.S   INS_SEQ_00           ;BRANCH IF NOT, CONTINUE -
+               MOVE.L  #SRC_EMPTY_SCRN,A1   ;ELSE FETCH POINTER TO ERROR MESSAGE TEXT, THEN EXIT.
+               BRA.S   INS_SEQ_04
+INS_SEQ_00
+               JSR     SEQX_NDRD_SETUP      ;SOURCE NOT EMPTY - SET UP THE READ (DOESN'T HURT).
+               MOVE    TO_SEQ_NUM,CURRENT_SEQUENCE    ;DEST SEQ BECOMES THE "CURRENT" SEQUENCE,
+                                                      ;OUT OF DEFERENCE TO "REPLACE WORKLOOP".
+               JSR     GET_CUR_SEQ_DIR      ;SET A0 AS POINTER TO ITS DIR BLOCK -
+               TST     Q_STATUS(A0)         ;DOES DESTINATION SEQUENCE EXIST?
+               BNE.S   INS_SEQ_08           ;BRANCH IF YES, GO ON -
+               MOVE.L  #DST_EMPTY_SCRN,A1   ;ELSE FETCH POINTER TO ERROR MESSAGE TEXT, THEN EXIT.
+INS_SEQ_04
+               BRA     INSERT_SX_01         ;QUICK EXIT - DISPLAY ERROR MESSAGE POINTED TO BY A1.
+;
+;
+INS_SEQ_08
+               MOVE.L  #INSERT_SCRN,A1      ;OTHERWISE DO THE INSERT
+               BSR     DISP_SCREEN          ;TELL USER WHAT WERE DOING
+               BSR     SOLID_ENTER
+               MOVE    #2700H,SR
+;
+               SF      BG_TEMP_1_B          ;SET THIS FLAG IF MEM BECOMES FULL BEFORE WE'RE DONE.
+;
+;
+;
+; READ THROUGH DESTINATION SEQUENCE TO "INSERT" POINT:
+;
+INSERT_SEQ_01
+               JSR     SEQ1_DRD_SETUP
+;
+INSERT_SEQ_1   JSR     SEQ1_DSTR_READ           ;FAST_FORWARD TO INSERT BAR OF DESTINATION
+               MOVE    D7,D0
+               AND     #0FH,D0
+INS_SEQ_1      BSR     NOTE_CHECK_NDW
+               BNE.S   INS_SEQ_1
+               CMP     #8,D0
+               BNE.S   INS_SEQ_2                ;LOOK FOR BAR MARKER
+               MOVE    D7,D5                    ;SAVE BAR MARKER FOR LATER USE
+               JSR     SEQ1_DSTR_READ
+               MOVE    D7,D6
+               CMP     D_THRU_BAR,D7
+               BEQ.S   INS_SEQ_3                ;IS THIS THE SPOT TO INSERT
+               MOVE    D5,D7
+               JSR     SEQ_WRITE                ;IF NOT GO AHEAD AND WRITE BAR MARKER
+               MOVE    D6,D7
+               JSR     SEQ_WRITE                ;AND WRITE BAR #
+               BRA.S   INSERT_SEQ_1
+;
+INS_SEQ_2      JSR     SEQ1_RMW_EATER           ;EAT THIS EVENT
+               BRA.S   INS_SEQ_1
+;
+;
+;
+; WE'VE READ THROUGH DESTINATION SEQUENCE TO "INSERT" POINT:
+;
+INS_SEQ_3
+               MOVE    FROM_SEQ_NUM,D0      ;SEE IF WE'RE INSERTING AN EMPTY BAR -
+               CMP     #99,D0               ;WE ARE, IF SOURCE SEQUENCE IS THE "NULL" SEQUENCE.
+               BNE.S   INS_SEQ_30           ;BRANCH IF IT AIN'T,
+               JSR     GET_SEQ_DIR_PTR      ;ELSE SET A0 AS POINTER TO ITS DIRECTORY BLOCK -
+                                            ;CREATE EMPTY BAR USING TIME SIG SET FOR "NULL" SEQ.
+               MOVE    Q_TIME_NUM(A0),D7
+               LSL     #4,D7
+               ADD     Q_TIME_DENOM(A0),D7
+               LSL     #4,D7
+               ADDQ    #8,D7
+               JSR     SEQ_WRITE                ;WRITE BAR MARKER TO SEQUENCE
+               MOVE    D_THRU_BAR,D7
+               JSR     SEQ_WRITE                ;WRITE BAR NUMBER TO SEQUENCE
+               MOVE.L  A6,SEQ_WR_PTR
+                ABS_LONG
+               JSR     WRITE_NEW_M_OFFS     ;AMPUTATE ANY NOTES SUSTAINING AT THIS POINT IN DEST
+               JSR     WRITE_NEW_P_OFFS     ;SEQUENCE - AND WE AIN'T GONNA TURN 'EM ON AGAIN LATER.
+                ABS_SHORT
+               MOVEQ   #1,D1                    ;AMOUNT TO ADJUST BAR MARKERS BY
+               BRA     INS_SEQ_501
+;
+;
+; WE'RE DOING "NORMAL" (NOT "EMPTY-BAR") INSERTION:
+; READ THRU SOURCE SEQUENCE TO BEGINNING OF THE INSERT-SEGMENT.
+;
+INS_SEQ_30     JSR     SEQ_NDSTR_READ           ;GET STATUS WORD OF SOURCE
+               MOVE    D7,D0
+               AND     #0FH,D0                  ;GET ID #
+INS_SEQ_31     BSR     NOTE_CHECK               ;CHECK FOR AND LOG NOTE EVENTS
+               BNE.S   INS_SEQ_31
+               CMP     #8,D0                    ;LOOK FOR BAR MARKER
+               BNE.S   INS_SEQ_32
+               MOVE    D7,D3                    ;SAVE BAR MARKER FOR LATER USE
+               JSR     SEQ_NDSTR_READ           ;GET BAR #
+               MOVE    D7,D4                    ;SAVE BAR # FOR LATER USE
+               CMP     S_FROM_BAR,D7            ;ARE WE AT INSERT POINT
+               BNE.S   INS_SEQ_30               ;IF NOT KEEP GOING
+               BRA.S   INS_SEQ_4
+;
+INS_SEQ_32     JSR     SEQ_NDRD_EATER
+               BRA.S   INS_SEQ_31
+;
+;
+;
+; WE'VE REACHED BEGINNING OF THE SOURCE SEQUENCE INSERT-SEGMENT:
+;
+INS_SEQ_4      MOVE    D3,D7                    ;WRITE BAR MARKER TO SEQUENCE
+               JSR     SEQ_WRITE
+               MOVE    D4,D7
+               MOVE    D_THRU_BAR,D1            ;ADJUST BAR #
+;
+               MOVE    S_FROM_BAR,D2        ;THIS MAY BE TOTALLY EXTARNEOUS ....
+;
+               SUB     S_FROM_BAR,D1
+               ADD     D1,D7
+               JSR     SEQ_WRITE                ;SAVE BAR # TO SEQUENCE
+               JSR     SEQ_NDSTR_READ           ;GET NEXT STATUS AFTER BAR #
+               MOVE    D7,D0
+               AND     #0FH,D0                  ;GET ITS ID #
+               CMP     #11,D0                   ;IS IT AN A/R MARKER
+               BNE.S   INS_SEQ_40
+               JSR     SEQ_WRITE
+               JSR     SEQ_NDSTR_READ       ;DON'T FORGET - A-R EVENT IS TWO WORDS ....
+               JSR     SEQ_WRITE
+INS_SEQ_40
+               MOVE.L  A6,SEQ_WR_PTR
+               MOVEM.L D0-D7,-(A7)
+                ABS_LONG
+               JSR     WRITE_NEW_M_OFFS     ;AMPUTATE ANY NOTES SUSTAINING AT THIS POINT IN DEST
+               JSR     WRITE_NEW_P_OFFS     ;SEQUENCE - AND WE AIN'T GONNA TURN 'EM ON AGAIN LATER.
+               JSR     WRITE_OLD_M_ONS          ;TURN ON ANY NOTES THAT WERE ON AT INSERT POINT OF SOURCE
+               JSR     WRITE_OLD_P_ONS
+                ABS_SHORT
+               MOVEM.L  (A7)+,D0-D7
+               MOVE.L  SEQ_WR_PTR,A6
+               CMP     #11,D0
+               BEQ.S   INS_SEQ_41
+               CMP     #8,D0                    ;LOOK FOR BAR MARKER
+               BNE.S   INS_SEQ_401
+               JSR     SEQ_WRITE                ;SAVE BAR MARKER
+               JSR     SEQ_NDSTR_READ           ;GET BAR NUMBER
+               ADD     D1,D7                    ;ADJUST IT
+               JSR     SEQ_WRITE                ;SAVE TO SEQUENCE
+               BRA.S   INS_SEQ_41
+;
+INS_SEQ_401    JSR     SEQ_NDRMW_EATER
+               BRA.S   INS_SEQ_42
+;
+;
+;
+; WE'VE DONE NOTE-BALANCING AS APPROPRIATE (?) -
+; START INSERTING DATA FROM SOURCE SEQUENCE:
+;
+INS_SEQ_41     JSR     SEQ_NDSTR_READ           ;START INSERTING THE SOURCE
+               MOVE    D7,D0
+               AND     #0FH,D0
+INS_SEQ_42     BSR     NOTE_CHECK_W
+               BEQ.S   INS_SEQ_420
+               TST.B   SEQ_MEM_FULL             ;IF MEMORY IS FULL STOP INSERTING
+               BEQ     INS_SEQ_42
+               ST      BG_TEMP_1_B          ;SET FLAG TO INDICATE (MAY LOSE SEQ_MEM_FULL BELOW).
+               BRA.S   INS_SEQ_5
+;
+INS_SEQ_420    CMP     #8,D0                    ;LOOK FOR BAR MARKER
+               BNE.S   INS_SEQ_43
+               MOVE    D7,D3                    ;SAVE BAR MARKER TO SEQUENCE
+               JSR     SEQ_NDSTR_READ           ;GET BAR #
+               CMP     S_THRU_BAR,D7            ;SEE IF THIS IS THE LAST BAR TO INSERT FROM SOURCE
+               BGT.S   INS_SEQ_5
+               MOVE    D7,D2                    ;SAVE BAR NUMBER FOR LATER USE
+               ADD     D1,D7                    ;IF NOT ADJUST BAR #
+               EXG     D3,D7
+               JSR     SEQ_WRITE                ;WRITE BAR MARKER
+               MOVE    D3,D7
+               JSR     SEQ_WRITE                ;AND SAVE TO SEQUENCE
+               TST.B   SEQ_MEM_FULL             ;IF MEMORY IS FULL DONT INSERT
+               BEQ     INS_SEQ_41
+               ST      BG_TEMP_1_B          ;SET FLAG TO INDICATE (MAY LOSE SEQ_MEM_FULL BELOW).
+               BRA.S   INS_SEQ_5
+;
+INS_SEQ_43     JSR     SEQ_NDRMW_EATER
+               TST.B   SEQ_MEM_FULL             ;IF MEMORY IS FULL THEN STOP INSERTING
+               BEQ     INS_SEQ_42
+               ST      BG_TEMP_1_B          ;SET FLAG TO INDICATE (MAY LOSE SEQ_MEM_FULL BELOW).
+;
+;
+;
+; WE'RE DONE INSERTING DATA FROM THE SOURCE SEQUENCE -
+; NOW GO THRU REST OF DESTINATION SEQUENCE AND ADJUST BAR NUMBERS:
+;
+INS_SEQ_5      MOVE    D2,D1                    ;FIGURE OFFSET OF BAR #
+               SUB     S_FROM_BAR,D1
+               ADDQ    #1,D1
+;
+                                            ;BRANCH IN HERE AFTER "EMPTY-BAR" INSERTION.
+;
+INS_SEQ_501    MOVE    D5,D7                    ;GET FIRST BAR MARKER OF SECOND 1/2 OF DESTINATION
+               JSR     SEQ_WRITE
+               MOVE    D6,D7                    ;GET BAR # OF FIST BAR OF SECOND 1/2 OF DESTINATION
+               ADD     D1,D7                    ;ADJUST IT
+               JSR     SEQ_WRITE                ;SAVE IN SEQUENCE
+               MOVE.L  A6,SEQ_WR_PTR
+               MOVEM.L D0-D7,-(A7)
+                ABS_LONG
+               JSR     WRITE_OLD_M_OFFS         ;TURN OFF ANY NOTES HELD IN SOURCE AT END OF INSERT
+               JSR     WRITE_OLD_P_OFFS
+                ABS_SHORT
+               MOVEM.L (A7)+,D0-D7
+               MOVE.L  SEQ_WR_PTR,A6
+INS_SEQ_50
+               JSR     SEQ1_DSTR_READ           ;NOW GO THRU REST OF DESTINATION UPDATING BAR #
+               MOVE    D7,D0
+               AND     #0FH,D0
+INS_SEQ_51     CMP     #0FH,D0                  ;ARE WE AT END OF SEQUENCE
+               BEQ.S   INS_SEQ_X                ;IF SO GET OUT OF HERE
+               CMP     #8,D0                    ;LOOK FOR THE BAR
+               BNE.S   INS_SEQ_52
+               JSR     SEQ_WRITE                ;SAVE BAR MARKER TO SEQUENCE
+               JSR     SEQ1_DSTR_READ           ;GET BAR #
+               ADD     D1,D7                    ;ADJUST IT
+               JSR     SEQ_WRITE                ;SAVE IT
+               BRA.S   INS_SEQ_50
+INS_SEQ_52     JSR     SEQ1_RMW_EATER           ;EAT THIS EVENT
+               BRA.S   INS_SEQ_51
+;
+INS_SEQ_X
+               MOVEQ   #0FH,D7
+               JSR     SEQ_WRITE                ;WRITE END OF SEQUENCE TO SEQUENCE
+               JSR     GET_CUR_SEQ_DIR
+               ADD     D1,Q_TOTAL_BARS(A0)      ;ADJUST NEW TOTAL BAR COUNT OF SEQUENCE
+;
+;
+;
+; ADJUST PLAYBACK REPEAT-LOOP POINTS -
+; THE PHILOSOPHY IS:  MAKE SURE THE NEWLY-INSERTED STUFF IS AUDIBLE
+; WITHOUT USER HAVING TO HAND-EDIT THE LOOP LIMITS.
+; THE TECHNIQUE IS:  IF DATA-INSERTION POINT WAS WITHIN THE EXISTING
+; REPEAT-LOOP LIMITS, LOOP END IS BUMPED UP PER NUMBER OF BARS INSERTED.
+; OTHERWISE, LOOP IS DEFAULTED TO INCLUDE THE ENTIRE SEQUENCE.
+; WE DO THIS EVEN IF LOOPING IS NOT ENABLED, IF ONLY 'COS IT TAKES UP
+; LESS CODE SPACE IF WE DON'T ALSO CHECK LOOP COUNT PARAMETER ....
+;
+               MOVE    D_THRU_BAR,D0        ;THIS IS WHERE WE STUCK STUFF IN -
+               CMP     Q_RPT_START(A0),D0   ;WAS IT AT OR AFTER LOOP START BAR NUMBER?
+               BLT.S   INS_OPEN_LOOP        ;BRANCH IF NOT - OPEN THE LOOP UP ALL DE WAY.
+               CMP     Q_RPT_END(A0),D0     ;INSERT WAS PAST LOOP START - HOW ABOUT W/R/T LOOP END?
+               BGT.S   INS_OPEN_LOOP        ;BRANCH IF PAST LOOP END - OPEN LOOP ALL THE WAY.
+               ADD     D1,Q_RPT_END(A0)     ;ELSE, - PUSH LOOP END UP PER NUMBER OF BARS INSERTED.
+               BRA.S   INS_SEQ_X_1          ;AND BE ON OUR WAY .....
+;
+INS_OPEN_LOOP
+               MOVE    #1,Q_RPT_START(A0)             ;INSERT WAS OUTSIDE REPEAT LOOP -
+               MOVE    Q_TOTAL_BARS(A0),Q_RPT_END(A0) ;OPEN LOOP UP TO COVER ENTIRE SEQUENCE.
+;
+;
+INS_SEQ_X_1
+               JSR     SEQ_TURNAROUND           ;CLOSE UP SEQUENCE
+               JSR     UPDATE_SEQ_SIZE          ;AND UPDATE MEMORY STATUS
+;
+;900621;
+;900621INSERT_SEQ_X
+;900621               MOVE.L  #WORKLOOP_SUB_3,D0       ;SEE IF WERE IN WORK LOOP SUB
+;900621               CMP.L   CUR_SUB_BLOCK,D0
+;900621               BEQ.S   INSERT_SX_02             ;IF SO THEN JUST RETURN
+               LEA     INSERT_DONE_SCRN(PC),A1   ;OTHERWISE GIVE COMPLETION MESSAGE AND STALL -
+               TST.B   BG_TEMP_1_B               ;DID WE RUN OUT OF MEMORY BEFORE INSERT WAS DONE?
+               BEQ.S   INSERT_SX_01              ;BRANCH IF NOT,
+               LEA     INSERT_FULL_SCRN(PC),A1   ;ELSE, SAY WHAT REALLY HAPPENED.
+;
+INSERT_SX_01
+                ABS_LONG
+               JSR     DISP_SCREEN
+                ABS_SHORT
+               MOVE    #2000H,SR
+;900621;
+;900621INSERT_SX_02
+;900621;
+                ABS_LONG
+               JSR     BLIND_FLUSH_NOTE_BUFS     ;WIPE ALL NOTE BUFFERS CLEAN AND DRY.
+                ABS_SHORT
+               JSR     SEQ_CHANGE_SUB       ;PLUG "NEW" DESTINATION SEQUENCE INTO PLAYBACK THING.
+;
+;
+INS_SEQ_STALL
+               BSR     USER_STALL
+;
+INSERT_SEQ_EXIT
+               RTS
+;
+;
+;
+;
+INSERT_DONE_SCRN
+               ASC     "INSERT COMPLETE "
+               ASC     "PRESS ANY SWITCH"
+;
+INSERT_FULL_SCRN
+               ASC     "RAN OUT OF ROOM,"
+               ASC     "INSRT INCOMPLETE"
+;
+MEM_FULL_SCRN
+               ASC     " NOT POSSIBLE - "
+               ASC     "SEQ. MEMORY FULL"
+;
+DST_EMPTY_SCRN
+               ASC     " NOT POSSIBLE - "
+               ASC     "DEST. SEQ EMPTY "
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;NOTE_CHECK CHECKS FOR AND LOGS NOTE ONS AND OFFS.
+;NONDESTRUCTIVE READ, NO WRITE .   "OLD" BUFFER.
+;ENTER  D0=ID #
+;       D7=STATUS WORD
+;
+;
+NOTE_CHECK     CMP       #1,D0
+               BNE.S     NOTE_CHK_1
+               BSR.S     D7_PREP                ;MOVE STATUS UP TO HIGH ORDER WORD
+                ABS_LONG
+               JSR       LOG_IN_OLD_PAD
+                ABS_SHORT
+               JSR       SEQ_NDSTR_READ         ;EXTRA DATA WORD ON PAD ON
+               BRA.S     NOTE_CHK_4
+
+NOTE_CHK_1     CMP       #2,D0
+               BNE.S     NOTE_CHK_2
+               BSR.S     D7_PREP
+                ABS_LONG
+               JSR       LOG_OUT_OLD_PAD
+                ABS_SHORT
+               BRA.S     NOTE_CHK_4
+
+NOTE_CHK_2     CMP       #3,D0
+               BNE.S     NOTE_CHK_3
+               BSR.S     D7_PREP
+                ABS_LONG
+               JSR       LOG_IN_OLD_MIDI
+                ABS_SHORT
+               BRA.S     NOTE_CHK_4
+
+NOTE_CHK_3     CMP       #4,D0
+               BNE.S     NOTE_CHK_5
+               BSR.S     D7_PREP
+                ABS_LONG
+               JSR       LOG_OUT_OLD_MIDI
+                ABS_SHORT
+
+NOTE_CHK_4     JSR       SEQ_NDSTR_READ         ;GET NEXT STATUS
+               MOVE      D7,D0
+               AND       #0FH,D0
+               ANDI      #1BH,CCR                 ;RESET ZERO FLAG
+               RTS
+NOTE_CHK_5     CMP       D0,D0
+                RTS
+
+D7_PREP        SWAP      D7                     ;PUT STATUS WORD IN HIGH ORDER WORD
+               JSR       SEQ_NDSTR_READ         ;GET DATA WORD IN LOW ORDER WORD
+               RTS
+
+
+;*******************************************************************************************
+;*******************************************************************************************
+;NOTE_CHECK CHECKS FOR AND LOGS NOTE  OFFS.
+;DESTRUCTIVE READ, NO WRITE .   "OLD" BUFFER.
+;ENTER  D0=ID #
+;       D7=STATUS WORD
+;
+;
+
+NOTE_CHECK_OD  CMP       #2,D0
+               BNE.S     NOTE_CHK_2OD
+               BSR.S     D7_PREPOD
+                ABS_LONG
+               JSR       LOG_OUT_OLD_PAD
+                ABS_SHORT
+               BRA.S     NOTE_CHK_4OD
+
+
+NOTE_CHK_2OD   CMP       #4,D0
+               BNE.S     NOTE_CHK_5OD
+               BSR.S     D7_PREPOD
+                ABS_LONG
+               JSR       LOG_OUT_OLD_MIDI
+                ABS_SHORT
+
+NOTE_CHK_4OD   JSR       SEQ1_DSTR_READ         ;GET NEXT STATUS
+               MOVE      D7,D0
+               AND       #0FH,D0
+               ANDI      #1BH,CCR                 ;RESET ZERO FLAG
+               RTS
+NOTE_CHK_5OD   CMP       D0,D0
+                RTS
+
+D7_PREPOD      SWAP      D7                     ;PUT STATUS WORD IN HIGH ORDER WORD
+               JSR       SEQ1_DSTR_READ         ;GET DATA WORD IN LOW ORDER WORD
+               RTS
+
+
+;*******************************************************************************************
+;NOTE_CHECK CHECKS FOR AND LOGS NOTE ONS AND OFFS.
+;NONDESTRUCTIVE READ, DESTRUCTIVE WRITE.    "OLD" BUFFER
+;ENTER  D0=ID #
+;       D7=STATUS WORD
+;
+;
+NOTE_CHECK_W   CMP       #1,D0
+               BNE.S     NOTE_CHK_1W
+               BSR.S     D7_PREPW               ;MOVE STATUS UP TO HIGH ORDER WORD
+                ABS_LONG
+               JSR       LOG_IN_OLD_PAD
+                ABS_SHORT
+               JSR       SEQ_NDSTR_READ         ;EXTRA DATA WORD ON PAD ON
+               JSR       SEQ_WRITE
+               BRA.S     NOTE_CHK_4W
+
+NOTE_CHK_1W    CMP       #2,D0
+               BNE.S     NOTE_CHK_2W
+               BSR.S     D7_PREPW
+                ABS_LONG
+               JSR       LOG_OUT_OLD_PAD
+                ABS_SHORT
+               BRA.S     NOTE_CHK_4W
+
+NOTE_CHK_2W    CMP       #3,D0
+               BNE.S     NOTE_CHK_3W
+               BSR.S     D7_PREPW
+                ABS_LONG
+               JSR       LOG_IN_OLD_MIDI
+                ABS_SHORT
+               BRA.S     NOTE_CHK_4W
+
+NOTE_CHK_3W    CMP       #4,D0
+               BNE.S     NOTE_CHK_5W
+               BSR.S     D7_PREPW
+                ABS_LONG
+               JSR       LOG_OUT_OLD_MIDI
+                ABS_SHORT
+
+NOTE_CHK_4W    JSR       SEQ_NDSTR_READ         ;GET NEXT STATUS
+               MOVE      D7,D0
+               AND       #0FH,D0
+               ANDI      #1BH,CCR                 ;RESET ZERO FLAG
+               RTS
+NOTE_CHK_5W    CMP       D0,D0
+                RTS
+
+D7_PREPW       JSR       SEQ_WRITE              ;SAVE STATUS WORD TO SEQUENCE
+               SWAP      D7                     ;PUT STATUS WORD IN HIGH ORDER WORD
+               JSR       SEQ_NDSTR_READ         ;GET DATA WORD IN LOW ORDER WORD
+               JSR       SEQ_WRITE
+               RTS
+
+
+;*******************************************************************************************
+;NOTE_CHECK CHECKS FOR AND LOGS NOTE ONS AND OFFS.
+;DESTRUCTIVE READ AND  WRITE.  "OLD" BUFFER  AND "NEW" BUFFER
+;ENTER  D0=ID #
+;       D7=STATUS WORD
+;
+;
+NOTE_CHECK_B   CMP       #1,D0
+               BNE.S     NOTE_CHK_1B
+               BSR.S     D7_PREPB               ;MOVE STATUS UP TO HIGH ORDER WORD
+                ABS_LONG
+               JSR       LOG_IN_OLD_PAD
+               JSR       LOG_IN_NEW_PAD
+                ABS_SHORT
+               JSR       SEQ1_DSTR_READ
+               JSR       SEQ_WRITE              ;EXTRA DATA WORD ON PAD ON
+               BRA.S     NOTE_CHK_4B
+
+NOTE_CHK_1B    CMP       #2,D0
+               BNE.S     NOTE_CHK_2B
+               BSR.S     D7_PREPB
+                ABS_LONG
+               JSR       LOG_OUT_OLD_PAD
+               JSR       LOG_OUT_NEW_PAD
+                ABS_SHORT
+               BRA.S     NOTE_CHK_4B
+
+NOTE_CHK_2B    CMP       #3,D0
+               BNE.S     NOTE_CHK_3B
+               BSR.S     D7_PREPB
+                ABS_LONG
+               JSR       LOG_IN_OLD_MIDI
+               JSR       LOG_IN_NEW_MIDI
+                ABS_SHORT
+               BRA.S     NOTE_CHK_4B
+
+NOTE_CHK_3B    CMP       #4,D0
+               BNE.S     NOTE_CHK_5B
+               BSR.S     D7_PREPB
+                ABS_LONG
+               JSR       LOG_OUT_OLD_MIDI
+               JSR       LOG_OUT_NEW_MIDI
+                ABS_SHORT
+
+NOTE_CHK_4B    JSR       SEQ1_DSTR_READ         ;GET NEXT STATUS
+               MOVE      D7,D0
+               AND       #0FH,D0
+               ANDI      #1BH,CCR                 ;RESET ZERO FLAG
+               RTS
+NOTE_CHK_5B    CMP       D0,D0
+                RTS
+
+D7_PREPB       JSR       SEQ_WRITE              ;PUT STATUS WORD IN HIGH ORDER WORD
+               SWAP      D7
+               JSR       SEQ1_DSTR_READ         ;GET DATA WORD IN LOW ORDER WORD
+               JSR       SEQ_WRITE
+               RTS
+
+
+;*******************************************************************************************
+;NOTE_CHECK CHECKS FOR AND LOGS NOTE ONS AND OFFS.
+;DESTRUCTIVE READ AND WRITE.  "NEW" BUFFER
+;ENTER  D0=ID #
+;       D7=STATUS WORD
+;
+;
+NOTE_CHECK_NDW CMP       #1,D0
+               BNE.S     NOTE_CHK_1NDW
+               BSR.S     D7_PREPNDW             ;MOVE STATUS UP TO HIGH ORDER WORD
+                ABS_LONG
+               JSR       LOG_IN_NEW_PAD
+                ABS_SHORT
+               JSR       SEQ1_DSTR_READ         ;EXTRA DATA WORD ON PAD ON
+               JSR       SEQ_WRITE
+               BRA.S     NOTE_CHK_4NDW
+
+NOTE_CHK_1NDW  CMP       #2,D0
+               BNE.S     NOTE_CHK_2NDW
+               BSR.S     D7_PREPNDW
+                ABS_LONG
+               JSR       LOG_OUT_NEW_PAD
+                ABS_SHORT
+               BRA.S     NOTE_CHK_4NDW
+
+NOTE_CHK_2NDW  CMP       #3,D0
+               BNE.S     NOTE_CHK_3NDW
+               BSR.S     D7_PREPNDW
+                ABS_LONG
+               JSR       LOG_IN_NEW_MIDI
+                ABS_SHORT
+               BRA.S     NOTE_CHK_4NDW
+
+NOTE_CHK_3NDW  CMP       #4,D0
+               BNE.S     NOTE_CHK_5NDW
+               BSR.S     D7_PREPNDW
+                ABS_LONG
+               JSR       LOG_OUT_NEW_MIDI
+                ABS_SHORT
+
+NOTE_CHK_4NDW  JSR       SEQ1_DSTR_READ         ;GET NEXT STATUS
+               MOVE      D7,D0
+               AND       #0FH,D0
+               ANDI      #1BH,CCR                 ;RESET ZERO FLAG
+               RTS
+NOTE_CHK_5NDW  CMP       D0,D0
+                RTS
+
+D7_PREPNDW     JSR       SEQ_WRITE              ;SAVE STATUS WORD TO SEQUENCE
+               SWAP      D7                     ;PUT STATUS WORD IN HIGH ORDER WORD
+               JSR       SEQ1_DSTR_READ         ;GET DATA WORD IN LOW ORDER WORD
+               JSR       SEQ_WRITE
+               RTS
+
+
+;********************************************************************************************
+;*******************************************************************************************
+;NOTE_CHECK CHECKS FOR AND LOGS NOTE ONS AND OFFS.
+;DESTRUCTIVE READ  NO WRITE.  "NEW" BUFFER
+;ENTER  D0=ID #
+;       D7=STATUS WORD
+;
+;
+NOTE_CHECK_ND  CMP       #1,D0
+               BNE.S     NOTE_CHK_1ND
+               BSR.S     D7_PREPND              ;MOVE STATUS UP TO HIGH ORDER WORD
+                ABS_LONG
+               JSR       LOG_IN_NEW_PAD
+                ABS_SHORT
+               JSR       SEQ1_DSTR_READ         ;EXTRA DATA WORD ON PAD ON
+               BRA.S     NOTE_CHK_4ND
+
+NOTE_CHK_1ND   CMP       #2,D0
+               BNE.S     NOTE_CHK_2ND
+               BSR.S     D7_PREPND
+                ABS_LONG
+               JSR       LOG_OUT_NEW_PAD
+                ABS_SHORT
+               BRA.S     NOTE_CHK_4ND
+
+NOTE_CHK_2ND   CMP       #3,D0
+               BNE.S     NOTE_CHK_3ND
+               BSR.S     D7_PREPND
+                ABS_LONG
+               JSR       LOG_IN_NEW_MIDI
+                ABS_SHORT
+               BRA.S     NOTE_CHK_4ND
+
+NOTE_CHK_3ND   CMP       #4,D0
+               BNE.S     NOTE_CHK_5ND
+               BSR.S     D7_PREPND
+                ABS_LONG
+               JSR       LOG_OUT_NEW_MIDI
+                ABS_SHORT
+
+NOTE_CHK_4ND   JSR       SEQ1_DSTR_READ         ;GET NEXT STATUS
+               MOVE      D7,D0
+               AND       #0FH,D0
+               ANDI      #1BH,CCR                 ;RESET ZERO FLAG
+               RTS
+NOTE_CHK_5ND   CMP       D0,D0
+                RTS
+
+D7_PREPND      SWAP      D7
+               JSR       SEQ1_DSTR_READ         ;GET DATA WORD IN LOW ORDER WORD
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; CHECK TO SEE WHETHER THERE IS SUFFICIENT FREE SEQUENCE MEMORY FOR A
+; COPY-TYPE OPERATION - INCLUDING COPY, ROTATE, INSERT.
+; NOTE THAT IF SOURCE AND DESTINATION ARE THE SAME SEQUENCE, THEN THE
+; REQUIREMENT IS THAT THE AMOUNT OF FREE MEMORY MUST EXCEED THE AMOUNT
+; OF MEMORY CURRENTLY TAKEN UP BY THE SEQUENCE - OTHERWISE, DEPENDING
+; UPON THE OPERATION BEING PERFORMED, THERE IS THE POSSIBILITY THAT
+; PARTS OF THE "OLD" COPY OF THE SEQUENCE (I.E., THE SOURCE) WHICH ARE
+; STILL BEING COPIED FROM WILL BE OVERWRITTEN BY THE "NEW" (DESTINATION)
+; SEQUENCE, LEADING TO HOPELESS DATA CORRUPTION.
+; OTHERWISE, JUST CHECKS SEQ_MEM_FULL(.B) FLAG.
+; ASSUMES FROM_SEQ_NUM AND TO_SEQ_NUM INDICATE SEQUENCES OF INTEREST.
+; RETURNS "Z TRUE" IF MEMORY SPACE IS ADEQUATE - ELSE, RETURNS "Z FALSE"
+; AND A1 SET AS A POINTER TO ERROR MESSAGE SCREEN TEXT.
+;
+CHECK_MEM_FULL
+               TST.B   SEQ_MEM_FULL         ;FIRST SEE IF THERE IS ANY MEMORY AT ALL -
+               BNE.S   CMF_20               ;BRANCH IF NOT - SPLIT.
+               MOVE    FROM_SEQ_NUM,D0      ;MEMORY LEFT - ARE SOURCE, DEST SEQS THE SAME?
+               CMP     TO_SEQ_NUM,D0
+               BNE.S   CMF_40               ;BRANCH IF NOT - WE'RE COOL - EXIT WITH "Z TRUE".
+               JSR     GET_SEQ_DIR_PTR      ;ELSE - FREE RAM MUST EXCEED AMOUNT USED BY SEQUENCE.
+               MOVE.L  #SEQ_DIR_99,A1
+               MOVE    Q_MEM_USED(A1),D0    ;THIS IS THE AMOUNT OF FREE RAM -
+               CMP     Q_MEM_USED(A0),D0    ;COMPARE AGAINST THE AMOUNT IN THE SEQUENCE,
+               BGT.S   CMF_40               ;BRANCH IF ENOUGH FREE MEMORY IS PRESENT - TELL 'EM.
+;
+CMF_20
+               LEA     INSUFF_MEM_SCRN(PC),A1    ;NOT ENOUGH MEM - RETURN POINTER TO ERROR TEXT,
+               BRA.S   CMF_EXIT
+;
+CMF_40
+               CMP     D0,D0                ;MEM IS ADEQUATE, RETURN "Z TRUE".
+;
+CMF_EXIT
+               RTS
+;
+INSUFF_MEM_SCRN
+               ASC     "FREE SEQ MEMORY "
+               ASC     "IS INSUFFICIENT "
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+SEQ_ROTATE_SUB
+               ASC     "ROTATE    SEQ.  "
+               ASC     "   TRACK:       "
+
+;SEQUENCE NUMBER FIELD
+
+               DC.B    14
+               DC.B    2
+               DC.W    ACCESS+SET_PTR
+               DC.L    ACC_TO_SEQ_NUM
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+HI_LIMIT
+               DC.W    98
+               DC.W    EDIT+ENTR_VEC
+               DC.L    ROTATE_SEQ
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+
+;TRACK NUMBER FIELD
+
+               DC.B    26
+               DC.B    1
+               DC.W    ACCESS+DIR_PTR
+               DC.W    TO_TRACK_NUM
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+MIN_LIMIT
+               DC.W    0
+               DC.W    DISPLAY+MAX_LIMIT
+               DC.W    9
+               DC.W    DISPLAY+MAX_STRNG
+               DC.L    ALL_STR
+               DC.W    DISPLAY+MIN_STRNG
+               DC.L    ALL_STR
+               DC.W    EDIT+HI_LIMIT
+               DC.W    9
+               DC.W    EDIT+ENTR_VEC
+               DC.L    ROTATE_SEQ
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    EDIT+LINKED
+               DC.W    SUBFUN_END
+
+ALL_STR        DC.B    26
+               DC.B    3
+               ASC     "ALL "
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; TRACK ROTATE ROUTINE:
+; IT PERFORMS THE EQUIVALENT OF A TRACK COPY ONTO ITSELF, USING PUNCH-IN
+; POINT AS THE "COPY FROM" POINT - WE SET THAT UP HERE, SINCE THE "REAL"
+; COPY ROUTINE DEALS ONLY IN BAR-NUMBER LIMITS.
+; IF DOCUMENTATION HERE SEEMS THIN, REFER TO THE COPY ROUTINE CODE.
+;
+ROTATE_SEQ
+               JSR     SEQ_RUNNING_TEST     ;IS SEQUENCER RUNNING? (NOT COOL TO AUTO-STOP IT ....)
+               BNE     ROTATE_SEQ_STALL     ;EXIT IF YES (MESSAGE IS IN LCD ....)
+;
+               BSR     NULL_SEQ_TEST        ;IS USER TRYING TO ROTATE IN THE null seqUENCE?
+               BNE     ROTATE_SEQ_STALL     ;EXIT IF YES (MESSAGE IS IN LCD ....)
+;
+               BSR     CHECK_MEM_FULL       ;SEE IF WE HAVE ENOUGH MEMORY, FER SURE -
+               BNE     ROTATE_SEQ_3         ;BRANCH IF NOT - A1 IS POINTING TO ERROR MESSAGE TEXT -
+                                            ;DISPLAY THE MESSAGE AND EXIT.
+;
+               MOVE    #0008H,D1                ;WRITE ROTATING SCREEN
+               MOVE.L  #ROTATING_SCRN,A2
+               BSR     WRITE_STRING
+               BSR     DISP_BUFFER
+               BSR     SOLID_ENTER
+               MOVE.L  #0,A1                    ;INITIALIZE CLICK COUNT VARIABLES
+               MOVE.L  #0,A2
+               MOVE.L  #0,A3
+               CLR.L   D1
+               CLR.L   D2
+               CLR.L   D3
+               CLR.L   DI_TEMP_1_B
+               CLR.L   DI_TEMP_5_B
+               CLR.L   BG_TEMP_1_B
+               CLR.L   BG_TEMP_5_B
+
+               MOVE    TO_TRACK_NUM,FROM_TRACK_NUM              ;SET DESTINATION AND SOURCE TRACK # EQUAL
+               MOVE    TO_SEQ_NUM,FROM_SEQ_NUM
+               JSR     GET_CUR_SEQ_DIR
+               TST     Q_STATUS(A0)                             ;TEST STATUS OF SEQUENCE TO BE ROTATED
+;
+               BNE.S   ROTATE_SEQ_0         ;BRANCH IF NOT EMPTY, GO ON.
+               BSR     DISP_SEQ_EMPTY       ;ELSE - POST ERROR MESSAGE,
+               BRA     ROTATE_SEQ_STALL     ;GET DA HELL OUT.
+;
+ROTATE_SEQ_0
+               MOVE    #2700H,SR               ;DISABLE INTERRUPTS
+               JSR     SEQ_NDRD_SETUP
+               JSR     SEQ1_DRD_SETUP       ;SET UP DESTRUCTIVE RD/WR, NON-DESTRUCTIVE READ OF SEQ.
+               MOVE    #1,D_FROM_BAR                            ;COPY TO ENTIRE LENGTH OF DESTINATION
+               MOVE    Q_TOTAL_BARS(A0),D_THRU_BAR
+               MOVE    D_THRU_BAR,S_THRU_BAR
+               MOVE    #1,S_FROM_BAR                            ;ROTATE FROM START OF SEQUENCE
+
+               BSR     READ_TO_BAR_1                            ;READ UNTIL PUNCH IN POINT
+               MOVE.L  D0,-(A7)                                 ;SAVE NEXT EVENT STATUS
+               MOVE.L  D7,-(A7)                                 ;SAVE LAST EVENT READ
+               MOVE    DI_TEMP_7_B,D7                           ;D7=LAST BAR MARKER BEFORE PUNCH IN
+               SWAP    D7
+               JSR     BAR_MARKER_HANDLER
+               MOVE    CLICKS_THIS_BAR,D1
+               MOVE    D1,A1                                    ;
+               MOVE    PUNCH_IN_CLICK,D1
+               EXT.L   D1
+               NEG.L   D1
+               MOVE.L  D1,A2                                    ;CLICKS TO LAST BAR =0-PUNCH IN CLICK
+               TST     DI_TEMP_9_B          ;NO TIME MARK FROM PUNCH-IN POINT TO NEXT BAR MARKER?
+               BPL.S   ROTATE_SEQ_1         ;BRANCH IF THERE WAS - DI_TEMP_9_B HAS IT, USE THAT -
+               MOVE.L  A1,A3
+               BRA.S   ROTATE_SEQ_2
+ROTATE_SEQ_1   MOVE    DI_TEMP_9_B,D7
+               LSR     #4,D7
+               MOVEA   D7,A3                           ;MOVE LAST EVENT TIME TO A2
+ROTATE_SEQ_2   ADD.L   A2,A3                                    ;A3=TOTAL CLICKS TO EVENT
+               JSR     SEQ1_DSTR_READ                           ;GET FIRST BAR MARKER OF SEQUENCE
+               JSR     SEQ_WRITE                                ;AND WRITE IT TO SEQUENCE
+               SWAP    D7
+               JSR     SEQ1_DSTR_READ
+               JSR     SEQ_WRITE
+               JSR     BAR_MARKER_HANDLER                       ;BREAK IT DOWN TO FIND CLICKS IN FIRST BAR
+               MOVE    CLICKS_THIS_BAR,D1
+               EXT.L   D1
+               MOVE.L  (A7)+,D7                                 ;GET BACK FIRST EVENT AFTER PUNCHIN POINT
+               MOVE.L  (A7)+,D0
+;
+               BSR     COPY_SEQ_40                              ;GO ROTATE IT
+;
+               MOVE.L  #ROTATE_DONE_SCRN,A1
+;
+ROTATE_SEQ_3
+                ABS_LONG
+               JSR     DISP_SCREEN
+                ABS_SHORT
+               MOVE    #2000H,SR
+;
+ROTATE_SEQ_STALL
+               BRA     USER_STALL
+;
+;
+;
+ROTATE_DONE_SCRN
+               ASC     "ROTATE COMPLETE "
+               ASC     "PRESS ANY SWITCH"
+;
+ROTATING_SCRN  ASC     "ROTATING"
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+SEQ_BOUNCE_SUB
+               ASC     "BOUNCE TO TRK:  "
+               ASC     "TRACKS:         "
+
+;BOUNCE TO NUMBER FIELD
+               DC.B    15
+               DC.B    1
+               DC.W    ACCESS+DIR_PTR
+               DC.W    TO_TRACK_NUM
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    7
+               DC.W    EDIT+ENTR_VEC
+               DC.L    BOUNCE_DOWN
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    FIELD_END
+
+;TRACKS TO BE BOUNCED DOWN FIELD
+
+               DC.B    24
+               DC.B    1
+               DC.W    ACCESS+DIR_PTR
+               DC.W    BNC_TRK_NUM
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_BOUNCE_TRACK
+               DC.W    EDIT+HI_LIMIT
+               DC.W    7
+               DC.W    EDIT+ENTR_VEC
+               DC.L    BOUNCE_DOWN
+               DC.W    EDIT+POT_CHG_VEC
+               DC.L    NOTHINGNESS
+               DC.W    EDIT+INCR_VEC
+               DC.L    NOTHINGNESS
+               DC.W    EDIT+DECR_VEC
+               DC.L    NOTHINGNESS
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    EDIT+LINKED
+               DC.W    SUBFUN_END
+               SKIP
+;
+;
+;
+WRITE_BOUNCE_TRACK
+               MOVEM.L D0-D2/A2,-(A7)
+               MOVE    BNC_TRK_NUM,D0
+               MOVE    FROM_TRACK_NUM,D2
+               TST     D0
+               BMI.S   WR_BOUNCE_0
+               BCHG    D0,D2                    ;CHANGE BIT OF TRACKS TO BE BOUNCED
+               MOVE    D2,FROM_TRACK_NUM
+WR_BOUNCE_0    MOVEQ   #7,D0
+               MOVE.L  #BLANK_STRING,A2         ;POINT TO BLANK SCREEN
+WR_BOUNCE_1    MOVEQ   #24,D1                   ;GET POSITION OF STRING
+               ADD     D0,D1                    ;ADD TRACK NUMBER TO IT
+               LSL     #8,D1                    ;SHIFT IN TO HIGH ORDER BYTE
+               ADDQ    #1,D1                    ;SET LENGTH TO 1
+               BTST    D0,D2                    ;SEE IF TRACK IS ON OR OFF
+               BEQ.S   CLEAR_BIT                ;IF OFF DISPLAY BLANK
+               ADDQ    #1,D0
+                ABS_LONG
+               JSR     WORD_BIN_TO_BCD
+               JSR     WRITE_BCD_DIGITS         ;WRITE TRACK NUMBER TO DISPLAY
+                ABS_SHORT
+               SUBQ    #1,D0
+               BRA.S   WR_BOUNCE_2
+                ABS_LONG
+CLEAR_BIT      JSR     WRITE_STRING
+                ABS_SHORT
+WR_BOUNCE_2    DBRA    D0,WR_BOUNCE_1
+                ABS_LONG
+               JSR     DISP_BUFFER
+                ABS_SHORT
+               MOVE    #-1,BNC_TRK_NUM
+               MOVEM.L (A7)+,D0-D2/A2
+               RTS
+;
+;
+BLANK_STRING   ASC     "- "
+BOUNCE_SCRN    ASC     "BOUNCING  "
+;
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; THIS IS IT - GOTTA BOUNCE NOW ....
+;
+BOUNCE_DOWN
+               JSR     SEQ_RUNNING_TEST     ;IS SEQUENCER RUNNING? (NOT COOL TO AUTO-STOP IT ....)
+               BNE     BOUNCE_STALL         ;EXIT IF YES (MESSAGE IS IN LCD ....)
+;
+               BSR     NULL_SEQ_TEST        ;IS USER TRYING TO BOUNCE TRACKS IN THE null seqUENCE?
+               BNE     BOUNCE_STALL         ;EXIT IF YES (MESSAGE IS IN LCD ....)
+;
+               JSR     GET_CUR_SEQ_DIR      ;DOES OUR SEQUENCE EXIST?
+               TST     Q_STATUS(A0)
+               BNE.S   BOUNCE_10            ;BRANCH IF YES, GAU OWN ...
+               BSR     DISP_SEQ_EMPTY       ;ELSE - POST ERROR MESSAGE,
+               BRA     BOUNCE_STALL         ;GET GONE.
+;
+BOUNCE_10
+               MOVE    #0009H,D1            ;PUT UP "BOUNCING" THING ....
+               MOVE.L  #BOUNCE_SCRN,A2
+               BSR     WRITE_STRING
+               BSR     DISP_BUFFER
+               BSR     SOLID_ENTER
+               MOVE    #2700H,SR            ;KILL INTERRUPTS - GO FAST.
+;
+               MOVE    CURRENT_SEQUENCE,D0  ;SET UP READ (NON-DESTRUCTIVE) -
+               BSR     READ_TO_PUNCH        ;READ TO FIRST EVENT BEYOND PUNCH-IN BAR MARKER.
+;
+               MOVE    TO_TRACK_NUM,D4      ;GET TRACK NUMBER TO BOUNCE TO,
+               LSL     #4,D4                ;SHIFT INTO POSITION FOR EVENT DROP-IN.
+;
+               MOVE    FROM_TRACK_NUM,D2    ;D2 HOLDS BIT-MAP OF "BOUNCE-FROM" TRACKS -
+                                            ;BIT n SET MEANS: BOUNCE EVENTS ON TRACK n+1.
+;
+;
+; TOP O' THE BOUNCE LOOP:
+;
+BOUNCE_20
+               BSR     CHK_PUNCH_OUT        ;SEE IF AT PUNCH-OUT POINT OR END OF SEQUENCE -
+               TST     D1
+               BNE     BOUNCE_70            ;BRANCH IF ONE OF THE ABOVE - HEAD ON OUT.
+;
+                                            ;D0 CONTAINS ID CODE OF EVENT WE'RE LOOKING AT:
+;
+               CMP     #6,D0                ;BOUNCE PERFORMANCE EVENTS ONLY -
+               BGT.S   BOUNCE_EAT           ;OTHER EVENTS ARE NOT TRACK-TAGGED, SKIP OVER THEM.
+               MOVE    D7,D3                ;GOT ONE - ISOLATE ITS TRACK NUMBER IN D3.
+               AND     #70H,D3
+               LSR     #4,D3
+               BTST    D3,D2                ;IS THIS EVENT ON A "BOUNCE FROM" TRACK?
+               BEQ.S   BOUNCE_EAT           ;BRANCH IF NOT, LEAVE IT WHERE IT IS.
+;
+               CMP     #5,D0                ;IS THIS A NOTE-EVENT OF SOME DENOMINATION?
+               BLT.S   BOUNCE_30            ;BRANCH IF YES - HANDLING IS MORE COMPLICATED.
+               AND     #0FF8FH,(A4)         ;ELSE, CAKE - WIPE OUT OLD TRACK NUMBER IN ID WORD,
+               OR      D4,(A4)              ;DROP IN THE "BOUNCE TO" TRACK NUMBER.
+               BRA.S   BOUNCE_EAT           ;WITHOUT FURTHER ADO (OR ADON'T), STEP TO NEXT EVENT.
+;
+;
+; BOUNCING SOME SORTA NOTE-EVENT:
+;
+BOUNCE_30
+               MOVE.L  A4,A3                ;SAVE READ POINTER SO WE CAN FIND THIS ID WORD AGAIN.
+               SWAP    D7                   ;SWEEP ID WORD ASIDE,
+               JSR     SEQ_NDSTR_READ       ;GET NEXT WORD - ASSEMBLE LOGGABLE ENTITY IN D7.L.
+;
+               CMP     #1,D0                ;IS THIS AN INTERNAL NOTE-ON EVENT?
+               BNE.S   BOUNCE_40            ;BRANCH IF NOT, GUESS AGAIN.
+                ABS_LONG
+               JSR     LOG_IN_OLD_PAD       ;INTERNAL NOTE-ON - LOG IT IN FOR LATER NOTE-OFF MATCH.
+                ABS_SHORT
+               JSR     SEQ_NDSTR_READ       ;NEXT, READ UP TO THIRD AND LAST WORD OF EVENT (LEVEL).
+               BRA.S   BOUNCE_NOTE          ;THEN (AND ONLY THEN), GO BOUNCE IT.
+;
+BOUNCE_40
+               CMP     #2,D0                ;IS THIS AN INTERNAL NOTE-OFF EVENT?
+               BNE.S   BOUNCE_50            ;BRANCH IF NOT, TRY ANOTHER GUESS.
+                ABS_LONG
+               JSR     CHECK_OLD_PADS       ;INTERNAL NOTE-OFF - DID WE BOUNCE A MATCHING NOTE-ON?
+               BEQ.S   BOUNCE_GET_NEXT      ;BRANCH IF NOT, DON'T BOUNCE THIS NOTE-OFF.
+               JSR     LOG_OUT_OLD_PAD      ;ELSE, TAKE IT OUT OF THE LIST AND BOUNCE IT.
+                ABS_SHORT
+               BRA.S   BOUNCE_NOTE
+;
+BOUNCE_50
+               CMP     #3,D0                ;WELL?!  IS THIS A MIDI NOTE-ON EVENT?!
+               BNE.S   BOUNCE_60            ;NO??!!  AHHHCHCHH, SHHITTT!!!!  ALREADY, ....
+                ABS_LONG
+               JSR     LOG_IN_OLD_MIDI      ;MIDI NOTE-ON - LOG IT IN FOR LATER NOTE-OFF MATCH,
+                ABS_SHORT
+               BRA.S   BOUNCE_NOTE          ;NOW GO BOUNCE IT, BY GUMM.
+;
+BOUNCE_60
+                ABS_LONG
+               JSR     CHECK_OLD_MIDI       ;MIDI NOTE-OFF - DID WE BOUNCE A MATCHING NOTE-ON?
+               BEQ.S   BOUNCE_GET_NEXT      ;BRANCH IF NOT, DON'T BOUNCE THIS NOTE-OFF.
+               JSR     LOG_OUT_OLD_MIDI     ;ELSE, TAKE IT OUT OF THE LIST AND BOUNCE IT.
+                ABS_SHORT
+;
+;
+; ACTUAL BOUNCE OF NOTE-EVENT:
+; A3 POINTS TO EVENT ID WORD - WE'VE READ UP TO LAST WORD OF EVENT.
+;
+BOUNCE_NOTE
+               AND     #0FF8FH,(A3)         ;WIPE OUT OLD TRACK NUMBER IN ID WORD,
+               OR      D4,(A3)              ;DROP IN THE "BOUNCE TO" TRACK NUMBER.
+;
+BOUNCE_GET_NEXT
+               JSR     SEQ_NDSTR_READ       ;READ ID WORD OF NEXT EVENT,
+               MOVE    D7,D0                ;ISOLATE ITS ID CODE IN D0,
+               AND     #0FH,D0
+               BRA     BOUNCE_20            ;GO BACK UP AND CHECK OUT THIS HERE NEW EVENT.
+;
+;
+;
+; READ THROUGH EVENT WHOSE ID WORD WE ARE POINTED AT -
+; READ NEXT EVENT ID WORD, DECODE ITS ID, GO BACK TO TOP AND CONTINUE:
+;
+BOUNCE_EAT
+               JSR     SEQ_NDRD_EATER
+               BRA     BOUNCE_20
+;
+;
+;
+;
+; SO, WE'RE THROUGH BOUNCING - FOR THE MOST PART.
+; WE'VE ESCAPED THE PUNCH-IN ZONE, OR MAYBE HAVE HIT END OF SEQUENCE:
+;
+BOUNCE_70
+               BTST    #1,D1                ;HIT END OF SEQUENCE?
+               BNE.S   BOUNCE_X             ;BRANCH IF YES, OUT WE GO.
+;
+;
+;
+; NOT AT END YET, BUT PAST PUNCH-OUT POINT -
+; WE STREAM TOWARDS THE END, BOUNCING ANY MIDI OR INTERNAL NOTE-OFFS
+; WHICH MATCH UP WITH AS-YET-UNMATCHED BOUNCED NOTE-ONS:
+;
+BOUNCE_80
+               CMP     #2,D0                ;ARE WE LOOKING AT AN INTERNAL NOTE-OFF EVENT?  EH?
+               BNE.S   BOUNCE_90            ;BRANCH IF NOT - STILL ONE PLACE TO GO.
+               MOVE.L  A4,A3                ;SAVE READ POINTER SO WE CAN FIND THIS ID WORD AGAIN.
+               SWAP    D7                   ;SWEEP ID WORD ASIDE,
+               JSR     SEQ_NDSTR_READ       ;READ DATA WORD - ASSEMBLE FULL EVENT IN D7.L -
+                ABS_LONG
+               JSR     CHECK_OLD_PADS       ;DID WE BOUNCE A MATCHING NOTE-ON BEFORE PUNCH-OUT?
+               BEQ.S   BOUNCE_B0            ;BRANCH IF NOT, DON'T BOUNCE THIS NOTE-OFF.
+               JSR     LOG_OUT_OLD_PAD      ;ELSE - TAKE IT OUT OF THE "UNMATCHED" LIST,
+                ABS_SHORT
+               BRA.S   BOUNCE_A0            ;GO BOUNCE IT.
+;
+BOUNCE_90
+               CMP     #4,D0                ;IS THIS A MIDI NOTE-OFF EVENT?
+               BNE.S   BOUNCE_CHEW          ;BRANCH IF NOT - GO SEE ABOUT GOING ANY FURTHER.
+               MOVE.L  A4,A3                ;SAVE READ POINTER SO WE CAN FIND THIS ID WORD AGAIN.
+               SWAP    D7                   ;SWEEP ID WORD ASIDE,
+               JSR     SEQ_NDSTR_READ       ;READ DATA WORD - ASSEMBLE FULL EVENT IN D7.L -
+                ABS_LONG
+               JSR     CHECK_OLD_MIDI       ;DID WE BOUNCE A MATCHING NOTE-ON BEFORE PUNCH-OUT?
+               BEQ.S   BOUNCE_B0            ;BRANCH IF NOT, DON'T BOUNCE THIS NOTE-OFF.
+               JSR     LOG_OUT_OLD_MIDI     ;ELSE, TAKE IT OUT OF THE "UNMATCHED" LIST, BOUNCE IT.
+                ABS_SHORT
+;
+;
+; BOUNCE OF NOTE-OFF EVENT:
+; A3 POINTS TO EVENT ID WORD - WE'VE READ BOTH WORDS OF EVENT.
+;
+BOUNCE_A0
+               AND     #0FF8FH,(A3)         ;WIPE OUT OLD TRACK NUMBER IN ID WORD,
+               OR      D4,(A3)              ;DROP IN THE "BOUNCE TO" TRACK NUMBER.
+;
+BOUNCE_B0
+               JSR     SEQ_NDSTR_READ       ;READ ID WORD OF NEXT EVENT,
+               MOVE    D7,D0                ;ISOLATE ITS ID CODE IN D0,
+               AND     #0FH,D0
+               BRA     BOUNCE_80            ;GO BACK UP AND CHECK OUT THIS HERE NEW EVENT.
+;
+;
+;
+; READ THROUGH EVENT WHOSE ID WORD WE ARE POINTED AT -
+; UNLESS IT'S THE END-OF-SEQUENCE MARKER, THAT IS ....
+; READ NEXT EVENT ID WORD, DECODE ITS ID, GO BACK TO TOP AND CONTINUE:
+;
+BOUNCE_CHEW
+               CMP     #0FH,D0              ;WELL, ARE WE AT THE END AT LAST?
+               BEQ.S   BOUNCE_X             ;LOOKS THAT WAY, PAL.
+               JSR     SEQ_NDRD_EATER       ;ELSE - GET TO NEXT EVENT,
+               BRA     BOUNCE_80            ;LOOP BACK AND CHECK IT OUT.
+;
+;
+;
+; AND OUT WE GO:
+;
+BOUNCE_X
+                ABS_LONG
+               JSR     BLIND_FLUSH_NOTE_BUFS     ;WIPE 'EM ALL CLEAN AND DRY.
+                ABS_SHORT
+               JSR     SEQ_CHANGE_SUB       ;MAKE SURE PLAYBACK APPARATUS IS NOT BEHIND THE TIMES.
+                                            ;(I KNOW - SHOULDN'T NEED THIS - AH, WHAT THE FUCK.)
+               MOVE.L  #BOUNCE_DONE_SCRN,A1
+                ABS_LONG
+               JSR     DISP_SCREEN
+                ABS_SHORT
+               MOVE    #2000H,SR
+;
+BOUNCE_STALL
+               BRA     USER_STALL
+;
+;
+;
+;
+BOUNCE_DONE_SCRN
+               ASC     "BOUNCE COMPLETE "
+               ASC     "PRESS ANY SWITCH"
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;              SUBFUNCTIONS UNDER 'PLAYBACK'
+;
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;              PLAYBACK - CHOOSING SEQUENCE OR SONG, SEEING CURRENT BAR & BEAT
+;
+SEQ_PLAYBACK_SUB
+               ASC     "          SEQ.  "
+               ASC     "BAR:     BEAT:  "
+
+;SONG NAME FIELD
+
+               DC.B    0
+               DC.B    8
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+SET_PTR
+               DC.L    ZERO_VAL
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_SEQ_NAME
+               DC.W    FIELD_END
+
+;SEQ OR SONG SELECT
+
+               DC.B    12
+               DC.B    1
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+SET_PTR
+               DC.L    SEQ_OR_SONG
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    NOTHINGNESS
+               DC.W    EDIT+ED_VEC
+               DC.L    SWITCH_TO_SONG
+               DC.W    EDIT+HI_LIMIT
+               DC.W    1
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    FIELD_END
+
+;SEQUENCE NUMBER FIELD
+
+               DC.B    14
+               DC.B    2
+               DC.W    ACCESS+SET_PTR
+               DC.L    SEQ_NUM_ACC
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+HI_LIMIT
+               DC.W    98
+               DC.W    FIELD_END
+
+;BAR FIELD - NO EDIT - REACTS TO REALITY
+
+               DC.B    20
+               DC.B    3
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    NOW_BAR
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    FIELD_END
+
+;CLICK FIELD - NO EDIT - REACTS TO REALITY
+
+               DC.B    30
+               DC.B    2
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    NOW_BEAT
+               DC.W    SUBFUN_END
+
+
+SEQ_OR_SONG            ; DECIDE IF BELONG HERE, OR IN SPECIAL SONG PLAYBACK SUBFUNCTION.
+               MOVE.L  #S_OR_S_FLAG,D0      ;FIRST - POINT TO FLAG, FOR DISPLAY PURPOSES
+
+               TST     S_OR_S_FLAG          ;WHAT ARE WE DOING?
+               BEQ.S   EXIT_SEQ_OR_SONG     ;    IF SEQUENCES, WE'RE COMFY
+SWITCH_TO_SONG                              ;         ELSE, SWITCH TO 'OTHER' SUBFUNCTION
+               MOVE.L  #SONG_PLAYBACK_SUB,CUR_SUB_BLOCK
+               ST      SUBFUN_INSTALL
+EXIT_SEQ_OR_SONG
+               RTS
+SEQ_NUM_ACC
+               MOVE     CURRENT_SEQUENCE,D0     ;DONT LET SEQUENCE BE NULL
+               CMP      #99,D0
+               BNE.S    SEQ_NUM_ACC_1
+               CLR      CURRENT_SEQUENCE
+SEQ_NUM_ACC_1  MOVE.L   #CURRENT_SEQUENCE,D0
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;              PLAYBACK - CHOOSING SEQUENCE OR SONG, SEEING CURRENT BAR & BEAT
+;
+SONG_PLAYBACK_SUB
+               ASC     "         SONG:  "
+               ASC     "B:   /    SEQ:  "
+
+;SONG NAME FIELD
+
+               DC.B    0
+               DC.B    8
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CURRENT_SONG
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_SONG_NAME
+               DC.W    FIELD_END
+
+;SONG OR SEQ SELECT
+
+               DC.B    12
+               DC.B    1
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+SET_PTR
+               DC.L    SONG_OR_SEQ
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    NOTHINGNESS
+               DC.W    EDIT+ED_VEC
+               DC.L    SWITCH_TO_SEQ
+               DC.W    EDIT+HI_LIMIT
+               DC.W    1
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    FIELD_END
+
+;SONG NUMBER FIELD
+
+               DC.B    14
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CURRENT_SONG
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+TAILOR
+               DC.L    DISPLAY_SONG
+               DC.W    EDIT+ED_VEC
+               DC.L    NEW_SONG_SELECTED
+               DC.W    EDIT+HI_LIMIT
+               DC.W    11
+               DC.W    1
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+
+;SEQUENCE NUMBER FIELD
+
+               DC.B    30
+               DC.B    2
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CURRENT_SEQUENCE
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    FIELD_END
+
+;BAR FIELD - NO EDIT - REACTS TO REALITY
+
+               DC.B    18
+               DC.B    3
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    NOW_BAR
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    FIELD_END
+
+;BEAT FIELD - NO EDIT - REACTS TO REALITY
+
+               DC.B    22
+               DC.B    2
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    NOW_BEAT
+               DC.W    SUBFUN_END
+
+
+SONG_OR_SEQ            ; DECIDE IF BELONG HERE, OR IN SPECIAL SONG PLAYBACK SUBFUNCTION.
+               MOVE.L  #S_OR_S_FLAG,D0      ;FIRST - POINT TO FLAG, FOR DISPLAY PURPOSES
+
+               TST     S_OR_S_FLAG          ;WHAT ARE WE DOING?
+               BNE.S   EXIT_SONG_OR_SEQ     ;    IF SONGS, WE'RE COMFY
+SWITCH_TO_SEQ                               ;         ELSE, SWITCH TO 'OTHER' SUBFUNCTION
+               MOVE.L  #SEQ_PLAYBACK_SUB,CUR_SUB_BLOCK
+               ST      SUBFUN_INSTALL
+EXIT_SONG_OR_SEQ
+               RTS
+
+
+DISPLAY_SONG           ; SHOW WHERE WE BE FOR THIS GIVEN SONG.  IF WE BE NOT PLAYING, RESET
+; TO FIRST STEP.
+               BTST    #3,XPORT_STATE        ;IF PLAYING
+               BNE.S   INSTALL_SONG         ;    THEN KEEP AT CURRENT STEP
+                                            ;         ELSE, FALL THRU TO RESET SONG STEP
+
+NEW_SONG_SELECTED      ; USER WANTS A NEW SONG - RESET EVERYTHING ABOUT THE SONG, INCLUDING STEP,
+; FIRST SEQUENCE, ETC.
+               CLR     SONG_STEP_NUM
+               CLR.B   TRACKS_MUTED         ;CLEAR OUT TRACKS MUTED FOR FRESH START
+
+INSTALL_SONG           ;(ENTRANCE POINT TO INSTALL CURRENT SONG AT CURRENT STEP)
+                ABS_LONG
+               JSR     GET_SONG_PTR         ;POINT TO NEW CURRENT SONG
+                ABS_SHORT                   ; AT THIS POINT, A0-> SONG LIST
+               ADDQ.L  #8,A0                ;  INDEX PAST NAME TO NUMBER OF STEPS IN THIS SONG
+               MOVE    0(A0),TOTAL_SONG_EVENTS
+               MOVE    SONG_STEP_NUM,D0     ;BUMP UP BY SONG STEP
+               EXT.L   D0
+               LSL     #1,D0                ; (RIGHTEOUS WORD OFFSET)
+               ADD.L   D0,A0                ;  NOW POINTING AT SONG STEP WE'RE ON
+               SUBQ    #1,SONG_STEP_NUM     ;DO A JOG - ENTERING AN 'AUTOINCREMENT' LOOP
+FIND_SONG_EVENT
+               ADDQ    #1,SONG_STEP_NUM
+               ADDQ.L  #2,A0                ;   INDEX PAST THIS EVENT TO FIRST EVENT
+               MOVE    0(A0),D0             ;    TAKE A CLOSE LOOK AT IT
+               MOVE    D0,D1                ;     MAKE A COPY
+               AND     #0FH,D0              ;       MASK TO TYPE
+               BEQ     FIND_SONG_EVENT      ;         IF A NULL EVENT, LOOK FOR A REAL ONE
+               CMP     #0FH,D0              ;         IF AND END_OF_SONG, EMPTY
+               BEQ.S   IS_EMPTY_SONG        ;              THEN EMPTY SONG - HANDLE.
+               CMP     #1,D0                ;         IF A SEQUENCE, COOL
+               BEQ.S   FIRST_SEQUENCE       ;              ELSE, LOOK FOR FIRST ONE
+               CMP     #2,D0                ;    (HEY - MAYBE A MUTE?)
+               BNE     FIND_SONG_EVENT      ;     IF NOT, CONTINUE SEARCH...
+               LSR     #8,D1
+               MOVE.B  D1,TRACKS_MUTED
+               BRA     FIND_SONG_EVENT
+
+FIRST_SEQUENCE
+               MOVE    D1,D0                ;MAKE A COPY FOR DISECTING.
+               LSR     #4,D0                ; TRYING TO ISOLATE SEQ NUMBER
+               AND     #07FH,D0             ;  (MASK CLEAN)
+               MOVE    D0,CURRENT_SEQUENCE  ;   SAVE
+               LSR     #7,D1                ;NEXT, ISOLATE NUMBER OF REPEATS
+               LSR     #4,D1
+               AND     #1FH,D1
+               ADDQ    #1,D1                ;ADD ONE TO REPEATS TO GET TOTAL PLAYS
+               MOVE    D1,TOTAL_REPEATS
+;
+               BTST    #PLAY_BIT,XPORT_STATE     ;IS "PLAY" ENABLED IN TRANSPORT?
+               BEQ.S   SET_NEW_RPTS              ;BRANCH IF NOT, SET REPEATS FOR FIRST SONG STEP.
+                                                 ;NORMALLY WOULD NOT WANT TO MESS THIS AROUND
+                                                 ;WHILE SEQUENCER IS RUNNING, BUT -
+                                                 ;UNDER MIDI/SMPTE SYNC-PLAY AND HI-SPEED CUEING,
+                                                 ;"PLAY" STAYS ENABLED AFTER WE GO PAST THE END OF
+                                                 ;THE SONG - SAME FOR LOOPED-RECORD IN SONG MODE:
+;871014               TST.B   PLAYED_TO_END             ;DID WE ALREADY PLAY/CUE PAST THE END OF THE SONG?
+               TST.B   NEW_SONG_NOW              ;HAVE WE GOT A GO-AHEAD TO FINISH THE JOB?
+;871014
+               BEQ.S   NO_NEW_RPTS_NOW           ;BRANCH IF NOT, BETTER LEAVE IT ALONE.
+SET_NEW_RPTS
+               MOVE    D1,REPEATS_LEFT
+NO_NEW_RPTS_NOW
+;
+               BSR     XMIT_SONG_SEL
+               RTS                     ;DONE OUR WORK....
+
+
+IS_EMPTY_SONG          ;IF SONG EMPTY, GOOD EQUIV IS MAKING CURRENT_SEQUENCE = 99.
+               MOVE    #99,CURRENT_SEQUENCE
+               RTS
+
+
+XMIT_SONG_SEL          ;NEW SONG - TELL THE OUTSIDE WORLD
+               TST     SONG_SEL_ENABLE      ;LAST TASK - XMIT SONG SELECT OVER MIDI
+               BEQ.S   SPLIT_THIS_MESS
+               BTST    #3,XPORT_STATE       ;IF PLAYING
+               BNE.S   SPLIT_THIS_MESS      ;    THEN DO NOT XMIT - WOULD INTERRUPT THE TIMING CHIP
+               MOVE    CURRENT_SONG,D0
+               ADD     #101,D0              ;SONGS LOOK LIKE 101-112.
+               MOVE    D0,BG_TEMP_1_B       ;(HAVE IN BYTEized FORMAT)
+               MOVEQ   #NEG_EXT+0F1H,D0     ;TELL TIMING CHIP WE WANT A DIRECT-CONNECT
+               JSR     WRITE_TO_TC
+               MOVEQ   #NEG_EXT+0F3H,D0     ; XMIT SONG_SELECT SYSTEM COMMON STATUS BYTE
+               JSR     WRITE_TO_TC
+               MOVE    BG_TEMP_1_B,D0       ;  THE NUMBER
+               JSR     WRITE_TO_TC
+               MOVEQ   #NEG_EXT+0FFH,D0     ;   DISCONNECT
+               JSR     WRITE_TO_TC
+SPLIT_THIS_MESS
+               RTS
+
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;
+;
+SEQ_CUE_SUB
+               ASC     "CUE START SEQ.xx"
+               ASC     "xxxx)    BAR:xxx"
+
+;SEQUENCE NUMBER FIELD
+
+               DC.B    14
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CURRENT_SEQUENCE
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+HI_LIMIT
+               DC.W    98
+               DC.W    FIELD_END
+
+;ON/OFF FIELD
+
+               DC.B    16
+               DC.B    4
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CUE_START
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    CUE_ON_OFF_STRING
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    1
+               DC.W    FIELD_END
+
+;BAR FIELD
+
+               DC.B    29
+               DC.B    3
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CUE_BAR
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+LO_LIMIT
+               DC.W    1
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    CUE_BAR_LIMIT
+               DC.W    SUBFUN_END
+
+
+CUE_ON_OFF_STRING
+               ASC     "(OFF (ON"
+
+
+CUE_BAR_LIMIT          ; HIGH START CUE BAR LIMIT IS NOW_LAST_BAR.
+               MOVE    NOW_LAST_BAR,PARAM_HI_LIM
+               TST     CUE_BAR              ;ADD COP TO MAKE SURE <> 0.
+               BNE.S   PSYCHO_1
+               MOVE    #1,CUE_BAR
+PSYCHO_1
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+

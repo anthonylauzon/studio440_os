@@ -1,0 +1,59 @@
+
+
+created 25-jul-90
+
+this is for the release version of scsi update
+
+
+
+hit list:
+
+    - move specific unchanging code blocks out of main link to
+    fixed locations in separate load modules, to shrink size and
+    duration of main link.  good candidates: tuning and other
+    tables related to sound playback (eg, envelope rate tables),
+    diagnostics, seqscope (softdiags), sample edit utils.
+
+    - mods to load/save screen per chris meyer's suggestion -
+    display of selected drive and bank in these screens.
+    also, seems reasonable to permit alteration of these values
+    here.
+
+    - ideally, the save procedure should display the existing
+    bank name and file type, if any, from the disk or bank to be
+    saved to, as part of the not blank warning.
+
+    - at boot-up or on scsi device reset, log all drives found to
+    be present.  for those which are formatted to 440 system, log
+    the directory size into an array which is used to set bank
+    limits in bank select screens for load/save/etc operations.
+    thus, must also remove hard limits on bank numbers here.
+    for non-440 drives, this is set to 0 and prevents such
+    operations.
+
+    - how large can bank directory be without overflowing buffer?
+    do we need to start using limbo ram space?
+
+    - if not too difficult, figure out some way around the
+    syquest error-after-cartrige-swap syndrome - perhaps a single
+    retry on error would do the trick?  perhaps using a specific
+    check for the error in question in conjunction with single
+    retry.
+
+    - wire in an omni mode for sds, make it the default.
+    possibly a -1 or 127 value for dev id.
+
+    - find and kill that damned midi kits tuning bug!  i mean,
+    default all midi controllers to no routing into kits.
+
+    - look at using midi sys rltm as play and stop switch
+    actuators in internal timebase mode.
+
+    - how about extending tempo range?  big deal?
+
+
+
+
+
+
+

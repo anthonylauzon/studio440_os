@@ -1,0 +1,1091 @@
+               INCLUDE HPFIXUPS
+               TITLE "SYSFUNS3"
+***************************************************************************************************
+***************************************************************************************************
+***                                                                                             ***
+***            SYSFUNS3 - SUBFUNCTIONS UNDER "KITS", "CLOCKS" FUNCTION SWITCHES                 ***
+***                                                                                             ***
+***************************************************************************************************
+***************************************************************************************************
+;
+NEG_EXT        EQU     0FFFFFF00H      ;USE IN MOVEQ INSTRUCTIONS WHERE ARG IS
+                                       ;80H OR LARGER - HP XASM DOES NOT HANDLE
+                                       ;SIGN-EXTEND CORRECTLY.  COSMETIC, KEEPS
+                                       ;ACTUAL BYTE VALUE CLEARER.
+;
+               ABS_SHORT
+;
+               INCLUDE S_BLK_EQU       ;SOUND CONTROL BLOCK DEFINITIONS.
+;
+               INCLUDE FIELD_EQU       ;SUBFUNCTION/FIELD BLOCK DEFINITIONS.
+
+               GLB     BPM_TO_USEC,CALC_FPB,CREATE_CLOCK_OUT,CREATE_CLOCK_IN
+
+               EXTERNAL  WRITE_PARAM_VALUE  ;EXTERNAL ROM.
+               EXTERNAL  WRITE_PARAM_STRING
+               EXTERNAL  STOP_THE_SEQUENCER
+               EXTERNAL  ALT_PARAM_STRING
+               EXTERNAL  WRITE_TO_TC
+               EXTERNAL  SET_ENTER_FLASH
+               EXTERNAL  DISP_SCREEN
+               EXTERNAL  USER_STALL
+               EXTERNAL  INSTALL_KIT
+               EXTERNAL  GET_S_BLK_PTR
+;01JUN               EXTERNAL  EXIT_HI_SPEED
+;
+               EXTERNAL  KIT_INDEX          ;RAM.
+               EXTERNAL  EDIT_KIT_INDEX
+               EXTERNAL  TARGET_KIT
+               EXTERNAL  KITS_EDITED
+               EXTERNAL  KIT_SOUNDS
+               EXTERNAL  KIT_LEVELS
+               EXTERNAL  KIT_PITCHES
+               EXTERNAL  KIT_PANS
+               EXTERNAL  BUILD_KIT_FLAG
+               EXTERNAL  PAD_SOUNDS
+               EXTERNAL  PAD_JUST_HIT
+               EXTERNAL  PARAM_BUFFER
+               EXTERNAL  PARAM_POINTER
+               EXTERNAL  PARAM_LO_LIM
+               EXTERNAL  PARAM_HI_LIM
+               EXTERNAL  AUX_ED_PTR_1
+               EXTERNAL  TC_MODE
+               EXTERNAL  TC_DIVIDE
+               EXTERNAL  CLOCK_IN_MODE
+               EXTERNAL  CLOCK_OUT_MODE,SMPTE_SYNC
+               EXTERNAL  RAW_CLOCK_IN
+               EXTERNAL  CUR_TEMPO_USEC
+               EXTERNAL  CUR_TEMPO_BPM
+               EXTERNAL  CUR_TEMPO_FPB
+               EXTERNAL  SMPTE_NOW_T_1
+               EXTERNAL  BAR_OR_SMPTE_FLAG
+               EXTERNAL  SND_TO_REPLACE
+               EXTERNAL  KIT_CLR_SEL
+               EXTERNAL  CURRENT_SOUND
+               EXTERNAL  SWITCH_STAT
+               EXTERNAL  MIDI_MT_UART
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; FOR STARTERS, GLOBAL DECLARATIONS FOR THE SUBFUNCTION BLOCKS -
+; THEY'RE ACCESSED FROM SWITCHBOY MODULE:
+;
+                                            ;KITS_GROUP.
+               GLB     KIT_BUILD_SUB
+               GLB     COPY_TO_KIT_SUB
+               GLB     KIT_REPLACE_SUB
+               GLB     KIT_CLEAR_SUB
+                                            ;CLOCK_GROUP.
+               GLB     CLOCK_IN_SUB
+               GLB     CLOCK_OUT_SUB
+               GLB     MIDI_CLOCK_SUB
+               GLB     CLOCK_TEMPO_SUB
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; THE SUBFUNCTION BLOCKS -
+; EACH BEGINS WITH THE DEFAULT SCREEN TEXT FOR THE SUBFUNCTION.
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+;
+;
+;
+; KITS_GROUP:
+;
+;
+;
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+KIT_BUILD_SUB
+               ASC     "      PAD:  #   "
+               ASC     "L:   PI:   PA:  "
+;
+               DC.B    0                    ;KIT NUMBER FIELD.
+               DC.B    5
+               DC.W    ACCESS+DIR_PTR
+               DC.W    EDIT_KIT_INDEX
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    KIT_BNK_STRING
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    7
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_KIT_BUILD_MODE
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+;
+               DC.B    10                   ;PAD NUMBER FIELD.
+               DC.B    1
+               DC.W    EDIT+NO_EDITS        ;HIT A PAD, FUCKFACE!
+               DC.W    ACCESS+DIR_PTR
+               DC.W    PAD_JUST_HIT
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    FIELD_END
+;
+               DC.B    13                   ;SOUND NUMBER FIELD.
+               DC.B    2
+               DC.W    ACCESS+SET_PTR
+               DC.L    SET_KIT_SOUND_ACCESS
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    DISP_KIT_SOUND
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    31
+               DC.W    EDIT+ED_VEC
+               DC.L    STORE_KIT_SOUND
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_KIT_BUILD_MODE
+               DC.W    FIELD_END
+;
+               DC.B    15                   ;ALT PARAMS FIELD.
+               DC.B    1
+               DC.W    EDIT+NO_EDITS        ;USE ALT PARAMS SWITCH TO CHANGE THIS SETTING.
+               DC.W    ACCESS+SET_PTR
+               DC.L    SET_KIT_SOUND_ACCESS
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    DISP_KIT_PARAM
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    ALT_PARAM_STRING
+               DC.W    FIELD_END
+;
+               DC.B    18                   ;LEVEL FIELD.
+               DC.B    2
+               DC.W    EDIT+NO_EDITS        ;USE LEVEL POT TO CHANGE THIS SETTING.
+               DC.W    ACCESS+SET_PTR
+               DC.L    SET_KIT_LEVEL_ACCESS
+               DC.W    FIELD_END
+;
+               DC.B    24                   ;PITCH FIELD.
+               DC.B    2
+               DC.W    EDIT+NO_EDITS        ;USE PITCH POT TO CHANGE THIS SETTING.
+               DC.W    ACCESS+SET_PTR
+               DC.L    SET_KIT_PITCH_ACCESS
+               DC.W    FIELD_END
+;
+               DC.B    30                   ;PAN FIELD.
+               DC.B    2
+               DC.W    EDIT+NO_EDITS        ;USE PAN POT TO CHANGE THIS SETTING.
+               DC.W    ACCESS+SET_PTR
+               DC.L    SET_KIT_PAN_ACCESS
+               DC.W    SUBFUN_END
+;
+;
+KIT_BNK_STRING
+               ASC     "KIT:1"
+               ASC     "KIT:2"
+               ASC     "KIT:3"
+               ASC     "KIT:4"
+               ASC     "BNK:A"
+               ASC     "BNK:B"
+               ASC     "BNK:C"
+               ASC     "BNK:D"
+;
+;
+;
+; LET 'EM ALL KNOW THAT WE'RE IN KIT-BUILD SCREEN/MODE.
+;
+SET_KIT_BUILD_MODE
+               ST      BUILD_KIT_FLAG       ;GENERAL ANNOUNCEMENT - WE'RE IN KIT-BUILD SCREEN.
+               RTS
+;
+;
+;
+; SET POINTER TO KIT SOUND NUMBER / ALT PARAMS PARAMETER -
+;
+SET_KIT_SOUND_ACCESS
+               MOVE    #KIT_SOUNDS,A0       ;SET POINTER TO KIT_SOUNDS ARRAY,
+               BSR.S   ADD_KIT_PAD_OFFSET   ;SEND IT OUT FOR INDEXING (BOTH A0 AND D0 GET POINTER).
+               MOVE.B  (A0),AUX_ED_PTR_1    ;SAVE CURRENT SOUND/ALT SETTING FOR EDIT/STORE USE.
+               RTS
+;
+;
+;
+; SET POINTER TO KIT LEVEL PARAMETER -
+;
+SET_KIT_LEVEL_ACCESS
+               MOVE    #KIT_LEVELS,A0       ;SET POINTER TO KIT_LEVELS ARRAY,
+               BRA.S   ADD_KIT_PAD_OFFSET   ;SEND IT OUT FOR INDEXING (BOTH A0 AND D0 GET POINTER),
+                                            ; ......AAAAAAND, RETURN TH'U.
+;
+;
+;
+; SET POINTER TO KIT PITCH PARAMETER -
+;
+SET_KIT_PITCH_ACCESS
+               MOVE    #KIT_PITCHES,A0      ;SET POINTER TO KIT_PITCHES ARRAY,
+               BRA.S   ADD_KIT_PAD_OFFSET   ;SEND IT OUT FOR INDEXING (BOTH A0 AND D0 GET POINTER),
+                                            ; ......AAAAAAND, RETURN TH'U.
+;
+;
+;
+; SET POINTER TO KIT PAN PARAMETER -
+;
+SET_KIT_PAN_ACCESS
+               MOVE    #KIT_PANS,A0         ;SET POINTER TO KIT_PANS ARRAY,
+;881025               BRA.S   ADD_KIT_PAD_OFFSET   ;SEND IT OUT FOR INDEXING (BOTH A0 AND D0 GET POINTER),
+;881025                                            ; ......AAAAAAND, RETURN TH'U.
+               NOP                          ;SEND IT OUT FOR INDEXING (BOTH A0 AND D0 GET POINTER),
+                                            ; ......AAAAAAND, RETURN TH'U.
+                                            ;(THIS NOP IS A PLACE HOLDER FOR THE
+                                            ;ABOVE BRA.S, WHICH ASSEMBLED AS 'NOP'
+                                            ;UNDER HP64000 - STRICTLY FOR INITIAL
+                                            ;LINK MAP MATCH-UP, DELETE AFTERWARDS).
+;
+;
+; INDEX KIT ARRAY POINTER IN A0 USING EDIT_KIT_INDEX AND PAD_JUST_HIT -
+; RETURN INDEXED POINTER IN BOTH A0 AND D0.
+;
+ADD_KIT_PAD_OFFSET
+               MOVE    EDIT_KIT_INDEX,D0    ;IT'S .... EDIT_KIT_INDEX * 8,
+               LSL     #3,D0
+               ADD     PAD_JUST_HIT,D0      ;PLUS PAD NUMBER, FOR TOTAL INDEX -
+               LEA     0(A0,D0),A0          ;APPLY THE INDEX,
+               MOVE.L  A0,D0                ;RETURN INDEXED POINTER IN A0 AND D0.
+               RTS
+;
+;
+;
+; DISPLAY KIT SOUND NUMBER SETTING -
+; IN THE PROCESS, UPDATE CURRENT_SOUND TO SAME VALUE.
+; ALSO ISOLATES SOUND NUMBER FROM ALT-PARAMS BIT SO IT CAN BE INC/DEC'D.
+;
+DISP_KIT_SOUND
+               LSR     PARAM_BUFFER         ;KNOCK OFF THE ALT PARAM BIT FOR DISPLAY/EDIT -
+                                            ;DON'T FRET, THO - IT'S SAVED IN AUX_ED_PTR_1.
+               MOVE    PARAM_BUFFER,CURRENT_SOUND     ;CURRENT_SOUND TRACKS DISPLAYED KIT SOUND.
+                ABS_LONG
+               JMP     WRITE_PARAM_VALUE    ;NORMAL DISPLAY HANDLING FROM HERE.
+                ABS_SHORT
+;
+;
+;
+; STORE EDITED SOUND NUMBER SETTING BACK INTO KIT_SOUNDS ARRAY -
+; UPON ENTRY, PARAM_BUFFER AND KIT_SOUNDS(n) CONTAIN NEW SOUND NUMBER,
+; BEREFT OF ALT-PARAMS BIT.  THE ALT PARAMS BIT IS RESTORED FROM
+; AUX_ED_PTR_1, IN WHICH IT WAS STASHED BY ACCESS ROUTINE.
+; IF IN A FIXED BANK (A-D), ORIGINAL SOUND NUMBER IS RESTORED ALSO -
+; EDITING OF SOUND NUMBER NOT ALLOWED IN FIXED BANKS.
+; NOTE - PARAM_BUFFER CONTENTS (SOUND NUMBER) GET TRASHED HERE, BUT
+; ARE RESTORED BY THE FETCH/DISPLAY PROCEDURE WHICH FOLLOWS ALL EDITS.
+;
+STORE_KIT_SOUND
+               MOVE    EDIT_KIT_INDEX,D0    ;EDITING A FIXED BANK OR USER KIT?
+               CMP     #4,D0
+               BLT.S   STKTSND_10           ;BRANCH IF USER KIT, STORE NEW SOUND NUMBER.
+               TST.B   SWITCH_STAT+4        ;FIXED BANK SOUND NUMBERS NOT EDITABLE.
+               BPL.S   STKTSND_20
+STKTSND_10
+               BSET    D0,KITS_EDITED       ;SET FLAG TO INDICATE THIS KIT HAS BEEN EDITED.
+               MOVE.B  AUX_ED_PTR_1,D0      ;RETRIEVE OLD SOUND NUMBER / ALT PARAMS BIT.
+               LSL     PARAM_BUFFER         ;MAKE WAY FOR ORIGINAL ALT PARAMS BIT,
+               AND     #1,D0                ;WHOMP ON THE OLD SOUND NUMBER,
+               OR      PARAM_BUFFER,D0      ;INSERT THE NEW SOUND NUMBER IN SAME PLACE.
+               MOVE.B  D0,AUX_ED_PTR_1      ;PUT IT BACK (AS THOUGH NOTHING HAPPENED) FOR STORE.
+STKTSND_20
+               MOVE.L  PARAM_POINTER,A0     ;STORE VALUE BACK INTO KIT_SOUNDS ARRAY.
+               MOVE.B  AUX_ED_PTR_1,(A0)
+               RTS                          ;WELL, WE'RE DONE - BYE.
+;
+;
+;
+; DISPLAY KIT ALT PARAMS SETTING:
+;
+DISP_KIT_PARAM
+               AND     #1,PARAM_BUFFER      ;WIPE OUT SOUND NUMBER, ISOLATE ALT-PARAMS SETTING.
+                ABS_LONG
+               JMP     WRITE_PARAM_STRING   ;NORMAL DISPLAY HANDLING FROM HERE.
+                ABS_SHORT
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; COPY PADS TO KIT:
+;
+COPY_TO_KIT_SUB
+               ASC     "COPY PAD VALUES "
+               ASC     "INTO USER KIT:  "
+;
+               DC.B    30                   ;DESTINATION KIT FIELD.
+               DC.B    1
+               DC.W    ACCESS+DIR_PTR
+               DC.W    TARGET_KIT
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    3
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    CUST_TARGET_KIT
+               DC.W    EDIT+ENTR_VEC
+               DC.L    DO_PAD_COPY
+               DC.W    SUBFUN_END
+;
+;
+CUST_TARGET_KIT
+               TST.B   SWITCH_STAT+4
+               BEQ.S   CUST_TGKT_20
+               ADDQ    #4,PARAM_HI_LIM
+CUST_TGKT_20
+                ABS_LONG
+               JMP     SET_ENTER_FLASH
+                ABS_SHORT
+;
+;
+DO_PAD_COPY
+               MOVE    KIT_INDEX,D0         ;SET A0 AS POINTER TO ACTIVE PAD ARRAYS.
+               LSL     #3,D0
+               ADD     #PAD_SOUNDS,D0
+               MOVE    D0,A0
+               MOVE    TARGET_KIT,D0        ;SET A1 AS POINTER TO DESTINATION KIT ARRAYS.
+               LSL     #3,D0
+               ADD     #KIT_SOUNDS,D0
+               MOVE    D0,A1
+               MOVEQ   #3,D0                ;COPY SOUNDS, PITCHES, LEVELS, PANS.
+DOPADCOPY_20
+               MOVE.L  (A0)+,(A1)+          ;MOVE EIGHT BYTES PER ARRAY.
+               MOVE.L  (A0)+,(A1)+
+               ADD     #56,A0               ;STEP TO NEXT SOURCE, DESTINATION ARRAYS.
+               ADD     #56,A1
+               DBRA    D0,DOPADCOPY_20      ;LOOP UNTIL FOUR ARRAYS COPIED.
+;
+               MOVE.L  #PADS_COPIED_SCREEN,A1
+                ABS_LONG
+               JSR     DISP_SCREEN          ;TELL HIM-B'WANA THAT WE DONE IT.
+               JMP     USER_STALL           ;AND THEN, OFF INTO THE SUNSET ....
+                ABS_SHORT
+;
+PADS_COPIED_SCREEN
+               ASC     "  PAD COPY DONE "
+               ASC     "                "
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; REPLACE SOUNDS IN KIT:
+;
+KIT_REPLACE_SUB
+               ASC     "REPLACE IN KIT: "
+               ASC     "SND #   WITH #  "
+;
+               DC.B    15                   ;DESTINATION KIT FIELD.
+               DC.B    1
+               DC.W    ACCESS+DIR_PTR
+               DC.W    TARGET_KIT
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    3
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    CUST_TARGET_KIT
+               DC.W    EDIT+ENTR_VEC
+               DC.L    DO_KIT_REPLACE
+               DC.W    FIELD_END
+;
+               DC.B    21                   ;SOUND-TO-REPLACE FIELD.
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    SND_TO_REPLACE
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    31
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    EDIT+ENTR_VEC
+               DC.L    DO_KIT_REPLACE
+               DC.W    FIELD_END
+;
+               DC.B    30                   ;REPLACE-WITH SOUND FIELD.
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CURRENT_SOUND
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    31
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    EDIT+ENTR_VEC
+               DC.L    DO_KIT_REPLACE
+               DC.W    SUBFUN_END
+;
+;
+; REPLACE ALL OCCURRENCES OF SOUND-TO-REPLACE IN SELECTED TARGET KIT
+; WITH CURRENT_SOUND - PRESERVE PROGRAMMED ALT-BIT STATUS IN KIT.
+; IF NO REPLACEMENTS OCCUR, POST A MESSAGE TO THAT EFFECT.
+; IF SOUNDS ARE REPLACED AND TARGET KIT IS CURRENTLY SELECTED,
+; CALL INSTALL_KIT TO COPY NEW KIT ONTO PADS - OTHERWISE, IT'LL HAVE TO
+; WAIT UNTIL MR. USER SELECTS THAT KIT.
+;
+DO_KIT_REPLACE
+               CLR     D7                   ;D7 WILL TRACK WHETHER OR NOT ANY SOUNDS ARE REPLACED.
+               MOVE    TARGET_KIT,D0        ;SET A0 AS POINTER TO TARGET KIT SOUNDS ARRAY.
+               LSL     #3,D0
+               ADD     #KIT_SOUNDS,D0
+               MOVE    D0,A0
+               MOVE    SND_TO_REPLACE,D0    ;D0 CONTAINS SOUND WE WANT TO REPLACE -
+               ADD     D0,D0                ;LEFT-SHIFTED BY 1 TO MATCH KIT ARRAY FORMAT.
+               MOVE    CURRENT_SOUND,D1     ;LIKEWISE FOR D1 RE: REPLACE-WITH SOUND.
+               ADD     D1,D1
+               MOVEQ   #7,D2                ;GO THU EIGHT PADS, UH CORSE.
+DOKITREP_20
+               MOVE.B  (A0),D3              ;FETCH SOUND SETTING FOR CURRENT PAD,
+               MOVE    D3,D4                ;MAKE A COPY JUST IN CASE,
+               AND     #03EH,D3             ;WIPE OUT ALT-PARAMS BIT (AND ANY OTHER NONSENSE).
+               CMP     D3,D0                ;IS PAD SET UP WITH SOUND WE'RE REPLACING?
+               BNE.S   DOKITREP_40          ;BRANCH IF NOT, NO ACTION ON THIS PAD.
+               AND     #1,D4                ;MATCH - WHITTLE IT DOWN TO EXISTING ALT-PARAM BIT,
+               OR      D1,D4                ;SUPERPOSE REPLACE-WITH SOUND NUMBER,
+               MOVE.B  D4,(A0)              ;WRITE IT BACK TO KIT ARRAY.
+               ST      D7                   ;SET FLAG TO INDICATE REPLACEMENT OCCURRED.
+DOKITREP_40
+               ADDQ    #1,A0                ;STEP TO NEXT PAD IF ANY.
+               DBRA    D2,DOKITREP_20       ;LOOP UNTIL EIGHT PADS CHECKED.
+;
+               TST     D7                   ;DID WE REPLACE ANYTHING?
+               BNE.S   DOKITREP_60          ;BRANCH IF YES,
+               MOVE.L  #NO_REPLACE_SCREEN,A1     ;ELSE NOTIFY USER OF NON-ACTION, EXIT.
+               BRA.S   DOKITREP_80
+;
+DOKITREP_60
+               MOVE    KIT_INDEX,D0         ;IS TARGET KIT ALSO THE CURRENTLY SELECTED KIT?
+               CMP     TARGET_KIT,D0
+               BNE.S   DOKITREP_70          ;BRANCH IF NOT,
+                ABS_LONG
+               JSR     INSTALL_KIT          ;ELSE INSTALL THE KIT TO REFLECT CHANGES IMMEDIATELY.
+                ABS_SHORT
+DOKITREP_70
+               MOVE.L  #REPLACE_DONE_SCREEN,A1   ;SOUNDS WERE REPLACED IN TARGET KIT - TELL USER.
+;
+DOKITREP_80
+                ABS_LONG
+               JSR     DISP_SCREEN          ;DISPLAY WHATEVER SCREEN IS APPROPRIATE.
+               JMP     USER_STALL           ;AND THEN, OFF INTO THE RICHMOND ....
+                ABS_SHORT
+;
+;
+NO_REPLACE_SCREEN
+               ASC     " NO SOUNDS WERE "
+               ASC     "FOUND TO REPLACE"
+;
+REPLACE_DONE_SCREEN
+               ASC     "SOUNDS HAVE BEEN"
+               ASC     "    REPLACED    "
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; KIT CLEAR:
+;
+KIT_CLEAR_SUB
+               ASC     "  CLEAR         "
+               ASC     "        SETTINGS"
+;
+               DC.B    9                    ;DESTINATION KIT FIELD.
+               DC.B    5
+               DC.W    ACCESS+DIR_PTR
+               DC.W    TARGET_KIT
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    KIT_BNK_STRING
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    7
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    EDIT+ENTR_VEC
+               DC.L    DO_KIT_CLEAR
+               DC.W    FIELD_END
+;
+               DC.B    16                   ;SETTING SELECTION FIELD.
+               DC.B    7
+               DC.W    ACCESS+DIR_PTR
+               DC.W    KIT_CLR_SEL
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    KIT_CLEAR_STRING
+               DC.W    EDIT+HI_LIMIT
+               DC.W    5
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    EDIT+ENTR_VEC
+               DC.L    DO_KIT_CLEAR
+               DC.W    SUBFUN_END
+;
+;
+KIT_CLEAR_STRING
+               ASC     "    ALL"
+               ASC     "  PITCH"
+               ASC     "ALT-PRM"
+               ASC     "  SOUND"
+               ASC     "  LEVEL"
+               ASC     "    PAN"
+               EVEN
+;
+;
+DO_KIT_CLEAR
+               BSR.S   KIT_KLEER            ;A SHORT WAYS DOWN FROM HERE - DOES THE HANDS-ON WORK.
+               MOVE    KIT_INDEX,D0         ;IS TARGET KIT ALSO THE CURRENTLY SELECTED KIT?
+               CMP     TARGET_KIT,D0
+               BNE.S   DOKITCLR_20          ;BRANCH IF NOT,
+                ABS_LONG
+               JSR     INSTALL_KIT          ;ELSE INSTALL THE KIT TO REFLECT CHANGES IMMEDIATELY.
+                ABS_SHORT
+DOKITCLR_20
+               MOVE.L  #KIT_CLEARED_SCREEN,A1    ;PUT IT UP NOW, WE'RE OUTA HERE.
+                ABS_LONG
+               JSR     DISP_SCREEN
+               JMP     USER_STALL           ;RETURN THROUGH THIS'UN.
+                ABS_SHORT
+;
+;
+KIT_KLEER
+               MOVE    TARGET_KIT,D0        ;SET D0 AS INDEX TO TARGET KIT ARRAYS.
+               LSL     #3,D0
+               MOVE    KIT_CLR_SEL,D1       ;BRANCH BASED ON SETTINGS-TO-CLEAR SELECTION.
+               LSL     #2,D1
+               JMP     KIT_KLR_TBL(PC,D1)
+KIT_KLR_TBL
+               BRA.W   KIT_KLR_ALL
+               BRA.W   KIT_KLR_PITCH
+               BRA.W   KIT_KLR_ALT
+               BRA.W   KIT_KLR_SOUND
+               BRA.W   KIT_KLR_LEVEL
+               BRA.W   KIT_KLR_PAN
+;
+KIT_KLR_ALL
+               BSR.S   KIT_KLR_SOUND        ;CLEAR SOUNDS FIRST - PITCH CLEAR DEPENDS ON SOUND.
+               BSR.S   KIT_KLR_PITCH
+               BSR.S   KIT_KLR_ALT
+               BSR.S   KIT_KLR_LEVEL
+               BRA     KIT_KLR_PAN          ;RETURN THROUGH AFTER THIS LAST ONE.
+;
+;
+KIT_KLR_PITCH
+               MOVE    D0,A1                ;COPY TARGET KIT ARRAY INDEX INTO A1,
+               ADD     #KIT_SOUNDS,A1       ;SET IT AS POINTER TO TARGET KIT SOUNDS ARRAY.
+               MOVE    D0,A2                ;COPY TARGET KIT ARRAY INDEX INTO A2,
+               ADD     #KIT_PITCHES,A2      ;SET IT AS POINTER TO TARGET KIT SOUNDS ARRAY.
+               MOVEQ   #7,D1                ;WORK THROUGH EIGHT PADS.
+KK_PIT_20
+               MOVE.B  0(A1,D1),D2          ;FETCH THE SOUND WOT BE ON THIS PAD.
+               LSR     #1,D2                ;OFF THE ALT-PARAM BIT.
+               AND     #1FH,D2              ;MAKE SURE IT'S SOUND-NUMBER KOSHER.
+               MOVE    D2,A0
+               JSR     GET_S_BLK_PTR        ;SET A0 AS POINTER TO THIS SOUND'S COMMON PARAM BLOCK.
+               MOVE.B  S_RATE(A0),D2        ;FETCH ITS SAMPLE RATE (AT PRESENT, ANYWAY).
+               EXT.W   D2                   ;MAKE SAMPLE RATE SETTING INTO BYTE OFFSET,
+               MOVE.B  ROOT_PITCH_TABLE(PC,D2),D2     ;FETCH ROOT PITCH FOR THIS SAMPLE RATE,
+               MOVE.B  D2,0(A2,D1)               ;COPY IT INTO TARGET KIT ARRAY FOR THIS PAD.
+               DBRA    D1,KK_PIT_20              ;LOOP UNTIL EIGHT PADS CHECKED.
+               RTS
+;
+;
+ROOT_PITCH_TABLE
+               DC.B    19                   ;ROOT PITCH FOR 16KHz SAMPLE RATE.
+               DC.B    19                   ;ROOT PITCH FOR 31KHz SAMPLE RATE.
+               DC.B    24                   ;ROOT PITCH FOR 42KHz SAMPLE RATE.
+               EVEN
+;
+;
+KIT_KLR_ALT
+               MOVE    D0,A1                ;COPY TARGET KIT ARRAY INDEX INTO A1,
+               ADD     #KIT_SOUNDS,A1       ;SET IT AS POINTER TO TARGET KIT SOUNDS ARRAY.
+               MOVEQ   #7,D1                ;WORK THROUGH EIGHT PADS.
+KK_ALT_20
+               BCLR    #0,0(A1,D1)          ;JUST CLEAR ALT-PARAM BIT ACROSS THE BOARD.
+               DBRA    D1,KK_ALT_20         ;LOOP UNTIL EIGHT PADS DONE.
+               RTS
+;
+;
+KIT_KLR_SOUND
+               MOVE    D0,A1                ;COPY TARGET KIT ARRAY INDEX INTO A1,
+               ADD     #KIT_SOUNDS,A1       ;SET IT AS POINTER TO TARGET KIT SOUNDS ARRAY.
+               MOVEQ   #7,D1                ;WORK THROUGH EIGHT PADS.
+KK_SND_20
+               MOVE.B  0(A1,D1),D2          ;FETCH THE SOUND WOT BE ON THIS PAD.
+               AND     #1,D2                ;PRESERVE ALT-PARAM BIT.
+               ADD     D0,D2                ;SET "DEFAULT" SOUND NUMBER (I.E., PER PRESET BANKS) -
+               ADD     D0,D2                ;TO WIT: KIT ARRAY BASE INDEX * 2,
+               AND     #3FH,D2              ;EXCEPT THAT BANK SOUNDS REITERATE KIT SOUNDS ....
+               ADD     D1,D2                ;PLUS PAD INDEX * 2.
+               ADD     D1,D2
+               MOVE.B  D2,0(A1,D1)          ;PUT 'ER BACK OUT THERE.
+               DBRA    D1,KK_SND_20         ;LOOP UNTIL EIGHT PADS DONE.
+               RTS
+;
+;
+KIT_KLR_LEVEL
+               MOVE    D0,A1                ;COPY TARGET KIT ARRAY INDEX INTO A1,
+               ADD     #KIT_LEVELS,A1       ;SET IT AS POINTER TO TARGET KIT LEVELS ARRAY.
+               MOVEQ   #7,D1                ;WORK THROUGH EIGHT PADS.
+KK_LEV_20
+               MOVE.B  #31,0(A1,D1)         ;SET MAXIMUM LEVEL ACROSS THE BOARD.
+               DBRA    D1,KK_LEV_20         ;LOOP UNTIL EIGHT PADS DONE.
+               RTS
+;
+;
+KIT_KLR_PAN
+               MOVE    D0,A1                ;COPY TARGET KIT ARRAY INDEX INTO A1,
+               ADD     #KIT_PANS,A1         ;SET IT AS POINTER TO TARGET KIT PANS ARRAY.
+               MOVEQ   #7,D1                ;WORK THROUGH EIGHT PADS.
+KK_PAN_20
+               MOVE.B  #15,0(A1,D1)         ;SET CENTERED PAN ACROSS THE BOARD.
+               DBRA    D1,KK_PAN_20         ;LOOP UNTIL EIGHT PADS DONE.
+               RTS
+;
+;
+KIT_CLEARED_SCREEN
+               ASC     "    SELECTED    "
+               ASC     "SETTINGS CLEARED"
+;
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; CLOCK GROUP
+;
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             CLOCK IN MODE SUBFUNCTION
+;
+CLOCK_IN_SUB
+               ASC     "CLOCK  IN  MODE:"
+               ASC     "                "
+
+; ONE FIELD - CLOCK IN MODE
+
+               DC.B    16
+               DC.B    16
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    RAW_CLOCK_IN
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    CLOCK_IN_STRINGS
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    6
+               DC.W    EDIT+ED_VEC
+               DC.L    CREATE_CLOCK_IN
+               DC.W    SUBFUN_END
+
+
+CLOCK_IN_STRINGS
+               ASC     "    INTERNAL    "
+               ASC     "EXTERNAL 24 PPQN"
+               ASC     "EXTERNAL 48 PPQN"
+               ASC     "EXTERNAL 96 PPQN"
+               ASC     " MIDI  CLOCKING "
+;900621               ASC     "MTC (EVENT LIST)"
+               ASC     "pick another one"
+               ASC     "SMPTE TIME CODE "
+               EVEN
+
+
+CREATE_CLOCK_IN        ; CONVERT FROM RAW_CLOCK_IN TO CLOCK_IN_MODE.  ALERT TIMING CHIP TO NEW
+; CLOCK IN MODE AND NEW CLOCK IN DIVIDE.  SELECTING MIDI OR A CLICK CLOCK IN DISALLOWS SMPTE OUR
+; (THIS DOG WAGS THAT TAIL).
+               MOVEM.L D0-D7/A0-A6,-(A7)          ; (SAVE REGGIES)
+
+;01JUN               JSR     EXIT_HI_SPEED        ;GET OUT OF HIGH-SPEED CLOCKING!!!
+;                                      ACT_STOP TAKES CARE OF THIS ....
+;
+               JSR     STOP_THE_SEQUENCER   ;MAKE SURE SEQUENCER IS NOT RUNNING.
+               SF      SMPTE_SYNC           ;IF THE USER IS GOING TO EDIT THE CLOCK IN, HAVE TO RESYNC
+
+               MOVE.B  TC_MODE,D7           ;GET LAST ENCODED MODE WE WROTE TO TC
+               AND.B   #11100011B,D7        ;    MASK OUT CLOCK IN MODE BITS
+               MOVE.B  TC_DIVIDE,D6         ;GET LAST CLOCK IN/OUT DIVIDES WRITTEN TO TC
+               AND.B   #11111100B,D6        ;    MASK OUT CLOCK IN DIVIDE BITS
+
+               MOVE    RAW_CLOCK_IN,D0      ;START WITH THIS....
+               LSL     #2,D0                ;    TURN INTO A TABLE INDEX
+               MOVE.L  CLOCK_IN_TBL(PC,D0),A0
+               JMP     (A0)                 ;EACH MODE HAS DIFFERENT MASKS TO THE TC
+
+
+CLOCK_IN_TBL
+               DC.L    C_I_INT         ;INTERNAL CLOCK MODE
+               DC.L    C_I_24_PPQN     ;CLICK IN, 24 PPQN
+               DC.L    C_I_48_PPQN     ;  "    "  48   "
+               DC.L    C_I_96_PPQN     ;  "    "  96   "
+               DC.L    C_I_MIDI        ;MIDI CLOCKING
+               DC.L    C_I_MTC         ;MIDI TIME CODE
+               DC.L    C_I_SMPTE       ;SMPTE IN
+
+
+C_I_INT
+               MOVEQ   #0,D0                ;CLOCK IN MODE
+;;;;;          OR.B    #0,D7                ;MASK TC MODE
+;;;;;          OR.B    #0,D6                ;DON'T CARE ABOUT INPUT DIVIDE
+               BRA     FINISH_C_I
+
+C_I_24_PPQN
+               MOVEQ   #3,D0                ;CLOCK IN MODE
+               OR.B    #00001100B,D7        ;MASK TC CLOCK IN MODE
+;;;;;          OR.B    #0,D6                ;DON'T CARE ABOUT INPUT DIVIDE
+               SF      BAR_OR_SMPTE_FLAG    ;    CAN'T DEFINE PUNCH IN/OUT IN TERMS OF SMPTE
+               BRA     FINISH_C_I
+
+C_I_48_PPQN
+               MOVEQ   #3,D0                ;CLOCK IN MODE
+               OR.B    #00001100B,D7        ;MASK TC CLOCK IN MODE
+               OR.B    #1,D6                ;DIVIDE INPUT CLICKS BY 2
+               SF      BAR_OR_SMPTE_FLAG    ;    CAN'T DEFINE PUNCH IN/OUT IN TERMS OF SMPTE
+               BRA     FINISH_C_I
+
+C_I_96_PPQN
+               MOVEQ   #3,D0                ;CLOCK IN MODE
+               OR.B    #00001100B,D7        ;MASK TC CLOCK IN MODE
+               OR.B    #3,D6                ;DIVIDE INCOMING CLICKS BY 4
+               SF      BAR_OR_SMPTE_FLAG    ;    CAN'T DEFINE PUNCH IN/OUT IN TERMS OF SMPTE
+               BRA     FINISH_C_I
+
+C_I_MIDI
+               MOVEQ   #2,D0                ;CLOCK IN MODE
+               OR.B    #00001000B,D7        ;MASK TC CLOCK IN MODE
+;;;;;          OR.B    #0,D6                ;DON'T CARE ABOUT INPUT DIVIDE
+               SF      BAR_OR_SMPTE_FLAG    ;    CAN'T DEFINE PUNCH IN/OUT IN TERMS OF SMPTE
+               BRA     FINISH_C_I
+
+C_I_MTC
+               MOVEQ   #1,D0                ;CLOCK IN MODE
+               OR.B    #00000100B,D7        ;MASK TC CLOCK IN MODE
+;;;;;          OR.B    #0,D6                ;DON'T CARE ABOUT INPUT DIVIDE
+               BRA     FINISH_C_I
+
+C_I_SMPTE
+               MOVEQ   #4,D0                ;CLOCK IN MODE
+               OR.B    #00010000B,D7        ;MASK TC CLOCK IN MODE
+;;;;;          OR.B    #0,D6                ;DON'T CARE ABOUT INPUT DIVIDE
+;;;;;          BRA     FINISH_C_I
+FINISH_C_I
+               MOVE    D0,CLOCK_IN_MODE     ;SAVE RIGHTEOUS CLOCK IN MODE
+               CMP     #2,D0                ;    IF MIDI IN, SMPTE OUT NOT ALLOWED
+               BEQ.S   NO_SMPTE_OUT
+               CMP     #3,D0                ;    SAME GOES FOR CLICK IN
+               BNE.S   SMPTE_OUT_OK
+NO_SMPTE_OUT
+               AND.B   #11011111B,D7        ;MASK AS CLICK OUT
+               AND.B   #10000011B,D6        ; REMAKE CLOCK OUT DIVIDE TO 1
+               OR.B    #00000100B,D6
+               MOVE    CLOCK_OUT_MODE,D0
+               CMP     #8,D0                ; IF CLOCK OUT MODE = SMPTE
+               BNE.S   SMPTE_OUT_OK
+               MOVE    #7,CLOCK_OUT_MODE    ;    THEN KNOCK OUT
+SMPTE_OUT_OK
+               MOVEQ   #NEG_EXT+0F3H,D0     ;GIVE TIMING CHIP NEW MODE
+;900621               ABS_LONG
+               JSR     WRITE_TO_TC
+;900621               ABS_SHORT
+               MOVE    D7,D0
+               MOVE.B  D7,TC_MODE           ; (REMEMBER OURSELVES)
+;900621               ABS_LONG
+               JSR     WRITE_TO_TC
+;900621               ABS_SHORT
+               MOVEQ   #NEG_EXT+0FAH,D0     ;GIVE TIMING CHIP NEW CLOCK OUT DIVIDE
+;900621               ABS_LONG
+               JSR     WRITE_TO_TC
+;900621               ABS_SHORT
+               MOVE    D6,D0
+               MOVE.B  D6,TC_DIVIDE         ; (REMEMBER OURSELVES)
+;900621               ABS_LONG
+               JSR     WRITE_TO_TC
+;900621               ABS_SHORT
+
+               MOVEM.L (A7)+,D0-D7/A0-A6
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             CLOCK OUT SUBFUNCTION
+;
+CLOCK_OUT_SUB
+               ASC     "CLOCK OUT MODE: "
+               ASC     "                "
+
+; ONE FIELD - CLOCK OUT MODE
+
+               DC.B    16
+               DC.B    15
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CLOCK_OUT_MODE
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    CLOCK_OUT_STRINGS
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    8
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    CLOCK_OUT_CHECK
+               DC.W    EDIT+ED_VEC
+               DC.L    CREATE_CLOCK_OUT
+               DC.W    SUBFUN_END
+
+
+CLOCK_OUT_STRINGS
+               ASC     "CLICK  (1 PPQN)"
+               ASC     "CLICK  (2 PPQN)"
+               ASC     "CLICK  (3 PPQN)"
+               ASC     "CLICK  (4 PPQN)"
+               ASC     "CLICK  (6 PPQN)"
+               ASC     "CLICK  (8 PPQN)"
+               ASC     "CLICK (12 PPQN)"
+               ASC     "CLICK (24 PPQN)"
+               ASC     "SMPTE TIME CODE"
+
+               EVEN
+
+CLOCK_OUT_CHECK        ; IF CLOCK_IN_MODE = MIDI OR CLICK, THEN SMPTE OUT NOT ALLOWED.  INHIBIT
+; THAT BY CHANGING THE HIGH LIMIT.
+               MOVE    CLOCK_IN_MODE,D0     ;EYEBALL CLOKE INN MOODE
+               CMP     #2,D0                ; ES MIDI?
+               BEQ.S   BLOCK_SMPTE          ;    IF YES, NO SMPTE
+               CMP     #3,D0                ; ES CLICK?
+               BNE.S   NO_BLOCK_SMPTE       ;    IF YES, BLOCK (ELSE, OKAY)
+BLOCK_SMPTE
+               MOVE    #7,PARAM_HI_LIM
+NO_BLOCK_SMPTE
+               RTS
+
+
+CREATE_CLOCK_OUT       ; TELL TC IF SMPTE OR CLICK OUT, AND IN THE LATER CASE, WHAT THE DIVIDE IS.
+               MOVEM.L D6-D7,-(A7)
+
+               MOVE.B  TC_MODE,D7           ;LOAD UP CURRENT TIMING CHIP MODE
+               AND.B   #11011111B,D7        ;    MASK OUT CLOCK OUT MODE BIT
+               MOVE.B  TC_DIVIDE,D6         ;LOAD UP CURRENT TC DIVIDES
+               AND.B   #10000011B,D6        ;    MASK OUT OLD CLOCK OUT DIVIDE
+
+               MOVE    CLOCK_OUT_MODE,D0    ;WOT MODE NOW?!?
+               CMP     #8,D0                ;    SMPTE?!?!?
+               BNE.S   NON_SMPTE_GOOD       ;         IF NOT, DON'T PANIC...
+               OR.B    #00100000B,D7        ;              ELSE, MASK NEW CLOCK OUT MODE
+NON_SMPTE_GOOD
+               OR.B    C_O_DIV_TBL(PC,D0),D6     ;MASK NEW DIVIDE VALUE
+
+               MOVEQ   #NEG_EXT+0FAH,D0
+               ABS_LONG
+               JSR     WRITE_TO_TC
+               ABS_SHORT
+               MOVE.B  D6,TC_DIVIDE         ;SAVE NEW DIVIDE VALUE
+               MOVE    D6,D0                ; TELL TC ABOUT IT
+               ABS_LONG
+               JSR     WRITE_TO_TC
+               ABS_SHORT
+               CMP.B   TC_MODE,D7           ;IF NO CHANGE IN MODE
+               BEQ.S   GINGER_1             ;    THEN DO NOT BOTHER TC WITH IT
+               MOVE.B  D7,TC_MODE           ;         ELSE, SAVE NEW MODE
+               MOVEQ   #NEG_EXT+0F3H,D0
+               ABS_LONG
+               JSR     WRITE_TO_TC
+               MOVE    D7,D0                ;         AND TELL TC ABOUT IT
+               JSR     WRITE_TO_TC
+                ABS_SHORT
+               CMP     #4,CLOCK_IN_MODE     ;IF NOT IN SMPTE CLOCKING
+               BNE.S   GINGER_1             ;    THEN DONE
+;01JUN               JSR     EXIT_HI_SPEED        ;GET OUT OF HIGH-SPEED CLOCKING!!!
+;                                      ACT_STOP TAKES CARE OF THIS ....
+;
+               JSR     STOP_THE_SEQUENCER   ;MAKE SURE SEQUENCER IS NOT RUNNING.
+               SF      SMPTE_SYNC           ;IF THE USER IS GOING TO EDIT THE CLOCK IN, HAVE TO RESYNC
+GINGER_1
+               MOVEM.L (A7)+,D6-D7
+               RTS
+
+
+C_O_DIV_TBL            ; CLOCK OUT DIVIDE MASKS
+               DC.B    01100000B            ; 1 PPQN (/24)
+               DC.B    00110000B            ; 2 PPQN (/12)
+               DC.B    00100000B            ; 3 PPQN (/8)
+               DC.B    00011000B            ; 4 PPQN (/6)
+               DC.B    00010000B            ; 6 PPQN (/4)
+               DC.B    00001100B            ; 8 PPQN (/3)
+               DC.B    00001000B            ;12 PPQN (/2)
+               DC.B    00000100B            ;24 PPQN (/1)
+               DC.B    00000100B            ; SMPTE (default divide, in case smpte disabled by clock in)
+               EVEN
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+MIDI_CLOCK_SUB
+               ASC     "MIDI CLOCK OUT: "
+               ASC     "                "
+
+               DC.B    18
+               DC.B    12
+               DC.W    ACCESS+DIR_PTR
+               DC.W    MIDI_MT_UART
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    MIDI_CLOCK_STR
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    3
+               DC.W    SUBFUN_END
+
+MIDI_CLOCK_STR ASC     "   OFF      "
+               ASC     "MIDI OUT A  "
+               ASC     "MIDI OUT B  "
+               ASC     "MIDI OUT A+B"
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             CURRENT TEMPO SUBFUNCTION
+;
+CLOCK_TEMPO_SUB
+               ASC     " CURRENT  TEMPO "
+               ASC     "     b/m     f/b"
+
+;BPM FIELD
+
+               DC.B    16
+               DC.B    5
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CUR_TEMPO_BPM
+               DC.W    DISPLAY+DEC_POINT
+               DC.W    1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    2500
+               DC.W    EDIT+LO_LIMIT
+               DC.W    400
+               DC.W    EDIT+ED_VEC
+               DC.L    CALC_FPB
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+
+;FPB FIELD
+
+               DC.B    25
+               DC.B    4
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CUR_TEMPO_FPB
+               DC.W    DISPLAY+DEC_POINT
+               DC.W    1
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    LIMIT_FPB
+               DC.W    EDIT+ED_VEC
+               DC.L    CALC_BPM
+               DC.W    EDIT+LINKED
+               DC.W    SUBFUN_END
+
+
+CALC_FPB               ; HAVE VALUE IN BPM; NEED TO CALC IT IN USEC/CLICK AND FPB, AND TELL THE TC
+               MOVE.B  SMPTE_NOW_T_1,D0     ;FPB INTERACTS WITH SMPTE TYPE
+               EXT     D0
+               LSL     #1,D0                ; (WORD INDEX)
+               MOVE    SMPTE_MULT_TBL(PC,D0),D0  ;LOAD SMPTE FPS x100
+               MULU    #60,D0               ;MULT BY 60 SECONDS/MINUTE
+               DIVU    CUR_TEMPO_BPM,D0     ;DIVIDE BY CURRENT BEATS/MINUTE * 10
+               MOVE    D0,CUR_TEMPO_FPB     ;NOW HAVE F/B * 10
+
+               BRA     BPM_TO_USEC          ;COVERT TO USEC/CLICK, TELL TC, AND RETURN
+
+
+CALC_BPM               ; TURN ABOVE AROUND - FPB TO BPM
+               MOVE.B  SMPTE_NOW_T_1,D0     ;FPB INTERACTED WITH SMPTE TYPE
+               EXT     D0
+               LSL     #1,D0
+               MOVE    SMPTE_MULT_TBL(PC,D0),D0  ;(FRAMES/SEC)x100 * 60 SECONDS/MINUTE
+               MULU    #60,D0
+               DIVU    CUR_TEMPO_FPB,D0     ;TAKE ABOVE / ((FRAMES/BEAT)x100) = BEATS/MINUTE
+               MOVE    D0,CUR_TEMPO_BPM
+
+               BRA     BPM_TO_USEC          ;COVERT TO USEC/CLICK, TELL TC, AND RETURN
+
+
+SMPTE_MULT_TBL
+               DC.W    2400
+               DC.W    2500
+               DC.W    2997
+               DC.W    3000
+
+
+LIMIT_FPB              ; LIMIT TEMPO-WISE IS 40->250 BPM.  WHAT THE LIMIT IS IN FPB INTERACTS
+; WITH SMPTE TYPE.  HAVE CALCed A TABLE FOR THESE HIGH AND LOW LIMITS.
+               MOVE.B  SMPTE_NOW_T_1,D0     ;FPB INTERACTED WITH SMPTE TYPE
+               EXT     D0
+               LSL     #1,D0
+               MOVE    SMPTE_HI_LIM(PC,D0),PARAM_HI_LIM
+               MOVE    SMPTE_LO_LIM(PC,D0),PARAM_LO_LIM
+               RTS
+
+
+SMPTE_HI_LIM
+               DC.W    360                  ;24 FPS
+               DC.W    375                  ;25 FPS
+               DC.W    449                  ;29.97 FPS
+               DC.W    450
+
+
+SMPTE_LO_LIM
+               DC.W    58                   ;24 FPS
+               DC.W    60                   ;25 FPS
+               DC.W    72                   ;29.97 FPS
+               DC.W    72                   ;30 FPS
+
+
+BPM_TO_USEC            ; CONVERT FROM TO BPM TO usec/CLICK, STORE, AND TELL TC.
+               MOVEM.L D0-D1/A0,-(A7)
+
+               MOVE.L  #25000000,D1         ;usec/CLICK = 25,000,000/(BPMx10)
+               DIVU    CUR_TEMPO_BPM,D1
+               MOVE    D1,CUR_TEMPO_USEC
+
+               MOVEQ   #NEG_EXT+0F2H,D0     ; TELL TIMING CHIP ABOUT NEW TEMPO
+               ABS_LONG
+               JSR     WRITE_TO_TC
+               ABS_SHORT
+               MOVE    D1,D0
+               LSR     #8,D0                ; MSB
+               ABS_LONG
+               JSR     WRITE_TO_TC
+               ABS_SHORT
+               MOVE    D1,D0                ; LSB
+               ABS_LONG
+               JSR     WRITE_TO_TC
+               ABS_SHORT
+;
+               MOVEM.L (A7)+,D0-D1/A0
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+

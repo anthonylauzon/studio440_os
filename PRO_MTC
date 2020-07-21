@@ -1,0 +1,1341 @@
+               INCLUDE HPFIXUPS
+               TITLE "MTC SET UP AND EXECUTION"
+***************************************************************************************************
+***************************************************************************************************
+***                                                                                             ***
+***           PRO_MIDITC - ROUTINES FOR RECEIVING AND EXECUTING MTC SET-UP INFORMATION          ***
+***                                                                                             ***
+***************************************************************************************************
+***************************************************************************************************
+;
+NEG_EXT        EQU     0FFFFFF00H      ;USE IN MOVEQ INSTRUCTIONS WHERE ARG IS
+                                       ;80H OR LARGER - HP XASM DOES NOT HANDLE
+                                       ;SIGN-EXTEND CORRECTLY.  COSMETIC, KEEPS
+                                       ;ACTUAL BYTE VALUE CLEARER.
+;
+               ABS_SHORT
+;
+               INCLUDE S_BLK_EQU       ;SOUND CONTROL BLOCK DEFINITIONS.
+;
+               INCLUDE SEQDEFS         ;SEQUENCER CONSTANT DEFINITIONS.
+;
+               GLB     MTC_SET_UP,EXECUTE_MIDITC,CLEAR_EVENT_LIST
+               GLB     MIDITC_SHORT
+               GLB     SMPTE_TYPE_TBL
+;
+               EXTERNAL  GET_LEVEL_5,NOTHINGNESS
+               EXTERNAL  VOICE_ASSIGN,VOICE_GATE_OFF
+               EXTERNAL  STOP_SWITCH
+               EXTERNAL  AUTORPT_SWITCH
+               EXTERNAL  LIVE_ERASE_SETUP
+               EXTERNAL  I_CALC_FPB,USEC_TO_ALL
+               EXTERNAL  PUNCH_IN_SUB,PUNCH_OUT_SUB
+               EXTERNAL  PUNCH_IN_NOW,AUTO_PUNCH_OUT
+;
+               EXTERNAL  M_DEVICE_ID        ;RAM.
+               EXTERNAL  BG_TEMP_2_B
+               EXTERNAL  BG_TEMP_3_B
+               EXTERNAL  BG_TEMP_4_B
+               EXTERNAL  BG_TEMP_1_B
+               EXTERNAL  CM_FLAGS_1
+               EXTERNAL  MIDITC_EVENT_LIST
+               EXTERNAL  SYSTEM_STOP_TIME
+               EXTERNAL  EVENT_LIST_COUNT
+               EXTERNAL  PUNCH_IN_ID
+               EXTERNAL  PUNCH_OUT_ID
+               EXTERNAL  PAD_LEVELS
+               EXTERNAL  PAD_PITCHES
+               EXTERNAL  PAD_PANS
+               EXTERNAL  ASSIGN_BLOCK
+               EXTERNAL  TEMP_FRAME
+               EXTERNAL  TEMP_SECOND
+               EXTERNAL  TEMP_MINUTE
+               EXTERNAL  TEMP_HOUR
+               EXTERNAL  SMPTE_NOW_BT
+               EXTERNAL  FORMER_HOUR
+               EXTERNAL  SMPTE_NOW_T_1
+               EXTERNAL  SMPTE_NOW_FR
+               EXTERNAL  SMPTE_NOW_SC
+               EXTERNAL  SMPTE_NOW_MN
+               EXTERNAL  SMPTE_NOW_TYPE
+               EXTERNAL  SMPTE_NOW_HR
+               EXTERNAL  SMPTE_P_O_HR,SMPTE_P_I_HR,SMPTE_P_I_BT
+               EXTERNAL  SMPTE_P_I_FR,SMPTE_P_O_FR,SMPTE_P_O_BT
+               EXTERNAL  XPORT_STATE
+               EXTERNAL  WORD_BIN_TO_BCD,WRITE_BCD_DIGITS,DISP_FIELD
+               EXTERNAL  LED_STEADY,LED_SLOW_FLASH,LED_FAST_FLASH
+               EXTERNAL  ERASING,RECORDING
+               EXTERNAL  NOW_BAR,NOW_CLICK,PUNCH_IN_BAR,PUNCH_IN_CLICK,PUNCH_OUT_BAR,PUNCH_OUT_CLICK
+               EXTERNAL  BAR_OR_SMPTE_FLAG
+               EXTERNAL  TIME_DISPLAY_SUB,CUR_SUB_BLOCK
+               EXTERNAL  AUTORPT_FLAG
+               EXTERNAL  INIT_TEMPO_USEC,INIT_TEMPO_BPM
+               EXTERNAL  CUR_TEMPO_USEC
+               EXTERNAL  MIDI_DEFAULT_VEL,TC_RCV_COUNT
+               EXTERNAL  SHOWING_TEMPO,SHOWING_FF_RW
+               EXTERNAL  SUBFUN_INSTALL
+               EXTERNAL  NOW_LAST_BAR
+               EXTERNAL  CLICKS_THIS_BAR
+               EXTERNAL  USER_PUNCHED
+               EXTERNAL  PLAYED_TO_END
+;
+               TITLE "MIDITC SHORT TIMECODE"
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             HERE, RECEIVE AND STORE MIDITC SHORT-FORM TIME CODE.  IT LOOKS LIKE:
+;
+;                      F1 0xxx wwww
+;
+;              xxx = 0->7 (NUMBER OF QUARTER FRAME WE ARE ON)
+;              wwww = NIBBLE OF THE FRAME, SECOND, MINUTE, AND HOUR (LS FIRST), RESPECTIVELY
+;
+;             ARRIVE EVERY QUARTER-FRAME.  THE TIME SPELLED OUT IS THE TIME IT WAS WHEN MESSAGE #0
+;              FIRST HIT.  WE RCV & SPLIT INTO TIME (INCL. BITS - EACH QUARTER FRAME = 20 BITS),
+;              STORE IN RAM, AND DISPLAY IF NEEDED.  CHECK FOR DISCONTINUITIES, BRANCH OFF AND
+;              EXECUTE CUE LIST IF ENABLED.
+;
+MIDITC_SHORT
+               MOVE.B  SMPTE_NOW_BT,D0      ;FIRST, UPDATE NEW BIT NOMBRE
+               AND.L   #0FFH,D0
+               ADD     #25,D0
+               CMP     #100,D0
+               BCS.S   BLOURG
+               MOVEQ   #0,D0
+BLOURG
+               CMP.L   #TIME_DISPLAY_SUB,CUR_SUB_BLOCK     ;SEE IF DISPLAYING TIME CODE
+               BNE.S   AVACADO_1
+               TST.B   SHOWING_TEMPO
+               BNE.S   AVACADO_1
+               TST.B   SHOWING_FF_RW
+               BNE.S   AVACADO_1
+;
+               ABS_LONG
+               JSR     WORD_BIN_TO_BCD
+               MOVE    #1D02H,D1
+               JSR     WRITE_BCD_DIGITS
+               JSR     DISP_FIELD
+               ABS_SHORT
+AVACADO_1
+               MOVE    #500,D0              ;TC SHOULD BE SENDING THIS HOT & HEAVY - IF WE DON'T GET
+LOOKING_FOR_OUR_FRAME                       ; IT, SOMETHING IS WRONG - ABORT!!!
+               TST     TC_RCV_COUNT
+               BNE.S   LA_DE_LA
+               DBRA    D0,LOOKING_FOR_OUR_FRAME
+               BRA     REALLY_EXIT_MTC
+LA_DE_LA
+               ABS_LONG
+               JSR     GET_LEVEL_5          ;GET 'fr' BYTE
+               ABS_SHORT
+               MOVE    D0,D2                ;MAKE AN EXTRA COPY
+               AND     #0070H,D2            ;MASK DOWN TO SEE WHICH QUARTER-FRAME IT IS
+               LSR     #3,D2                ;MAKE INTO A TABEL OFFSET
+               MOVE    MTC_JMP_TBL(PC,D2),A0     ;PROCESS ACCORDING TO NOMBRE
+               JMP     (A0)
+;
+MTC_JMP_TBL
+               DC.W    MTC_DECODE_0    ;FRAMES LSB, START OF A NEW FRAME
+               DC.W    MTC_DECODE_1    ;FRAMES MSB
+               DC.W    MTC_DECODE_2    ;SECONDS LSB
+               DC.W    MTC_DECODE_3    ;SECONDS LSB
+               DC.W    MTC_DECODE_4    ;MINUTES LSB, START OF A NEW FRAME
+               DC.W    MTC_DECODE_5    ;MINUTES LSB
+               DC.W    MTC_DECODE_6    ;HOURS LSB
+               DC.W    MTC_DECODE_7    ;HOURS MSB, SMPTE TYPE
+;
+;;;;;;;;;;
+MTC_DECODE_0
+               AND     #0FH,D0              ;MASK DOWN LSNIB OF FRAME
+               MOVE.B  D0,TEMP_FRAME        ;SAVE
+               CLR.B   SMPTE_NOW_BT         ;EQUIV OF BIT 00
+               BSR     INC_NOW_TIME         ;SINCE THIS IS A FRAME BOUNDRY, INC NOW_TIME
+               MOVE.L  SMPTE_NOW_HR,FORMER_HOUR  ;SAVE 'NOW' TO SEE IF RECEIVED TIME MATCHES IT
+               BRA     MTC_VENTILATE        ;SEE IF EVENT LIST IS EXECUTABLE
+;
+;;;;;;;;;;
+MTC_DECODE_1
+               AND     #1,D0                ;MASK DOWN MSNUB OF FRAME
+               LSL     #4,D0                ;ROTATE INTO POSITION
+               ADD.B   D0,TEMP_FRAME        ;ADD TO LSNIB
+               MOVE.B  #25,SMPTE_NOW_BT     ;25/100 OF WAY INTO FRAME
+;
+               MOVE.B  TEMP_FRAME,D0        ;PRELOAD IN CASE WE WANT TO DISPLAY
+               MOVE    #1A02H,D1            ; (LOCATION)
+               BRA     MTC_EVENT_EX         ;ANYTHING ELSE?
+;
+;;;;;;;;;;
+MTC_DECODE_2
+               AND     #0FH,D0              ;MASK DOWN LSNIB OF SECOND
+               MOVE.B  D0,TEMP_SECOND       ;SAVE
+               MOVE.B  #50,SMPTE_NOW_BT     ;50/100 OF WAY INTO FRAME
+               BRA     MTC_VENTILATE        ;SEE IF EVENT LIST IS EXECUTABLE
+;
+;;;;;;;;;;
+MTC_DECODE_3
+               AND     #3,D0                ;MASK DOWN MSNUB OF SECOND
+               LSL     #4,D0                ;ROTATE INTO POSITION
+               ADD.B   D0,TEMP_SECOND       ;ADD TO LSNIB
+               MOVE.B  #75,SMPTE_NOW_BT     ;75/100 OF WAY INTO FRAME
+;
+               MOVE.B  TEMP_SECOND,D0       ;PRELOAD IN CASE WE WANT TO DISPLAY
+               MOVE    #1702H,D1            ; (LOCATION)
+               BRA     MTC_EVENT_EX         ;ANYTHING ELSE?
+;
+;;;;;;;;;;
+MTC_DECODE_4
+               AND     #0FH,D0              ;MASK DOWN LSNIB OF MINUTE
+               MOVE.B  D0,TEMP_MINUTE       ;SAVE
+               CLR.B   SMPTE_NOW_BT         ;EQUIV OF BIT 00
+               BSR     INC_NOW_TIME         ;SINCE THIS IS A FRAME BOUNDRY, INC NOW_TIME
+               BRA     MTC_VENTILATE        ;SEE IF EVENT LIST IS EXECUTABLE
+;
+;;;;;;;;;;
+MTC_DECODE_5
+               AND     #3,D0                ;MASK DOWN MSNUB OF MINUTE
+               LSL     #4,D0                ;ROTATE INTO POSITION
+               ADD.B   D0,TEMP_MINUTE       ;ADD TO LSNIB
+               MOVE.B  #25,SMPTE_NOW_BT     ;25/100 OF WAY INTO FRAME
+;
+               MOVE.B  TEMP_MINUTE,D0       ;PRELOAD IN CASE WE WANT TO DISPLAY
+               MOVE    #1402H,D1            ; (LOCATION)
+               BRA.S   MTC_EVENT_EX         ;ANYTHING ELSE?
+;
+;;;;;;;;;;
+MTC_DECODE_6
+               AND     #0FH,D0              ;MASK DOWN LSNIB OF HOUR
+               MOVE.B  D0,TEMP_HOUR         ;SAVE
+               MOVE.B  #50,SMPTE_NOW_BT     ;50/100 OF THE WAY IN
+               BRA.S   MTC_VENTILATE        ;SEE IF EVENT LIST IS EXECUTABLE
+;
+;;;;;;;;;;
+MTC_DECODE_7   ;TYPE MASKED OFF; DIFF IN TYPE HANDLED BY TIMING CHIP
+               MOVE    D0,D2                ;'NOTHER COPY
+               AND     #1,D0                ;MASK DOWN MSNUB OF HOUR
+               LSL     #4,D0                ;ROTATE INTO POSITION
+               ADD.B   D0,TEMP_HOUR         ;ADD TO LSNIB
+               MOVE.B  #75,SMPTE_NOW_BT     ;75/100 OF WAY INTO FRAME
+;
+               AND     #06H,D2
+               ASR.B   #1,D2                ;ROTATE DOWN TO CHECK OUT TYPE
+               MOVE.B  D2,SMPTE_NOW_T_1     ;SAVE TYPE IN TWO FORMATS - 0->3, AND FRAME COUNT PER SEC
+               MOVE    #SMPTE_TYPE_TBL,A0
+               MOVE.B  0(A0,D2),SMPTE_NOW_TYPE
+                                            ;SAVE IN RAM (IN TYPE, 0=24 FPS, 1=24 FPS,
+                                            ; 2=30 FPS (drop), AND 3 = 30 FPS (non-drop)
+;
+               MOVE.L  TEMP_HOUR,D1         ;HAVE GATHERED TIME THAT IS NOW 2 FRAMES OLD
+               CMP.L   FORMER_HOUR,D1       ; DOES IT MATCH THE TIME WE THOUGHT IT WAS?
+               BEQ.S   MTC_EVENT_ALMOST     ;    IF YES, ES COOL
+               MOVE.L  D1,SMPTE_NOW_HR      ;         ELSE, NEW RECEIVED TIME IS OUR TIME
+               BSR     INC_NOW_TIME         ;         (SINCE 2 FRAMES OLD, BRING UP TO DATE)
+;              BSR     INC_NOW_TIME         ;WHOA - INC ONLY ONCE; WILL INed AS SOON AS NEXT Q-FRAME HITS
+;
+MTC_EVENT_ALMOST
+               MOVE.B  TEMP_HOUR,D0         ;PRELOAD IN CASE WE WANT TO DISPLAY
+               MOVE    #1102H,D1            ; (LOCATION)
+;
+;
+MTC_EVENT_EX
+               CMP.L   #TIME_DISPLAY_SUB,CUR_SUB_BLOCK     ;SEE IF DISPLAYING TIME CODE
+               BNE.S   AVACADO_0
+               TST.B   SHOWING_TEMPO
+               BNE.S   AVACADO_0
+               TST.B   SHOWING_FF_RW
+               BNE.S   AVACADO_0
+;
+               AND.L   #0FFH,D0             ;EXTEND VALUE TO DISPLAY
+               MOVE.L  D1,-(A7)             ; SAVE LOCATION
+               ABS_LONG
+               JSR     WORD_BIN_TO_BCD
+               MOVE.L  (A7)+,D1
+               JSR     WRITE_BCD_DIGITS
+               JSR     DISP_FIELD
+               ABS_SHORT
+MTC_VENTILATE
+AVACADO_0
+               TST.B   CM_FLAGS_1           ;SEE IF MTC EVENT LIST ENABLED
+               BEQ     EXIT_MIDITC_SHORT    ;    IF NO, GIT
+               BSR     EXECUTE_MIDITC       ;         ELSE, GO TO IT!!!
+;
+;
+;
+EXIT_MIDITC_SHORT      ;FINAL STEP - SEE IF SMPTE_NOW_TIME MATCHES PUNCH IN OR PUNCH OUT. IF
+; SO, XFER CURRENT BAR/CLICK OVER TO THAT VERSION OF PUNCH IN/OUT.  THEN, SEE IF SHOULD ACTUALLY
+; OR EXIT RECORD MODE.
+;
+;
+               BSR.S   AUTO_SMPTE_PUNCH     ;LIKE THE MAN SAID ....
+;
+;07JUN               BTST    #3,XPORT_STATE       ;OF COURSE, IF NOT REALLY PLAYING, FORGET THIS WHOLE MESS
+;07JUN               BEQ     REALLY_EXIT_MTC
+;07JUN
+;07JUN               TST.B   BAR_OR_SMPTE_FLAG    ;FIRST - SMPTE USED TO DEFINE PUNCH POINTS?
+;07JUN               BEQ     REALLY_EXIT_MTC      ;    IF BARS/CLICKS, NO FURTHER ACTION.
+;07JUN               MOVE.L  SMPTE_NOW_HR,D0      ;         ELSE, SEE IF WE MATCH ONE OF THE TIMES
+;07JUN
+;07JUN               CMP.L   SMPTE_P_I_HR,D0      ;PUNCH IN TIME?
+;07JUN               BEQ.S   THIS_DAY_1           ;    IF HR/MN/SC/FR EQUAL, CHECK BITS
+;07JUN               BCC.S   THIS_DAY_2           ;    IF WE PAST THE PUNCH IN TIME, MAKE SURE PUNCHED IN
+;07JUN               BRA     REALLY_EXIT_MTC      ;         ELSE, WAIT 'TIL TIME CATCHES UP W/ US
+;07JUN
+;07JUNTHIS_DAY_1
+;07JUN               MOVE.B  SMPTE_P_I_BT,D0      ;TEST PUNCH IN BIT
+;07JUN               AND.L   #0FFH,D0             ; (EXTEND TO LONG WORD)
+;07JUN               DIVU    #25,D0               ;    SINCE NOW_TIME IN MULTS OF 25 BITS, WE ROUND TO THAT
+;07JUN               MULU    #25,D0
+;07JUN               CMP.B   SMPTE_NOW_BT,D0      ;WELL - THERE YET?
+;07JUN               BEQ.S   THIS_DAY_4           ;    IF RIGHT ON THE MONEY, XFER TIMES & PUNCH IN
+;07JUN               BCC.S   THIS_DAY_2           ;    IF PAST, MAKE SURE PUNCHED IN
+;07JUN               BEQ.S   THIS_DAY_3           ;         ELSE, FORGET (NOT THERE YET), AND CHECK PUNCH OUT.
+;07JUNTHIS_DAY_4
+;07JUN               MOVE    NOW_BAR,PUNCH_IN_BAR ;XFER NOW_BAR/CLICK TO PUNCH IN, TO KEEP CORRELATION
+;07JUN               MOVE    NOW_CLICK,PUNCH_IN_CLICK
+;07JUNTHIS_DAY_2
+;07JUN               BTST    #1,XPORT_STATE       ;'FORE PUNCHING IN - RECORDING EVEN BEING CONSIDERED?
+;07JUN               BEQ.S   IMPROV_1             ;    IF NOT, CHECK IF ERASING
+;07JUN               TST.B   RECORDING            ;ARE WE ALREADY RECORDING?
+;07JUN               BNE.S   NOT_PUNCHY           ;    IF YES, THEN SEE IF PERHAPS TIME TO PUNCH OUT
+;07JUN                                            ;         ELSE, PUNCH IN!!!!!!
+;07JUN               BCLR    #RECORD_LED,LED_SLOW_FLASH     ;CHANGE LED STATE
+;07JUN               BCLR    #RECORD_LED,LED_FAST_FLASH
+;07JUN               BSET    #RECORD_LED,LED_STEADY
+;07JUN               ST      RECORDING            ;SET FLAG THAT RECORDING MAY COMMENCE
+;07JUN               BRA.S   THIS_DAY_3
+;07JUN
+;07JUNIMPROV_1       ;SEE IF SHOULD PUNCH INTO ERASE MODE.
+;07JUN               BTST    #0,XPORT_STATE       ;'FORE PUNCHING IN - ERASING EVEN BEING CONSIDERED?
+;07JUN               BEQ.S   THIS_DAY_3           ;    IF NOT, AT LEAST GO THRU PUNCH OUT XFER CHECK
+;07JUN               TST.B   ERASING              ;ARE WE ALREADY ERASING?
+;07JUN               BNE.S   THIS_DAY_3           ;    IF YES, THEN AGAIN, CHECK PUNCH OUT STUFF
+;07JUN                                            ;         ELSE, PUNCH IN!!!!!!
+;07JUN               BCLR    #ERASE_LED,LED_SLOW_FLASH ;CHANGE LED STATE
+;07JUN               BCLR    #ERASE_LED,LED_FAST_FLASH
+;07JUN               BSET    #ERASE_LED,LED_STEADY
+;07JUN               ST      ERASING              ;SET FLAG THAT ERASING MAY COMMENCE
+;07JUN
+;07JUN               TST.B   AUTORPT_FLAG         ;ARE WE IN AUTOREPEAT MODE?
+;07JUN               BEQ.S   HEY_THATS_MY_WIFE    ;IF NOT, THAT'S FINE,
+;07JUN                ABS_LONG
+;07JUN               JSR     AUTORPT_SWITCH       ;ELSE CALL SWITCH HANDLER TO TOGGLE IT OFF, ETC.
+;07JUN                ABS_SHORT
+;07JUNHEY_THATS_MY_WIFE
+;07JUN               JSR     LIVE_ERASE_SETUP     ;GATE OFF ALL CURRENTLY GATED-ON LIVE VOICES,
+;07JUN                                            ;INITIALIZE INTERNAL EVENT ERASE MAP AND PAD ERASE
+;07JUN                                            ;BUFFER, PROCESS ANY CURRENTLY-ON PADS INTO ERASE
+;07JUN                                            ;MAP AND BUFFER.
+;07JUN
+;07JUN
+;07JUN
+;07JUNTHIS_DAY_3     ;CHECK IF PUNCH OUT TIME YET
+;07JUN               MOVE    PUNCH_IN_BAR,D0      ;IF PUNCH IN NOW AFTER PUNCH OUT, CORRECT FOR.
+;07JUN               CMP     PUNCH_OUT_BAR,D0
+;07JUN               BLT.S   NOT_PUNCHY
+;07JUN               BGT.S   PUNCHY
+;07JUN               MOVE    PUNCH_IN_CLICK,D1
+;07JUN               CMP     PUNCH_OUT_CLICK,D1
+;07JUN               BLT.S   NOT_PUNCHY
+;07JUNPUNCHY
+;07JUN               BRA     REALLY_EXIT_MTC      ;SINCE OLD PUNCH TIME INVALIDATED, DON'T PUNCH OUT NOW
+;07JUN
+;07JUNNOT_PUNCHY
+;07JUN               MOVE.L  SMPTE_NOW_HR,D0      ;SEE IF WE MATCH PUNCH OUT TIME
+;07JUN               CMP.L   SMPTE_P_O_HR,D0      ;PUNCH OUT TIME?
+;07JUN               BEQ.S   THIS_DAY_5           ;    IF HR/MN/SC/FR EQUAL, CHECK BITS
+;07JUN               BCC.S   THIS_DAY_6           ;    IF WE PAST THE PUNCH OUT TIME, MAKE SURE PUNCHED OUT
+;07JUN               BRA.S   REALLY_EXIT_MTC      ;         ELSE, DONE - GIT.
+;07JUN
+;07JUNTHIS_DAY_5
+;07JUN               MOVE.B  SMPTE_P_O_BT,D0      ;TEST PUNCH OUT BITS
+;07JUN               AND.L   #0FFH,D0             ; (EXTEND TO LONG WORD)
+;07JUN               DIVU    #25,D0               ;    SINCE NOW_TIME IN MULTS OF 25 BITS, WE ROUND TO THAT
+;07JUN               MULU    #25,D0
+;07JUN               CMP.B   SMPTE_NOW_BT,D0      ;WELL - THERE YET?
+;07JUN               BEQ.S   THIS_DAY_7           ;    IF RIGHT ON THE MONEY, XFER TIMES & PUNCH OUT
+;07JUN               BCC.S   THIS_DAY_6           ;    IF PAST, MAKE SURE PUNCHED OUT
+;07JUN               BEQ.S   REALLY_EXIT_MTC      ;         ELSE, FORGET (NOT THERE YET), AND SPLIT.
+;07JUNTHIS_DAY_7
+;07JUN               MOVE    NOW_BAR,PUNCH_OUT_BAR ;XFER NOW_BAR/CLICK TO PUNCH OUT, TO KEEP CORRELATION
+;07JUN               MOVE    NOW_CLICK,PUNCH_OUT_CLICK
+;07JUNTHIS_DAY_6
+;07JUN               BTST    #1,XPORT_STATE       ;'FORE PUNCHING IN - RECORDING EVEN BEING CONSIDERED?
+;07JUN               BEQ.S   IMPROV_2             ;    IF NOT, SEE IF CONSIDERING ERASING
+;07JUN               TST.B   RECORDING            ;ARE WE ALREADY RECORDING?
+;07JUN               BEQ.S   REALLY_EXIT_MTC      ;    IF NO, ALREADY PUNCHED OUT - MOVE ON.
+;07JUN                                            ;         ELSE, PUNCH OUT!!!!!
+;07JUN               BSET    #RECORD_LED,LED_SLOW_FLASH     ;CHANGE LED STATE
+;07JUN               BCLR    #RECORD_LED,LED_FAST_FLASH
+;07JUN               BCLR    #RECORD_LED,LED_STEADY
+;07JUN               SF      RECORDING            ;SET FLAG THAT RECORDING MAY COMMENCE
+;07JUN               BRA.S   REALLY_EXIT_MTC
+;07JUN
+;07JUNIMPROV_2       ;SEE IF SHOULD PUNCH OUT OF ERASE MODE.
+;07JUN               BTST    #0,XPORT_STATE       ;'FORE PUNCHING OUT - ERASING EVEN BEING CONSIDERED?
+;07JUN               BEQ.S   REALLY_EXIT_MTC      ;    IF NOT, AT LEAST GO THRU PUNCH OUT XFER CHECK
+;07JUN               TST.B   ERASING              ;ARE WE ALREADY ERASING?
+;07JUN               BEQ.S   REALLY_EXIT_MTC      ;    IF NO, THEN PUNCHED OUT ALREADY
+;07JUN                                            ;         ELSE, PUNCH OUT!!!!!
+;07JUN               BSET    #ERASE_LED,LED_SLOW_FLASH ;CHANGE LED STATE
+;07JUN               BCLR    #ERASE_LED,LED_FAST_FLASH
+;07JUN               BCLR    #ERASE_LED,LED_STEADY
+;07JUN               SF      ERASING              ;SET FLAG THAT ERASING MAY COMMENCE
+;
+;
+;
+REALLY_EXIT_MTC
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               TITLE   "AUTOMATED SMPTE PUNCH-IN/OUT WHILE SEQUENCER RUNNING"
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; SMPTE-BASED TESTS FOR PUNCH-IN/PUNCH-OUT WHILE SEQUENCER RUNNING -
+; I.E., THIS IS INTENDED FOR USE BY PRO_MTC IN RESPONSE TO INCOMING MTC-
+; TYPE QUARTER-FRAME SMPTE-TIME MESSAGES FROM THE 6803.
+; NOTE: LOGICAL AFFRONTERY TO CALL HERE AT ANY OTHER TIME!
+; ALSO NOTE: THIS ROUTINE IS NEVER CALLED IF THE 440 IS SYNC'ED TO MIDI
+; OR CLICKS, SINCE SMPTE TIME IS UNDEFINED IN THESE MODES, AND WE DON'T
+; GET ANY TIME MESSAGES FROM THE 6803.
+;
+; NOTE - USER MANUAL PUNCH-IN/OUT WHILE RUNNING SETS USER_PUNCHED(.B),
+; DEFEATING ALL AUTOMATED PUNCH-IN/OUT UNTIL SEQUENCER IS STOPPED.
+;
+; ALSO NOTE - IF PLAYED_TO_END(.B) IS SET, WE ARE ON-LINE BUT PAUSED AND
+; IGNORING INCOMING CLOCKS ON ACCOUNT OF HAVING GONE BY THE END OF THE
+; CURRENT SEQUENCE OR SONG, AND NOT WANTING TO GO OFF-LINE AUTOMATICALLY
+; JUST BECAUSE OF THAT FACT - UNDER THESE CONDITIONS, PUNCH-IN WOULD
+; CLEARLY BE UNCALLED-FOR (AND PUNCH-OUT HAS ALREADY BEEN DONE).
+;
+; IF WE PASS ALL TESTS AND PUNCH-IN IS ACTUALLY DONE, BAR/CLICK-FORMAT
+; PUNCH-IN TIME IS UPDATED TO EQUAL OUR CURRENT PLAYBACK BAR/CLICK.
+; THE CORRESPONDING ACTION IS TAKEN WITH RESPECT TO PUNCH-OUT TIME.
+; THIS ALLOWS THE EFFECTIVE PUNCH-IN/OUT POINTS TO REMAIN UNCHANGED IN
+; THE EVENT THAT USER SWITCHES TO BAR/CLICK-BASED PUNCH-IN/OUT.
+; IT ALSO MEANS THAT THE 440 CAN PROVIDE A DIRECT READOUT OF THE BAR AND
+; CLICK EQUIVALENT TO ANY GIVEN SMPTE TIME IN THE SEQUENCE, BY SETTING
+; PUNCH-IN TO THE SPECIFIC SMPTE TIME, ROLLING THROUGH THAT POINT WITH
+; RECORD OR ERASE ENABLED, AND THEN VIEWING THE NEW BAR/CLICK PUNCH-IN.
+; THIS VALUE IS ACCURATE ONLY TO THE FRAME LEVEL, HOWEVER.
+;
+; MAJOR IMPORTANT WARNING:  IMPLICIT IN THE FOLLOWING ROUTINES IS THAT
+; PUNCH-OUT POINT IS ALWAYS LATER THAN PUNCH-IN POINT - EVEN BEING EQUAL
+; IS TO BE CONSIDERED UNCOOL (MAJOR UNCOOL) - DON'T LET IT HAPPEN!
+;
+; ALWAYS DESTROYS D0-D1, PLUS POSSIBLE OTHERS IF PUNCH-IN/OUT IS DONE.
+;
+AUTO_SMPTE_PUNCH
+               TST.B   BAR_OR_SMPTE_FLAG    ;TEST BASED ON BAR/CLICK OR SMPTE TIME?
+               BEQ     AUTO_SP_EXIT         ;RETURN IF PUNCH-IN/OUT KEYED TO BAR/CLICK.
+                                            ;NOTE - THIS TEST COMES FIRST, ASSUMING IT'LL PROBABLY
+                                            ;KICK US OUT OF HERE MOST OF THE TIME.
+;
+               TST.B   USER_PUNCHED         ;USER PUNCHED-IN/OUT BY HAND RECENTLY?
+               BNE     AUTO_SP_EXIT         ;EXIT IF YES, IGNORE PUNCH-IN/OUT POINTS.
+;
+               TST.B   PLAYED_TO_END        ;HAVE WE SAILED ON PAST THE END OF SEQ/SONG TIME?
+               BNE     AUTO_SP_EXIT         ;EXIT IF YES, UNCOOL AND UNPRODUCTIVE TO PUNCH IN -
+                                            ;AND WE SHOULD ALREADY BE PUNCHED OUT.
+;
+               MOVE.B  XPORT_STATE,D0       ;SEE WHAT'S GOING ON UP THERE -
+               BTST    #PLAY_BIT,D0         ;IS "PLAY" STATUS ENABLED?
+               BEQ     AUTO_SP_EXIT         ;BRANCH IF NOT, RETURN - WE'RE JUST MARKING TIME ....
+               AND     #RECORD_MASK+ERASE_MASK,D0     ;"PLAY" ENABLED, HOW ABOUT RECORD OR ERASE?
+               BEQ.S   AUTO_SP_EXIT                   ;EXIT WITHOUT ACTION IF NEITHER ENABLED.
+;
+               MOVE.L  SMPTE_NOW_HR,D0      ;LOAD CURRENT SMPTE TIME (HR-MIN-SEC-FRAME).
+               MOVE.B  RECORDING,D1         ;SEE IF WE'RE ALREADY PUNCHED IN -
+               OR.B    ERASING,D1
+               BNE.S   AUTO_SP_20           ;YES WE ARE, GO DO PUNCH-OUT TESTS.
+;
+               CMP.L   SMPTE_P_I_HR,D0      ;PUNCH-IN TEST - HOW DOES "NOW" STACK UP TO "WHEN"?
+               BNE.S   AUTO_SP_EXIT         ;EXIT IF NOT MATCHED - WE'RE EITHER BEFORE PUNCH-IN
+                                            ;POINT, OR PAST BOTH PUNCH-IN AND PUNCH-OUT POINTS.
+;
+               CMP.L   #PUNCH_IN_SUB,CUR_SUB_BLOCK    ;ELSE, BAR/CLICK PUNCH-IN WILL BE UPDATED -
+               BNE.S   AUTO_SP_10                     ;BRANCH IF CHANGE NOT IMMEDIATELY VISIBLE,
+               ST      SUBFUN_INSTALL                 ;ELSE REQUEST SCREEN UPDATE.
+AUTO_SP_10
+               MOVE.L  NOW_BAR,D0           ;UPDATE BAR/CLICK PUNCH-IN TIME TO "NOW" -
+               MOVE.L  D0,PUNCH_IN_BAR      ;NOTE THAT BAR AND CLICK TRAVEL AS A TEAM.
+               CMP.L   PUNCH_OUT_BAR,D0     ;NEW BAR/CLICK PUNCH-IN LATER THAN BAR/CLICK PUNCH-OUT?
+               BCS     PUNCH_IN_NOW         ;CLEARLY NOT - JUST GO PUNCH IN.
+               MOVE    NOW_LAST_BAR,D0      ;ELSE, SET MAXIMUM BAR/CLICK PUNCH-OUT TIME -
+               ADDQ    #1,D0                ;USE LAST BAR OF CURRENT SEQUENCE, PLUS ONE.
+               SWAP    D0
+               CLR     D0                   ;NO CLIX, PLEASE .... THIS BAR DOESN'T EGZIST.
+               MOVE.L  D0,PUNCH_OUT_BAR     ;STORE NEW PUNCH-OUT BAR AND CLICK TOGETHER.
+               BRA     PUNCH_IN_NOW         ;NOW GO PUNCH IN.
+;
+;
+;
+AUTO_SP_20
+               CMP.L   SMPTE_P_O_HR,D0      ;PUNCH-OUT TEST - HOW DOES "NOW" STACK UP TO "WHEN"?
+               BNE.S   AUTO_SP_EXIT         ;EXIT IF NOT MATCHED - WE'RE EITHER BEFORE PUNCH-OUT
+                                            ;POINT, OR ELSE WE - OOPS! - MISSED PUNCH-OUT POINT.
+;
+               CMP.L   #PUNCH_OUT_SUB,CUR_SUB_BLOCK   ;ELSE, BAR/CLICK PUNCH-OUT WILL BE UPDATED -
+               BNE.S   AUTO_SP_30                     ;BRANCH IF CHANGE NOT IMMEDIATELY VISIBLE,
+               ST      SUBFUN_INSTALL                 ;ELSE REQUEST SCREEN UPDATE.
+AUTO_SP_30
+               MOVE.L  NOW_BAR,D0           ;UPDATE BAR/CLICK PUNCH-OUT TIME TO "NOW".
+               CMP.L   PUNCH_IN_BAR,D0      ;IS NEW PUNCH-OUT BAR/CLICK LATER THAN PUNCH-IN?
+                                            ;(REMEMBER - AT LOW TEMPI, COULD BE MORE THAN ONE SMPTE
+                                            ;FRAME PER 96-TH NOTE CLICK ....)
+               BHI.S   AUTO_SP_40           ;BRANCH IF YES, STORE NEW TIME AND GO PUNCH OUT.
+               ADDQ    #1,D0                ;ELSE, BUMP TO NEXT CLICK -
+               CMP     CLICKS_THIS_BAR,D0   ;ARE WE STILL WITHIN THIS BAR?
+               BCS.S   AUTO_SP_40           ;BRANCH IF YES, STORE NEW TIME AND GO PUNCH OUT.
+               CLR     D0                   ;ELSE, BUMP TO NEXT BAR - CLEAR CLICK NUMBER,
+               ADD.L   #10000H,D0           ;INCREMENT BAR NUMBER.
+AUTO_SP_40
+               MOVE.L  D0,PUNCH_OUT_BAR     ;REMEMBER THAT BAR AND CLICK TRAVEL AS A TEAM.
+               BRA     AUTO_PUNCH_OUT       ;NOW GO PUNCH OUT.
+;
+AUTO_SP_EXIT
+               RTS                          ;NOTE - WE EXIT THROUGH HERE IF WE DIDN'T PUNCH IN/OUT.
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             SUBROUTINE TO INCREMENT SMPTE_NOW_TIME BY 1, TAKING THE TYPE AND WRAPPING INTO ACCOUNT.
+;
+INC_NOW_TIME
+               MOVEM.L D0-D1,-(A7)          ;PRESERVE REGISTERS WE WILL BE USING
+;
+               MOVE.B  SMPTE_NOW_FR,D0      ;FRAME GOES FIRST
+               MOVE.B  SMPTE_NOW_TYPE,D1    ; NEED SMPTE TYPE TO COMPARE AGAINST
+               AND     #7FH,D1              ; (MASK DROP FRAME FLAG OFF OF TYPE)
+               ADDQ    #1,D0                ;INC FRAME NUMBER
+               CMP.B   D1,D0                ; NEED TO WRAP?
+               BNE.S   HOOV_1
+               CLR     D0
+HOOV_1
+               MOVE.B  D0,SMPTE_NOW_FR      ;SAFE & SAVED
+               BNE     NO_MAS_MTC           ;    IF NO WRAP, DONE
+;
+               MOVE.B  SMPTE_NOW_SC,D0      ;         ELSE, PROPAGATE TO SECONDS
+               ADDQ    #1,D0                ;INCREMENT SECONDS
+               CMP.B   #60,D0               ; WRAP?
+               BCS.S   HOOV_2
+               CLR     D0
+HOOV_2
+               MOVE.B  D0,SMPTE_NOW_SC      ;SAVE UPDATED SECOND
+               BNE     NO_MAS_MTC           ;    IF NO WRAP, THEN EXIT
+;
+               MOVE.B  SMPTE_NOW_MN,D0      ;         ELSE, PROPAGATE TO MINUTES
+               ADDQ    #1,D0                ;INC
+               CMP.B   #60,D0               ;HANDLE POTENTIAL WRAP
+               BCS.S   HOOV_3
+               CLR     D0
+HOOV_3
+               MOVE.B  D0,SMPTE_NOW_MN      ;SAVE UPDATED MINUTE
+               TST.B   SMPTE_NOW_TYPE       ;DROP FRAME MODE?
+               BPL.S   HOOV_4               ;    IF NOT, ES COOL
+               AND.L   #000000FFH,D1        ;         ELSE, GOTTA MOVE FRAMES FROM 0 TO 2 ('CEPT 10 MINS)
+               ADD     #10,D1               ;(NEED A NON-ZERO MINUTE, TO AVOID DIVIDE ERRORS)
+               DIVU    #10,D1               ; DIVIDE MINUTES BY 10 - IF n x10, NO REMAINDER & NO WRAP
+               SWAP    D1
+               TST     D1
+               BEQ     HOOV_4
+               MOVE.B  #2,SMPTE_NOW_FR
+HOOV_4
+               TST.B   D0                   ;DID MINUTES WRAP?
+               BNE.S   NO_MAS_MTC           ;    IF NOT, DONE
+               MOVE.B  SMPTE_NOW_HR,D0
+               ADDQ    #1,D0                ;         ELSE, IN HOUR
+               CMP.B   #24,D0               ; (WRAP IF NEEDED)
+               BCS.S   HOOV_5
+               CLR     D0
+HOOV_5
+               MOVE.B  D0,SMPTE_NOW_HR
+NO_MAS_MTC
+               MOVEM.L (A7)+,D0-D1
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+;
+;
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+SMPTE_TYPE_TBL
+               HEX     1819,9E1E
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               TITLE   "MIDITC REAL-TIME EXECUTION"
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             CALLED WHEN A NEW QUARTER-FRAME HAS BEEN RECEIVED, AND OUR EVENT LIST IS ENABLED.
+;              TRY TO FIND A TIME MATCH IN OUR LIST - IF TIME MATCH FOUND, EXECUTE THE EVENT FOUND
+;              THERE.  LIST FORMAT IS:
+;
+;                            hr mn sc fr type num aa bb cc dd
+;
+;             CHECK OUT THE DOC ABOVE EVENT_GO (ABOVE) FOR FURTHER DETAILS.
+;
+EXECUTE_MIDITC
+               MOVE.L  SMPTE_NOW_HR,D2      ;FIRST - NEED TIME IN D2 FOR SEARCH.  NEED TO CONVERT
+               LSL.B   #2,D2                ; FRAMES AND FRACTIONAL FRAMES INTO A QUARTER-FRAME COUNT,
+               MOVE.B  SMPTE_NOW_BT,D6      ; SO THAT THE WHOLE TIME FITS IN 4 BYTES (NOT 5).
+;
+               ADD.B   #13,D6               ; ROUND FRACTIONAL FRAMES TO QUARTER-FRAMES
+               AND.L   #00FFH,D6            ;  (DO SO BY ADDING 13 AND DIVIDING BY 25)
+               DIVU    #25,D6
+               OR.B    D6,D2                ;  MASKED ON - WE'RE HAPPY NOW.
+;
+               MOVE.L  #MIDITC_EVENT_LIST,A0     ;POINT TO OUR CUE/EVENT LIST
+               MOVEQ   #0,D1                ;START AT THE BEGINNING
+               MOVE    #255,D0              ; HAVE 256 SLOTS TO LOOK THRU
+EX_SEARCH_LOOP
+               CMP.L   0(A0,D1),D2          ;MATCH TIME?
+               BCS.S   MACHINE_GUN          ;    IF PAST, THEN SPLIT - DONE LOOKING
+               BEQ.S   GOT_AN_M_EVENT       ;    IF MATCH, PERFORM THIS EVENT
+TRY_ANOTHER_EVENT                           ;         ELSE, KEEP LOOKING...
+               ADD     #10,D1               ;INC INDEX TO NEXT EVENT
+               DBRA    D0,EX_SEARCH_LOOP    ; LOOK 'TILL DONE
+MACHINE_GUN
+               CMP.L   SYSTEM_STOP_TIME,D2  ;IF NOT SYSTEM STOP TIME
+               BNE.S   BAND_OF_GYPSYS       ;    THEN GIT
+               JSR     STOP_SWITCH          ;ONCE FOR THE SEQUENCER...
+               JSR     STOP_SWITCH          ;...AND ONCE FOR THE HANGING VOICES
+BAND_OF_GYPSYS
+               RTS
+;
+;
+GOT_AN_M_EVENT         ; FOUND A TIME MATCH FOR A MIDI TIME CODE EVENT - PERSERVE REGGIES, GO OFF,
+; AND EXECUTE IT.  WHEN DONE, COME BACK TO SEE IF THERE BE ANY MORE.
+               MOVEM.L D0-D2/A0,-(A7)
+;
+               MOVE.B  EVENT_L_NUM(A0,D1),D7     ;GET EVENT TYPE
+               EXT     D7
+               CMP     #63,D7                    ; IF IN THE SWITCH REALM
+               BCC.S   LADY_1                    ;    THEN DEAL WID
+               BSR     MIDITC_PLAY               ;         ELSE, A SOUND - PLAY
+               BRA.S   GO_BACK_AGAIN             ;         AND SEE IF ANY OTHERS
+LADY_1
+               SUB     #100,D7                   ;KNOCK OFF SWITCH OFFSET
+               BCS.S   GO_BACK_AGAIN             ;    IF BAD VALUE SPLIPPED THRU, SKIP
+               CMP     #127,D7                   ;BOUND OFF TOP OF RANGE
+               BCC.S   GO_BACK_AGAIN
+               ADD     D7,D7                     ; CONVERT TO TABLE OFFSET
+               MOVE    MIDITC_SW_ACTION(PC,D7),A1 ; LOAD ADDRESS OF THAT ROUTINE
+               JSR     (A1)
+GO_BACK_AGAIN          ; DONE WITH THIS EVENT; SEE IF ANY OTHERS
+               MOVEM.L (A7)+,D0-D2/A0
+               BRA     TRY_ANOTHER_EVENT
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+MIDITC_SW_ACTION       ;MIDITC IS FAKING A SWITCH - THESE ARE THE CANIDATES
+               DC.W    ACT_INIT_TEMPO       ;100 - NEW INITIAL TEMPO (in terms of usec/click)
+               DC.W    ACT_NOW_TEMPO        ;101 - NEW AT-THIS-MOMENT TEMPO
+               DC.W    ACT_NON              ;102 - NEW SMPTE START TIME
+;02JUN               DC.W    ACT_PLAY             ;103 - PLAY SWITCH GOING ON
+;02JUN               DC.W    ACT_UNPLAY           ;104 -   "     "     "   OFF
+;02JUN               DC.W    ACT_PAUSE            ;105 - PAUSE   "     "   ON
+;02JUN               DC.W    ACT_UNPAUSE          ;106 -   "     "     "   OFF
+;02JUN               DC.W    ACT_RECORD           ;107 - RECORD  "     "   ON
+;02JUN               DC.W    ACT_UNRECORD         ;108 -    "    "     "   OFF
+;02JUN               DC.W    ACT_STOP             ;109 - STOP SWITCH HIT
+               DC.W    ACT_NON              ;103 - PLAY SWITCH GOING ON
+               DC.W    ACT_NON              ;104 -   "     "     "   OFF
+               DC.W    ACT_NON              ;105 - PAUSE   "     "   ON
+               DC.W    ACT_NON              ;106 -   "     "     "   OFF
+               DC.W    ACT_NON              ;107 - RECORD  "     "   ON
+               DC.W    ACT_NON              ;108 -    "    "     "   OFF
+               DC.W    ACT_NON              ;109 - STOP SWITCH HIT
+;02JUN
+               DC.W    ACT_START_SAMPLING   ;110 - SAMPLE AT THIS TIME
+               DC.W    ACT_NON              ;111 - no action
+               DC.W    ACT_NON              ;112 - no action
+               DC.W    ACT_NON              ;113 - no action
+               DC.W    ACT_NON              ;114 - no action
+               DC.W    ACT_NON              ;115 - no action
+               DC.W    ACT_NON              ;116 - no action
+               DC.W    ACT_NON              ;117 - no action
+               DC.W    ACT_NON              ;118 - no action
+               DC.W    ACT_NON              ;119 - no action
+               DC.W    ACT_NON              ;120 - no action
+               DC.W    ACT_NON              ;121 - no action
+               DC.W    ACT_NON              ;122 - no action
+               DC.W    ACT_NON              ;123 - no action
+               DC.W    ACT_NON              ;124 - no action
+               DC.W    ACT_NON              ;125 - no action
+               DC.W    ACT_NON              ;126 - no action
+               DC.W    ACT_FAKE_SWITCH      ;127 - OTHER FRONT PANEL SWITCH FAKED
+;
+;
+;;;;;;;;;;
+ACT_START_SAMPLING
+               RTS
+;
+;
+;;;;;;;;;;
+ACT_NON
+               RTS
+;
+;
+;;;;;;;;;;
+ACT_INIT_TEMPO         ;WILL COME INTO BEING AFTER THE SEQUENCER DOES
+               MOVE    EVENT_ADD_PARAMS(A0,D1),INIT_TEMPO_USEC
+;
+               MOVE.L  #25000000,D1         ;usec/CLICK = 25,000,000/(BPMx10)
+               DIVU    INIT_TEMPO_USEC,D1
+               MOVE    D1,INIT_TEMPO_BPM
+                ABS_LONG
+               JSR     I_CALC_FPB           ;CONVERT TO FPB, PLACE IN DIRECTORY, UPDATE WORLD
+                ABS_SHORT
+               RTS
+;
+;
+;;;;;;;;;;
+ACT_FAKE_SWITCH        ;LATER, WILL PLUG INTO PROGRAMMABLE FOOTSWITCH ROUTINES
+               RTS
+;
+;
+;;;;;;;;;;
+ACT_NOW_TEMPO
+               MOVE    EVENT_ADD_PARAMS(A0,D1),CUR_TEMPO_USEC
+                ABS_LONG
+               JSR     USEC_TO_ALL          ;CONVERT TO ALL OTHER FORMS, TELL TC.
+                ABS_SHORT
+               RTS
+;
+;
+;30NOV;;;;;;;;;
+;30NOVACT_NEW_START
+;30NOV               MOVE.L
+;30NOV
+;30NOV; TELL TIMING CHIP NEW SMPTE START TIME.
+;30NOV               MOVEQ   #0F4H,D0             ; F4
+;30NOV                ABS_LONG
+;30NOV               JSR     WRITE_TO_TC
+;30NOV               MOVE.B  SMPTE_START_HR,D0    ; hr
+;30NOV               JSR     WRITE_TO_TC
+;30NOV               MOVE.B  SMPTE_START_MN,D0    ; mn
+;30NOV               JSR     WRITE_TO_TC
+;30NOV               MOVE.B  SMPTE_START_SC,D0    ; sc
+;30NOV               JSR     WRITE_TO_TC
+;30NOV               MOVE.B  SMPTE_START_FR,D0    ; fr
+;30NOV               JSR     WRITE_TO_TC
+;30NOV               MOVE.B  SMPTE_START_BT,D0    ; bt
+;30NOV               EXT     D0                   ; (NEED TO CONVERT FROM 1/100 FRAMES TO 0->79 BITS)
+;30NOV               MULU    #80,D0
+;30NOV               DIVU    #100,D0
+;30NOV               JSR     WRITE_TO_TC
+;30NOV                ABS_SHORT
+;30NOV;28JUL               MOVE.L  EVENT_L_TIME,D7      ;GET THIS NEW START TIME
+;28JUL               ASR.B   #2,D7                ;KNOCK QUARTER-FRAMES DOWN TO FRAMES
+;28JUL               MOVE.L  D7,SMPTE_START_HR    ;SAVE NEW START HR/MN/SC/FR
+;28JUL               MOVE.B  EVENT_ADD_PARAMS,D6  ;GET START BITS, HIDING OVER THERE IN ADDITIONAL PARAMS
+;28JUL               MOVE.B  D6,SMPTE_START_BT    ; SAVE
+;28JUL
+;28JUL               MOVE.B  #0F4H,D0             ;TELL TIMING CHIP NEW START TIME (IT LIKES STORIES...)
+;28JUL               BSR     WRITE_TO_TC
+;28JUL               ROL.W   #8,D7                ; ROTATE HOURS INTO POSITION
+;28JUL               MOVE.B  D7,D0
+;28JUL               BSR     WRITE_TO_TC
+;28JUL               ROL.W   #8,D7                ; ROTATE MINUTES INTO POSITION
+;28JUL               MOVE.B  D7,D0
+;28JUL               BSR     WRITE_TO_TC
+;28JUL               ROL.W   #8,D7                ; ROTATE SECONDS INTO POSITION
+;28JUL               MOVE.B  D7,D0
+;28JUL               BSR     WRITE_TO_TC
+;28JUL               ROL.W   #8,D7                ; ROTATE FRAMES INTO POSITION
+;28JUL               MOVE.B  D7,D0
+;28JUL               BSR     WRITE_TO_TC
+;28JUL               MOVE.B  D6,D0                ;LOAD OVER BITS
+;28JUL               JMP     WRITE_TO_TC          ; (RETURN FROM THERE)
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             PLAYING A SOUND - IS EITHER AN EVENT START (NOTE ON), EVENT STOP (NOTE OFF), OR A
+;              CUE EVENT (BOTH).  RUN THRU THE VOICE START GRINDER.  SIGH.
+;
+MIDITC_PLAY
+               MOVE.B  EVENT_L_TYPE(A0,D1),D3    ;LOAD UP TYPO
+               BEQ.S   PLAY_A_CUE           ;TYPE = 0 = CUE
+               CMPI.B  #1,D3
+               BEQ.S   PLAY_A_START         ;TYPE = 1 = START
+                                            ;    DEFAULT - OTHER TYPE IS A STOP.
+;
+;;;;;;;;;;
+PLAY_A_STOP            ;    ELSE, A STOP.  D7 = SOUND NUMBER.
+               MOVE    D7,D0
+               EXT     D0                   ;CLEAN UP SOUND NUMBER
+               ADD     #176,D0              ;MAKE SOUND LOOK UNIQUE FROM KEYS (ABOVE THEIR RANGE)
+               LSL     #3,D0                ; ROTATE INTO V_IDENTITY POSITION (w/ CHAN = ALT BIT)
+               ORI     #0C000H,D0           ;MASK ON ID
+               SWAP    D0
+               MOVE    #8000H,D0            ;MASK ON AS FROM 'MIDI'
+                ABS_LONG
+               JSR     VOICE_GATE_OFF       ;GO SHUT OFF
+                ABS_SHORT
+               RTS
+;
+;
+;;;;;;;;;;
+PLAY_A_CUE
+               MOVE.L  D7,-(A7)             ;PRESERVE EVENT NUMBER
+               BSR     PLAY_A_START         ;CUE MEANS SHORT DURATION - START...
+               MOVE.L  (A7)+,D7
+               BRA     PLAY_A_STOP          ;                                ...AND STOP
+;
+;
+;;;;;;;;;;
+PLAY_A_START           ; OKAY, SNOOKUMS.  ENTER w/ D1.B = KEYNUM, A0/D0 POINTS AT ACTIVE
+; EVENT.  CREATE AN ASSIGN_BLOCK FROM THIS INFO, CALL VOICE_ASSIGN.
+               MOVE.L  EVENT_ADD_PARAMS(A0,D1),BG_TEMP_1_B ;OFFLOAD ADDITIONAL PARAMETERS
+;
+               MOVE    #4,ASSIGN_BLOCK      ;PRETEND WE A MIDI EVENT (WELL, WE ARE!)
+;
+               MOVE    D7,D3                ;TAKE EVENT/SAMPLE NUMBER
+               MOVE    D7,D1                ; MAKE A SPARE COPY
+               CLR     D7                   ; (CREATE OUR 'BYTE-INTO-CLEAN-WORD' MASK)
+               LSR     #1,D3                ;ROTATE OFF ALT_PARAM BIT
+               BCC.S   HELP_ME_3            ;    IF CLEAR, KEEP ALT_PARAM IN ASSIGN_BLOCK CLEAR
+               MOVEQ   #1,D7                ;         ELSE, SET
+HELP_ME_3
+               MOVE    D3,ASSIGN_BLOCK+2    ;SOUND NUMBER
+               MOVE    D7,ASSIGN_BLOCK+4    ;ALT_PARAM STATUS
+;
+               MOVE.B  BG_TEMP_1_B,D7       ;LOAD IN VELOCITY
+               BEQ.S   USE_DEFAULT_PARAMS   ;    IF VEL = 0, NO ADDITIONAL PARAMS - USE DEFAULTS
+                                            ;         ELSE, USE ONES WE  WITH
+               MOVE    D7,ASSIGN_BLOCK+12   ;VELOCITY
+;
+               MOVE.B  BG_TEMP_3_B,D7       ;PAN
+               MOVE    D7,ASSIGN_BLOCK+10
+;
+               MOVE.B  BG_TEMP_4_B,D7       ;LEVEL
+               MOVE    D7,ASSIGN_BLOCK+8
+;
+               MOVE.B  BG_TEMP_2_B,D7       ;PITCH
+               MOVE    D7,ASSIGN_BLOCK+6
+               BRA.S   HELP_ME_5            ; GO FINISH OFF CHANNEL & KEYNUM BELOW...
+;
+USE_DEFAULT_PARAMS
+               MOVE    MIDI_DEFAULT_VEL,ASSIGN_BLOCK+12    ;USE MIDI DEFAULT VELOCITY
+               BNE.S   TOAST_1                             ;    IF DISABLED, USE A NOMINAL ONE
+               MOVE    #10H,ASSIGN_BLOCK+12
+TOAST_1
+               ADD     #32,D3               ;INC UP PAST KITS TO ACCESS BANKS
+;
+               LEA     PAD_PANS,A1          ;PAN
+               MOVE.B  0(A1,D3),D7
+               MOVE    D7,ASSIGN_BLOCK+10
+;
+               LEA     PAD_LEVELS,A1        ;LEVEL
+               MOVE.B  0(A1,D3),D7
+               MOVE    D7,ASSIGN_BLOCK+8
+;
+               LEA     PAD_PITCHES,A1       ;PITCHES
+               MOVE.B  0(A1,D3),D7
+               MOVE    D7,ASSIGN_BLOCK+6
+;
+               SUB     #32,D3
+;
+HELP_ME_5
+               ADD     #88,D3               ;MAKE A UNIQUE MIDI KEYNUM BY PUTTING ABOVE ALLOWED RANGE
+               MOVE    D3,ASSIGN_BLOCK+16
+;
+               CLR     ASSIGN_BLOCK+14      ;FINALLY, THE SUPPOSED MIDI CHANNEL
+               TST     ASSIGN_BLOCK+4       ;IF ALT PARM BIT CLEAR
+               BEQ.S   TOAST_2              ;    THEN CHANNEL = 0
+               MOVE    #8,ASSIGN_BLOCK+14   ;         ELSE, = 8 (TOP NIBBLE BIT USED FOR OFF MATCHING)
+TOAST_2
+                ABS_LONG
+               JSR     VOICE_ASSIGN         ;DO IT!!!
+                ABS_SHORT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               TITLE   "MIDI TIME CODE SET UP / CUE LIST"
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             EXTERNAL DEVICE IS SENDING US MSMPTE SET-UP INFORMATION.  SET-UP INFORMATION TAKES
+;              THE FORMAT OF:
+;
+;                      F0 7E <chan> 04 st hr mn sc fr bt sl sm <add. info> F7
+;
+;              F0 7E <chan> 04 = HEADER
+;              st      =         EVENT TYPE
+;                      00 = SPECIAL
+;                           00 00 = TIMECODE OFFSET
+;                           01 00 = ENABLE EVENT LIST
+;                           02 00 = DISABLE EVENT LIST
+;                           03 00 = CLEAR EVENT LIST
+;                           04 00 = SYSTEM STOP
+;                           05 00 = REQUEST CUE LIST
+;                      01 = PUNCH IN POINT
+;                      02 = PUNCH OUT POINT
+;                      03 = DELETE PUNCH IN POINT
+;                      04 = DELETE PUNCH OUT POINT
+;                      05 = EVENT START POINT
+;                      06 = EVENT STOP POINT
+;                      07 = EVENT START w/ ADD. INFO
+;                      08 = EVENT STOP w/ ADD. INFO
+;                      09 = DELETE EVENT START POINT
+;                      0A = DELETE EVENT STOP POINT
+;                      0B = CUE POINT
+;                      0C = CUE POINT w/ ADD. INFO
+;                      0D = DELETE CUE POINT
+;                      0E = EVENT NAME
+;              hr mn sc fr ff =  TIME THIS EVENT IS SUPPOSED TO OCCUR
+;              sl sm   =         EVENT NUMBER (lsb FIRST)
+;              <add. info> =     ANY ADDITIONAL PARAMETERS, ETC.
+;              F7      =         STANDARD EOX
+;
+;             GRAB THE EVENT, PROCESS ACCORDING TO EVENT TYPE.  EVENTUALLY STORED IN AN EVENT LIST,
+;              WHICH IS TRIGGERED BY MATCHING SMPTE OR MTC TIMES.
+;
+;             CERTAIN EVENT NUMBERS LINE UP WITH CERTAIN 440 EVENTS.  WE WILL TAKE AN EVENT
+;              START, AN EVENT STOP, A CUE POINT, OR ANY OF THESE THREE WITH ADDITIONAL
+;              PARAMETERS.  IF THEY WERE A SYSTEM EXCLUSIVE, THEY WOULD LOOK LIKE:
+;
+;                           F0 01 10 nn aa bb cc dd F7
+;                            nn = EVENT NUMBER
+;                            aa->dd = XTRA PARAMS 1->4
+;
+;             IN REALITY (ie. OUR CUE LIST), AN EVENT LOOKS LIKE THIS:
+;
+;                            hr mn sc fr type nn aa bb cc dd
+;
+;             DECODE THE EVENT NUMBER THUSLY:
+;
+;              EVENT
+;              NUMBER  USE             XTRA PARAMS
+;              ----------------------------------------------------
+;              00->63  SOUNDS 1A->32B  velocity  pitch  pan  volume
+;              100     NEW INIT TEMPO  aa bb = BPM * 10
+;              101     NEW CURRENT TEMPO aa bb = BPM * 10
+;              102     NEW START TIME
+;              103     PLAY
+;              104     UNPLAY
+;              105     PAUSE
+;              106     UNPAUSE
+;              107     RECORD
+;              108     UNRECORD
+;              109     STOP
+;
+;             OUR LIST IS 256 ENTRIES DEEP.  WE SORT UPON ARRIVAL ACCORDING TO TIME.
+;
+;             ALSO, WE MAY HAVE TO DELETE AN EVENT - DO IT HERE, TOO.
+;
+EVENT_L_TIME   EQU     0               ;TIME - hr mn sc fr
+EVENT_L_TYPE   EQU     4               ;TYPE - AS EXPLAINED ABOVE
+EVENT_L_NUM    EQU     5               ;EVENT NUMBER - AS EXPLAINED ABOVE
+EVENT_ADD_PARAMS EQU   6               ;ADDITIONAL PARAMETERS - UP TO 4 OF THEM
+EVENT_SIZE     EQU    10
+;
+;
+;
+MTC_SET_UP
+               CMP.B   M_DEVICE_ID,D7       ;DOES MESSAGE MATCH OUR DEVICE ID?
+               BNE     EXIT_DELETE          ;    IF NOT, SPLIT - WE DON'T WANT IT
+;
+               BSR     GET_LEVEL_5          ;NEXT, GET EVENT TYPE
+               CMP     #0EH,D0              ; IF BEYOND ONES WE LISTEN TO
+               BCC     EXIT_M_SPECIAL       ;    THEN IGNORE
+;
+               ASL.B   #1,D0                ;x2, FOR A JUMP TABLE OFFSET
+               MOVEQ   #0,D6                ; (START w/ D6 CLEAN, SINCE WILL BE A JUMP TABLE OFFSET)
+               MOVE.B  D0,D6                ;  (SET UP IN D6)
+;
+               BSR     GET_LEVEL_5          ;GET HOUR & SMPTE TYPE
+;
+               MOVE    D0,D1                ;FOIST, SAVE AND DECODE TYPE
+               AND     #0060H,D1            ; MASK DOWN TO JUST TYPE BITS
+               LSR     #5,D1                ;ROTATE DOWN INTO VALUE TABLE OFFSET
+               MOVE.B  D1,SMPTE_NOW_T_1     ;SAVE IN FORMAT 1 (0=24, 1=25, 2=30 df, 3=30 ndf)
+               MOVE    #SMPTE_TYPE_TBL,A0   ;LOAD UP ADDRESS OF TABLE
+               MOVE.B  0(A0,D1),SMPTE_NOW_TYPE   ;SAVE TYPE IN FORMAT 2 (MAX FRAMES, MSBIT SET FOR DROP)
+;
+               MOVE.B  #00011111B,BG_TEMP_1_B  ;MASK DOWN JUST HOUR
+               AND.B   D0,BG_TEMP_1_B
+;
+               BSR     GET_LEVEL_5          ;GET MINUTE
+               MOVE.B  D0,BG_TEMP_2_B
+;
+               BSR     GET_LEVEL_5          ;GET SECOND
+               MOVE.B  D0,BG_TEMP_3_B
+;
+               BSR     GET_LEVEL_5          ;GET FRAME
+               ASL.B   #2,D0                ; ROTATE UP TO FORM QUARTER FRAMES
+               MOVE.B  D0,BG_TEMP_4_B
+               BSR     GET_LEVEL_5          ;GET BIT NUMBER
+               ADD.B   #13,D0               ; ROUND FRACTIONAL FRAMES TO QUARTER-FRAMES
+               AND.L   #00FFH,D0            ;  (DO SO BY ADDING 13 AND DIVIDING BY 25)
+               DIVU    #25,D0
+               OR.B    D0,BG_TEMP_4_B          ;ADD BITS TO FRAMES TO FILL OUT QUARTER-FRAME COUNT
+               MOVE.L  BG_TEMP_1_B,D7          ;NOW HAVE ASSEMBLED TIME AS A LONG WORD (IN D7)
+;
+               BSR     GET_LEVEL_5          ;AND NEXT, GET EVENT NUMBER - LSB FIRST
+               MOVE.B  D0,D5
+               BSR     GET_LEVEL_5          ; GET EVENT NUMBER MSB
+               ASL     #7,D0                ;  APPEND LSB AND MSB TOGETHER; PROPERLY JUSTIFY
+               ANDI    #0011111110000000B,D0
+               ANDI    #7FH,D5
+               ADD     D0,D5                ; (EVENT NUMBER NOW SET UP IN D5)
+               CMP     #127,D5              ;IF HIGHER THAN ONE WE RECOGNIZE
+               BCC     EXIT_M_SPECIAL       ;    THEN IGNORE
+;
+;             TO RECAP - WE HAVE THE TIME IN D7.L, THE SET-UP*2 IN D6.B, AND THE EVENT
+;              NUMBER IN D5.  LATER, IF NEEDED, WE WILL GATHER ADDITIONAL PARAMETERS IN
+;              IN D4.L.
+;
+;             THE FORMAT OF AN EVENT IN THE LIST IS: hr mn sc fr type numb vel pit pan vel
+;
+;             WE WILL USE OUR OWN 'TYPE' ENCODING IN THE CUE LIST - 00=CUE, 01=START, AND 02=STOP.
+;              IF VELOCITY IN NON-ZERO, THERE ARE ADD. PARAMETERS.
+;
+               MOVE    MIDITC_JMP_TBL(PC,D6),A0  ;LOAD UP WHAT TO PERFORM
+               JMP     (A0)                 ;AIIIEEEEEE..........
+;
+;
+;
+MIDITC_JMP_TBL
+               DC.W    M_SPECIAL            ;00 - SPECIAL SET UP (EN/DISABLE, ETC.)
+               DC.W    M_PUNCH_IN           ;01 - PUNCH IN
+               DC.W    M_PUNCH_OUT          ;02 - PUNCH OUT
+               DC.W    M_D_PUNCH_IN         ;03 - DELETE PUNCH IN
+               DC.W    M_D_PUNCH_OUT        ;04 - DELETE PUNCH OUT
+               DC.W    M_EVENT_GO           ;05 - EVENT START
+               DC.W    M_EVENT_STOP         ;06 - EVENT STOP
+               DC.W    M_EVENT_GO_ADD       ;07 - EVENT START w/ ADD. PARAMS
+               DC.W    M_EVENT_STOP_ADD     ;08 - EVENT STOP w/ ADD. PARAMS
+               DC.W    M_D_EVENT_GO         ;09 - DELETE EVENT START
+               DC.W    M_D_EVENT_STOP       ;0A - DELETE EVENT STOP
+               DC.W    M_CUE_POINT          ;0B - CUE POINT
+               DC.W    M_CUE_POINT_ADD      ;0C - CUE POINT w/ ADD. PARAMS
+               DC.W    M_D_CUE_POINT        ;0D - DELETE CUE POINT
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               TITLE   "MIDI CUEING SPECIAL EVENTS"
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             ALL OF THE 'SPECIAL' HANDLERS - NAMELY, TIMECODE OFFSET (IGNORED), EN/DISABLE
+;              EVENT LIST, CLEAR EVENT LIST, AND SYSTEM STOP.
+;
+M_SPECIAL
+               CMPI    #4,D5                ;CAP OFF ANY SPECIAL TYPES WE DON'T RECOGNIZE
+               BCC.S   EXIT_M_SPECIAL
+               ASL     #1,D5                ; ELSE, ES COOL - CREATE INTO A JUMP
+               MOVE    M_SPECIAL_JMP_TBL(PC,D5),A0    ;JUMP TO APROPOS SPECIAL ROUTINE
+               JMP     (A0)
+;
+M_SPECIAL_JMP_TBL
+               DC.W    NOTHINGNESS          ;0 - TIME OFFSET
+               DC.W    ENABLE_EVENT_LIST    ;1 - ENABLE EVENT LIST
+               DC.W    DISABLE_EVENT_LIST   ;2 - DISABLE EVENT LIST
+               DC.W    CLEAR_EVENT_LIST     ;3 - CLEAR EVENT LIST
+               DC.W    SYSTEM_STOP          ;4 - SYSTEM STOP
+;
+;
+;;;;;;;;;;
+ENABLE_EVENT_LIST
+               ST      CM_FLAGS_1           ;CLEAR FLAG SAYING IT'S OKAY TO EXECUTE THE EVENT LIST
+EXIT_M_SPECIAL
+               RTS
+;
+;
+;;;;;;;;;;
+CLEAR_EVENT_LIST
+               MOVE.L  #0FFFFFFFFH,D1       ;TO CLEAR THE EVENT LIST, FILL WITH FF's
+               MOVE    #MIDITC_EVENT_LIST,A0
+CLEARING
+               MOVE.L  D1,(A0)+
+               MOVE    A0,D0                ;(RESORT TO THIS DUE TO ADDRESSING IDIOSYNCRACIES)
+               CMP     #MIDITC_EVENT_LIST+(10*256),D0
+               BCS     CLEARING
+;
+               MOVE.L  D1,SYSTEM_STOP_TIME  ;ALSO MOVE STOP TIME OUT TO ALL F's
+               MOVE    #0,EVENT_LIST_COUNT  ;ZERO THE COUNT, AND FALL INTO DISABLING THE EVENT LIST
+               RTS
+;
+;;;;;;;;;;
+DISABLE_EVENT_LIST
+               SF      CM_FLAGS_1           ;FLAG EVENT LIST AS INACTIVE
+               RTS
+;
+;
+;;;;;;;;;
+SYSTEM_STOP
+               MOVE.L  D7,SYSTEM_STOP_TIME  ;SAVE NEW TIME WHEN EVERYTHING IS SUPPOSED TO SHUT DOWN
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               TITLE   "MIDI CUING PUNCH IN/OUT POINTS"
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             HANDLING ZE PUNCH IN/OUT POINTS.  WE TAKE THE MOST RECENT ARRIVAL AS OURS;
+;              HOWEVER, TO DELETE IT, THE 'EVENT NUMBER' ATTATCHED MUST MATCH THE ONE IT
+;              CAME IN ON.
+;
+M_PUNCH_IN
+               MOVE.L  D7,SMPTE_P_I_HR     ;SAVE NEW PUNCH IN TIME
+;
+               MOVE.B  SMPTE_P_I_FR,D0      ;UNRAVEL QUARTER FRAMES INTO FRAMES, BITS
+               AND     #3,D0
+               MULU    #25,D0
+               MOVE.B  D0,SMPTE_P_I_BT
+;
+               MOVE.B  SMPTE_P_I_FR,D0
+               LSR.B   #2,D0
+               MOVE.B  D0,SMPTE_P_I_FR
+;
+               MOVE    D5,PUNCH_IN_ID       ;REMEMBER 'WHICH' PUNCH IN THIS WAS SUPPOSED TO BE
+               RTS
+;
+;
+M_PUNCH_OUT
+               MOVE.L  D7,SMPTE_P_O_HR    ;SAVE NEW PUNCH OUT TIME
+;
+               MOVE.B  SMPTE_P_O_FR,D0      ;UNRAVEL QUARTER FRAMES INTO FRAMES, BITS
+               AND     #3,D0
+               MULU    #25,D0
+               MOVE.B  D0,SMPTE_P_O_BT
+;
+               MOVE.B  SMPTE_P_O_FR,D0
+               LSR.B   #2,D0
+               MOVE.B  D0,SMPTE_P_O_FR
+;
+               MOVE    D5,PUNCH_OUT_ID      ;REMEMBER 'WHICH' PUNCH OUT THIS WAS SUPPOSED TO BE
+               RTS
+;
+;
+M_D_PUNCH_IN
+               CMP     PUNCH_IN_ID,D5       ;TO DELETE, MUST MATCH 'WHICH' POINT IT IS SUPPOSED TO BE
+               BNE.S   EXIT_M_PUNCH
+               CLR.L   SMPTE_P_I_HR         ;    ELSE, GO AHEAD AND MAKE INTO NONSENSE
+               CLR.B   SMPTE_P_I_BT
+EXIT_M_PUNCH
+               RTS
+;
+;
+M_D_PUNCH_OUT
+               CMP     PUNCH_OUT_ID,D5      ;TO DELETE, MUST MATCH 'WHICH' PUNCH NUMBER
+               BNE     EXIT_M_PUNCH
+               MOVE.L  #173B3B18H,SMPTE_P_O_HR   ;MAX OUT PUNCH-OUT TIME
+               MOVE.B  #99,SMPTE_P_O_BT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               TITLE   "MIDI CUEING SET-UP EVENTS"
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             IN OUR INTERNAL LINGO, WE HAVE 3 EVENT TYPES - A CUE (0), WHICH IS A START/STOP,
+;              A START (1), AND A STOP (2).
+;
+;             WE STORE IT INTERNALLY THUSLY:
+;
+;                       hr mn sc fr type nn aa bb cc dd
+;
+;                            nn = EVENT NUMBER
+;                            aa->dd = XTRA PARAMS 1->4
+;
+;;;;;;;;;;
+M_EVENT_GO
+               MOVEQ   #1,D6                ;MARK THIS AS AN EVENT START
+               MOVEQ   #0,D4                ;NO ADDITIONAL PARAMETERS
+               BRA.S   ADD_EVENT
+;
+;
+;;;;;;;;;
+M_EVENT_STOP
+               MOVEQ   #2,D6                ;MARK THIS AS AN EVENT STOP
+               MOVEQ   #0,D4                ;NO ADDITIONAL PARAMETERS
+               BRA.S   ADD_EVENT
+;
+;
+;;;;;;;;;
+M_EVENT_GO_ADD
+               MOVEQ   #1,D6                ;MARK THIS AS AN EVENT START
+               BRA     ADD_EVENT_ADD
+;
+;
+;;;;;;;;;
+M_EVENT_STOP_ADD
+               MOVEQ   #2,D6                ;MARK THIS AS AN EVENT STOP
+               BRA     ADD_EVENT_ADD
+;
+;
+;;;;;;;;;
+M_D_EVENT_GO
+               MOVEQ   #1,D6                ;MARK THIS AS AN EVENT START TO DELETE
+               BRA     DELETE_EVENT
+;
+;
+;;;;;;;;;;
+M_D_EVENT_STOP
+               MOVEQ   #2,D6                ;MARK THIS AS AN EVENT STOP TO DELETE
+               BRA     DELETE_EVENT
+;
+;
+;;;;;;;;;;
+M_CUE_POINT
+               MOVEQ   #0,D6                ;MARK THIS AS A CUE TO ADD
+               MOVEQ   #0,D4                ;NO ADDITIONAL PARAMETERS
+               BRA.S   ADD_EVENT
+;
+;
+;;;;;;;;;;
+M_CUE_POINT_ADD
+               MOVEQ   #0,D6                ;MARK THIS AS A CUE TO ADD
+               BRA     ADD_EVENT_ADD
+;
+;
+;;;;;;;;;;
+M_D_CUE_POINT
+               MOVEQ   #0,D6                ;MARK THIS AS A CUE POINT TO DELETE
+               BRA     DELETE_EVENT
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             ENTER w/ D7.L=TIME, D6.W=TYPE, D5.W=NUMBER, D4.L=ADDITIONAL PARAMETERS
+;
+ADD_EVENT
+               ADDI.B  #1,EVENT_LIST_COUNT+1     ;INCREMENT EVENT LIST COUNT
+               BCS.S   TOO_MANY_EVENTS      ;         IF 256 ALREADY HERE, ABORT THIS ADDITION
+               MOVE.L  #MIDITC_EVENT_LIST,A0     ;         ELSE.... LOAD UP LIST ADDRESS
+               MOVEQ   #0,D0                ;              AND CLEAR COUNTER
+LOOK_FOR_SPACE
+               MOVE.L  0(A0,D0),D1
+               CMP.L   D1,D7                ;SEE IF NEW TIME HAPPENS BEFORE OR AFTER THIS POINT IN LIST
+               BCS.S   INSERT_EVENT         ;    IF YES, PLACE HERE
+               ADDI    #10,D0               ;         ELSE, GO TO NEXT SLOT
+               CMPI    #(10*256),D0         ;         IS THE LIST FULL (ie. AT THE END)?
+               BCS.S   LOOK_FOR_SPACE       ;              IF NOT, KEEP LOOKING FOR A SPACE
+               BRA.S   EXIT_ADD_EVENT       ;                   ELSE, FORGET IT.
+INSERT_EVENT
+               ASL     #8,D6                ;MERGE TYPE & NUMBER INTO ONE REGISTER
+               OR      D6,D5                ; (THEY ARE BOTH BYTE VALUES)
+MOVE_ON_DOWN
+               MOVE.L  EVENT_L_TIME(A0,D0),D3    ;COPY OUT OLD EVENT AT THIS LOCATION
+               MOVE    EVENT_L_TYPE(A0,D0),D2
+               MOVE.L  EVENT_ADD_PARAMS(A0,D0),D1
+               MOVE.L  D7,EVENT_L_TIME(A0,D0)    ;COPY IN NEW EVENT
+               MOVE    D5,EVENT_L_TYPE(A0,D0)
+               MOVE.L  D4,EVENT_ADD_PARAMS(A0,D0)
+;
+               ADDI    #10,D0               ;INCREMENT TO NEXT ENTRY
+               CMPI    #(10*256),D0         ;GO 'TILL END OF TABLE
+               BCC.S   EXIT_ADD_EVENT
+               EXG     D3,D7                ;EVENT COPIED OUT BECOMES NEW EVENT TO COPY IN
+               EXG     D2,D5
+               EXG     D1,D4
+               BRA     MOVE_ON_DOWN         ;PROPAGATE THROUGH LIST
+;
+TOO_MANY_EVENTS        ;1 TOO MANY EVENTS; LIMIT COUNT TO 256, AND INSERT THIS SUCKER (WILL BUMP ONE OUT)
+               MOVE    #255,EVENT_LIST_COUNT
+               BRA     LOOK_FOR_SPACE
+;
+EXIT_ADD_EVENT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             NEED TO GATHER ADDITIONAL PARAMETERS - COMES ENCODED AS THE SYSEX MESSAGE
+;              F0 01 10 aa bb cc dd ee F7, SPLIT INTO NIBBLES.  READ IN AND SAVE.
+;
+;             ENTER w/ D7.L=TIME, D6.B=TYPE, D5.B=#
+;
+ADD_EVENT_ADD
+               BSR.S   ASSEM_NIBS_5         ;GOTTA PATTERN MATCH THE MESSAGE - ABORT ON ILLEGAL ONES
+               CMPI.B  #0F0H,D1             ; F0
+               BNE.S   EXIT_MEGA
+               BSR.S   ASSEM_NIBS_5
+               CMPI.B  #01,D1               ; 01
+               BNE.S   EXIT_MEGA
+               BSR.S   ASSEM_NIBS_5
+               CMPI.B  #10H,D1              ; 10
+               BNE.S   EXIT_MEGA
+               BSR.S   ASSEM_NIBS_5         ;EAT EVENT NUMBER - ALREADY HAVE
+               MOVE.L  0,BG_TEMP_1_B
+               BSR.S   ASSEM_NIBS_5
+               MOVE.B  D1,BG_TEMP_1_B       ;GATHER 4 ADDITIONAL PARAMETERS
+               BMI.S   CONFRONTATION        ; (IF END OF MESSAGE, START PROCESSING NOW)
+               BSR.S   ASSEM_NIBS_5
+               MOVE.B  D1,BG_TEMP_2_B
+               BMI.S   CONFRONTATION
+               BSR.S   ASSEM_NIBS_5
+               MOVE.B  D1,BG_TEMP_3_B
+               BMI.S   CONFRONTATION
+               BSR.S   ASSEM_NIBS_5
+               MOVE.B  D1,BG_TEMP_4_B
+CONFRONTATION
+               MOVE.L  BG_TEMP_1_B,D4          ;COPY ADDITIONAL PARAMETERS INTO D4
+               BRA     ADD_EVENT            ;INSERT INTO LIST
+;
+EXIT_MEGA
+               RTS
+;
+;
+ASSEM_NIBS_5   ;UNLOAD 2 BYTES FROM LEVEL 5; ASSEMBLE NIBS xxxx3210 xxxx7654 INTO 76543210
+               BSR     GET_LEVEL_5          ;GRAB FIRST 'N (LSB)
+               MOVE    D0,D1
+               BSR     GET_LEVEL_5          ;GRAB SECOND 'N (MSB)
+               ASL     #4,D0                ; ROTATE UP INTO POSITION
+               OR      D0,D1                ;  MERGE; PASS BACK IN D1
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             DELETE AN EVENT.  GOTTA MATCH TIME, TYPE, AND NUMBER.  ONCE MATCHED, SUCK OUT,
+;              AND MOVE EVERYONE ELSE UP ONE.  AND DECREMENT COUNT, TOO.
+;
+;             ENTER w/ D7.L=TIME, D6=TYPE, D5=EVENT NUMBER
+;
+DELETE_EVENT
+               MOVE.L  #MIDITC_EVENT_LIST,A0     ;LOAD UP LIST ADDRESS
+               MOVEQ   #0,D0                ;INIT EVENT COUNTER
+LOOKING_TO_KILL
+               MOVE.L  EVENT_L_TIME(A0,D0),D1
+               CMP.L   D7,D1                ;TRY TO MATCH TIME
+               BEQ.S   MATCHED_TIME         ;IF GOT, GO TO NEXT LEVEL
+EYEBALL_NEXT_ONE
+               ADDI    #10,D0               ;    ELSE, LOOK AT NEXT ONE
+               CMPI    #(10*256),D0         ;    OFF END OF LIST?
+               BCS     LOOKING_TO_KILL      ;         IF NOT, DO ANOTHER
+               BRA.S   EXIT_DELETE          ;              ELSE, SPLIT IN PEACE - NOT HERE
+MATCHED_TIME
+               MOVE.B  EVENT_L_TYPE(A0,D0),D1
+               CMP.B   D6,D1                ;CORRECT TYPE OF EVENT?
+               BNE     EYEBALL_NEXT_ONE     ;    IF NOT, TRY THE NEXT ONE
+               MOVE.B  EVENT_L_NUM(A0,D0),D1
+               CMP.B   D5,D1                ;         ELSE, TRY TO MATCH EVENT NUMBER
+               BNE     EYEBALL_NEXT_ONE     ;              IF NO MATCH, TRY NEXT ONE
+               SUBQ    #1,EVENT_LIST_COUNT  ;                   ELSE, WINAH! WINAH!
+;
+               BCC.S   BOOF_BOOF_DE_BOOF         ;DEC EVENT COUNT (DON'T/SHOULDN'T GO THRU ZERO)
+               MOVE    #0,EVENT_LIST_COUNT
+;
+BOOF_BOOF_DE_BOOF
+               MOVE.L  10+EVENT_L_TIME(A0,D0),D3 ;COPY NEXT EVENT...
+               MOVE    10+EVENT_L_TYPE(A0,D0),D2
+               MOVE.L  10+EVENT_ADD_PARAMS(A0,D0),D1
+               MOVE.L  D3,EVENT_L_TIME(A0,D0)    ;               ...INTO THIS EVENT
+               MOVE    D2,EVENT_L_TYPE(A0,D0)
+               MOVE.L  D1,EVENT_ADD_PARAMS(A0,D0)
+;
+               ADDI    #10,D0               ;MOVE ON TO NEXT EVENT
+               CMPI    #(10*256),D0         ; (GO 'TILL END)
+               BCS     BOOF_BOOF_DE_BOOF
+;
+EXIT_DELETE
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA

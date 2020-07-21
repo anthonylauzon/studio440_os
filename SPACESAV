@@ -1,0 +1,123 @@
+
+Possible places where code space can be retrieved -
+obscure and otherwise.
+
+General:
+Use macros or some such to compress 32-byte screen strings into 28 bytes
+by taking advantage of restriction of character values to 0-127 range
+(ie, ms bit always = 0).
+Question: can we utilize a 0-63 range somehow?
+This would let us compress 32-byte screen strings into 24 bytes.
+
+In SYSEXCL:
+Error message, etc for rejecting zero-length sample dump header -
+probably not worth having around.
+Ignore completely, or force to 1K - or exit after deleting target sample?
+
+In SYSEXCL:
+During sample receive - we don't look at packet checksums,
+thus could ACK on final packet data byte and eliminate specific
+branches for EOX handling.
+(This one gets a low rating for recovery cost effectiveness).
+
+SAMSUBS:
+Use computation instead of table lookup for GET_S_BLK_PTR.
+
+FIELDS:
+ENTR_VEC implies SET_ENTER_FLASH, just about always.
+
+FIELDS:
+Dedicated DISPLAY qualifiers for commonly-used non-default display vectors
+such as WRITE_PARAM_STRING.
+
+FIELDS:
+Use offset instead of absolute addressing for vectors where possible.
+
+FIELDS/BACKGROU:
+Create a flag which is set by scattered functions not under function keys 0-7
+(sound edit) but which are keyed to CURRENT_SOUND and/or ALT_PARAM_FLAG -
+flag causes reinstall if change in approp var is detected.
+Then we can eliminate code for checking for specific subfunctions in
+SOUND_CHANGE_CHECK and ALT_CHANGE_CHECK -
+some of which is possibly unnecessary anyway.
+Install procedure must clear these flags initially.
+
+SYSFUNS1:
+Can we use computation instead of tables for MAP_ARRAY_TBL/MAP_ARRAY_2TBL?
+
+SYSFUNS1:
+Use computation instead of KEY_STRINGS table in MODE_4_OUT_SUB -
+possibly same for MIDI_FLANNELS table?
+
+DISKCMDx:
+
+Do away with all code related to cue list files.
+
+SYSFUNS3:
+deal with redundant "click ..." strings in clock_out_sub.
+also many unnecessary "abs_longs" in this module.
+
+FOOTPADS:
+
+eliminate this module - henceforward, rely upon external controller
+to implement footswitch-actuated note events and such.
+
+FOOTSWBO:
+
+following on from the above, eliminate any special response code
+for footswitches in relation to note events.
+
+PERF_MID:
+
+(Possibly) eliminate all code associated with routing of midi
+controller messages to kit params in kit programs.  This includes
+the matrix screen under midi 1 (ie, the per-program stuff) as
+well as the midi main volume screen under midi 2.  For that
+matter, the midi velocity enable screen, etc is probably just
+about useless at this point too.  Maybe even the hold pedal to
+alt params thing could go.
+
+SEQFUNS1/2
+
+eradicate spurious sequence number fields under various record 1
+and record 2 functions - none of these settings are associated
+with specific sequences.
+
+AT LARGE:
+
+a few more candidates for useless functions:
+
+    extract workloop (and replace workloop)
+    stuff related to smpte-based punch-in/out
+    tape speed vari
+    current tempo
+    replace in kit (doesn't even cover alt params)
+    (sub - footsw: momentary pgm shift options)
+    tap track stuff (unless corrected for ext timebase use)
+    midi time shift stuff (should be hi-res track-slide edit util)
+    clear song (if song build can insert a song end)
+    pan linear display screen (although it IS fun)
+
+
+
+
+
+
+
+
+
+
+
+RESET_44:
+Do away with unused LCD graphics characters.
+       done 09-May-90 or thereabouts
+
+SEQFUNS2:
+Eliminate the WORK LOOP functions altogether.
+       done 21-jun-90
+
+PRO_MTC(?):
+Do away with all code related to MTC sync.
+       done 21-jun-90
+
+

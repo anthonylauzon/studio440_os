@@ -1,0 +1,376 @@
+***************************************************************************************************
+***************************************************************************************************
+***                                                                                             ***
+***            UART A XMIT AND RCV INT                                                          ***
+***                                                                                             ***
+***************************************************************************************************
+***************************************************************************************************
+;
+;
+               .AWORD
+;
+;
+               INCLUDE EQUATES         ;HDW ADDR AND CONSTANT DEFS, .AWORD DIRECTIVE.
+;
+               .EXPORT LEVEL_6_INT
+               .EXPORT UNLOAD_LEVEL_6
+               .EXPORT WAIT_A_LIVE
+               .EXPORT LOAD_A_LIVE
+               .EXPORT LOAD_A_SEQ
+;890314               .EXPORT     TRIP_A_SEQ_XMIT
+;
+;
+                                            ; external ROM.
+               .IMPORT  MIDI_OUT_OVERRUN
+;
+;
+                                            ; RAM addresses.
+               .IMPORT  BLEED_UART_A
+               .IMPORT  MA_XMIT_SEQ_GATE
+               .IMPORT  MA_XMIT_LIVE_CNT
+               .IMPORT  MA_XMIT_LIVE_OUT
+               .IMPORT  MA_XMIT_LIVE_BUFF
+               .IMPORT  MA_XMIT_SEQ_CNT
+               .IMPORT  MA_XMIT_SEQ_OUT
+               .IMPORT  MA_XMIT_SEQ_BUFF
+               .IMPORT  MA_RUN_STATUS
+               .IMPORT  MA_RCV_IN
+               .IMPORT  MA_RCV_CNT
+               .IMPORT  MA_RCV_BUFF
+               .IMPORT  MA_XMIT_LIVE_IN
+               .IMPORT  MA_XMIT_SEQ_IN
+               .IMPORT  MA_RCV_OUT
+               .IMPORT  MA_XMIT_SEQ_TIME
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;              TRANSMIT AND RECEIVE INT FOR THE MAIN UART.
+;              TO RECEIVE IS STRAIGHTFORWARD.
+;              TO TRANSMIT IS TRICKIER.  THERE ARE TWO BUFFERS - 'LIVE'
+;              EVENTS AND SEQUENCED EVENTS.  GENERALLY, LIVE TAKES PRIORITY OVER SEQUENCED.
+;              THE PRIORITY SCHEME IS THIS:
+;
+;              1       COMPLETE A MESSAGE STARTED OUT OF THE SEQUENCE BUFFER
+;                      (CAN'T LET LIVE EVENTS MERGE INTO THE MIDDLE OF A MESSAGE)
+;              2       LIVE EVENTS
+;              3       SEQUENCE EVENTS
+;
+;              IN MORE DETAIL, IT DOES THIS:
+;
+;                      ALLOWED TO XMIT SEQ EVENTS?
+;                          (_SEQ_GATE <> 0)
+;                                |
+;                               \|/
+;         XMIT LIVE EVENTS<--NO-***-YES--> WERE WE IN THE MIDDLE OF A MESSAGE?
+;                                                            |
+;                                                           \|/
+;                   ARE THERE ANY LIVE EVENTS TO XMIT?<--NO-***-YES-->XMIT NEXT SEQ BYTE
+;                                    |
+;                                   \|/
+;                   XMIT THEM<--YES-***-NO-->XMIT SEQUENCE EVENT
+;
+;              ADDITIONAL LOGIC INCLUDES RECREATING RUNNING STATUS ON OUTPUT, REDUCING THE
+;              _SEQ_GATE COUNT IF AN 'F8' (TIMING BYTE) IS TRANSMITED, AND KILLING OFF
+;              THE UART IF BOTH BUFFERS ARE EMPTY (_SEQ_GATE=0='EMPTY').
+;
+;              ALL REGISTERS PRESERVED.
+;
+LEVEL_6_INT
+               MOVEM.L D0/A0,-(A7)          ;SAVE OFF REGISTERS WE'LL BE USING
+;
+               BTST.B  #0,UART_A_STATUS     ;SEE IF HERE TO TRANSMIT OR RECEIVE
+               BNE     L_6_RCV              ;    IF BIT 0 CLEAR, MEANS RECEIVE
+;
+               TST.B   BLEED_UART_A         ;IF SOMEONE HATH DECREED TO DUMP ALL OF SEQUENCE RAM
+               BNE.S   L_6S_1               ;    THEN DO SO, REGARDLESS OF SEQ_GATE
+               TST     MA_XMIT_SEQ_GATE     ;SEE IF SEQ BUFFER DUMP IN PROGRESS
+               BNE.S   L_6S_1               ;   IF SO, GO HANDLE THOSE SITUATIONS
+;
+;
+;
+; MIDI "A" TRANSMIT INTERRUPT SERVICE, "LIVE" DATA:
+;
+L_6L_1
+               CLR     MA_XMIT_SEQ_GATE     ;OUR ONLY ENTRANCE IS IF SEQ_CNT = 0.  WE DO SOME
+                                            ;BULLETPROOFING BY MAKING SURE GATE = 0.
+               TST     MA_XMIT_LIVE_CNT     ;IS THERE ANYTHING IN THE LIVE BUFFER?
+               BEQ     L_6_SHUT_DOWN        ;IF NOT, SHUT DOWN THE UART AND EXIT.
+L_6L_2
+               MOVE    MA_XMIT_LIVE_OUT,A0       ;LOAD UP INDEX INTO LIVE XMIT BUFFER
+               MOVE.B  MA_XMIT_LIVE_BUFF(A0),D0  ;LOAD UP NEXT BYTE TO XMIT
+               BPL.S   L_6L_3              ;IF A DATA BYTE, XMIT UNCONDITIONALLY
+               CMP.B   MA_RUN_STATUS,D0    ;EQUAL TO LAST STATUS BYTE?
+               BEQ.S   L_6L_4              ;     IF SO, DON'T XMIT-THIS IS HOW WE FORM RUNNING STATUS
+               CMP.B   #0EFH,D0            ;ONLY A CHANNEL MESSAGE STATUS BYTE IS VALID
+               BHI.S   L_6L_3              ;     RUNNING STATUS - XMIT SYSTEM STUFF UNCONDITIONALLY
+               MOVE.B  D0,MA_RUN_STATUS    ;SAVE NEW STATUS BYTE FOR NEXT RUNNING STATUS CHECK
+L_6L_3
+               MOVE.B  D0,UART_A_DATA      ;XMIT A BYTE
+L_6L_4
+               ADDQ    #1,MA_XMIT_LIVE_OUT       ;INCREMENT...
+               AND     #3FFH,MA_XMIT_LIVE_OUT    ;   ...AND WRAP INDEX (1K BUFFER)
+               SUBQ    #1,MA_XMIT_LIVE_CNT ;DEC BUFFER COUNT (DOUBLES AS ACTIVITY FLAG TO BACKGROUND)
+               BRA.S   L_6_EXIT            ;GET OUTA HERE!
+;
+;
+;
+; MIDI "A" TRANSMIT INTERRUPT SERVICE, SEQUENCER DATA:
+;
+L_6S_1
+               TST     MA_XMIT_SEQ_CNT      ;IS THERE ANYTHING IN THE SEQUENCE BUFFER?
+               BEQ     L_6L_1              ;     IF EMPTY, TRY TO XMIT A LIVE BYTE
+;
+               MOVE    MA_XMIT_SEQ_OUT,A0  ;     LOAD UP INDEX INTO BUFFER
+               MOVE.B  MA_XMIT_SEQ_BUFF(A0),D0   ;LOAD UP THE NEXT SEQ BYTE TO XMIT
+;
+               BPL.S   L_6S_3               ;IF DATA BYTE, MID-MESSAGE - XMIT UNCONDITIONALLY
+               TST     MA_XMIT_LIVE_CNT     ;    ELSE - 'TWEN EVENTS.  LIVE MESSAGE WAITING?
+               BNE.S   L_6L_2               ;         IF YES, GO TO...
+                                            ;              ELSE, RUNNING-STATUS CHECK NEW STATUS BYTE
+               CMP.B   MA_RUN_STATUS,D0    ;IF EQUAL TO THE LAST STATUS BYTE, DO NOT XMIT
+               BEQ.S   L_6S_4              ;     (THIS IS HOW WE REFORM RUNNING STATUS)
+               CMP.B   #0EFH,D0            ;IF A 'SYSTEM' STATUS BYTE, DO NOT SAVE AS 'RUNNING STATUS'
+               BHI.S   L_6S_2_1
+               MOVE.B  D0,MA_RUN_STATUS    ;     ELSE, UPDATE RUNNING STATUS COMPARE BYTE
+L_6S_2_1
+               CMPI.B  #0F8H,D0            ;IS THIS A TIMING BYTE (SIGNALING A 96th NOTE BARRIER)?
+               BNE.S   L_6S_3              ;     IF NOT, GO ON OUR MERRY WAY
+               SUBQ    #1,MA_XMIT_SEQ_GATE ;          ELSE, ALL THIS GATE PERIOD - DEC COUNT
+               BCC.S   L_6S_4
+               CLR     MA_XMIT_SEQ_GATE     ;(PROTECT FROM GOING THRU ZERO)
+               BRA.S   L_6S_4
+L_6S_3
+               MOVE.B  D0,UART_A_DATA      ;(NINE YEARS LATER) XMIT A BYTE
+L_6S_4
+               ADDQ    #1,MA_XMIT_SEQ_OUT  ;INCREMENT...
+               AND     #7FFH,MA_XMIT_SEQ_OUT ;       ...AND WRAP INDEX (1K BUFFER)
+               SUBQ    #1,MA_XMIT_SEQ_CNT  ;DEC BUFFER COUNT (ALSO USED AS ACTIVITY FLAG)
+               BPL.S   L_6_6_6              ;IF POSITIVE, COOL
+               CLR     MA_XMIT_SEQ_CNT      ;    ELSE, CLEAR - NO NEGATIVES, PLEASE.
+L_6_6_6
+               BNE.S   L_6_EXIT
+               SF      BLEED_UART_A         ;CLEAR FORCED SEQ MEMORY DUMP
+L_6_EXIT
+               MOVEM.L (A7)+,D0/A0         ;RESTORE REGISTERS
+               RTE                          ;GONE!
+;
+;
+;
+; ALL TRANSMIT BUFFERS EMPTY - KNOCK OUT UART "A" TRANSMIT INTERRUPT:
+;
+L_6_SHUT_DOWN
+               MOVE.B  #95H,UART_A_CONTROL  ;SHUT OFF UART - WE'RE DONE (FOR NOW)
+               BRA     L_6_EXIT             ;AND GET US GONE.
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; CAPTURE A BYTE FROM THE "A" UART (THE ONLY ONE ENABLED TO RECEIVE).
+; JAM IT INTO THE RECEIVE BUFFER, UPDATE POINTERS/COUNTS.
+;
+L_6_RCV
+               MOVE    MA_RCV_IN,A0        ;GET INDEX INTO RCV BUFFER
+               MOVE.B  UART_A_DATA,MA_RCV_BUFF(A0)    ;STORE NEW BYTE IN BUFFER
+;
+               ADDQ    #1,MA_RCV_IN        ;INCREMENT...
+               AND     #3FFH,MA_RCV_IN     ;         ...AND WRAP INDEX (1K BUFFER)
+               ADDQ    #1,MA_RCV_CNT       ;INCREMENT COUNT (DOUBLES AS ACTIVITY FLAG)
+;
+               BRA     L_6_EXIT            ;GET OUTA HERE!
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;
+; Pull a received byte out of MIDI A receive buffer.
+; Returns byte in D0.B - preserves other registers.
+; NOTE - DON'T CALL IF MA_RCV_CNT = 0 (nothing in buffer)!!!
+;
+;
+UNLOAD_LEVEL_6
+               MOVE.L  A0,-(A7)
+               MOVEA.W MA_RCV_OUT,A0        ; fetch buffer output index,
+               MOVE.B  MA_RCV_BUFF(A0),D0   ; read next byte in output queue.
+               ADDQ.W  #1,MA_RCV_OUT        ; bump output index,
+               ANDI.W  #3FFH,MA_RCV_OUT     ; wrap it around if necessary.
+               SUBQ.W  #1,MA_RCV_CNT        ; decr count of bytes in buffer.
+               MOVE.L  (A7)+,A0
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; UTILITY TO PUT A MIDI BYTE INTO UART "A" "LIVE EVENT" BUFFER.
+; IF THE BUFFER IS FULL (AND WRITING ONE MORE BYTE WOULD OVERFLOW THE
+; BUFFER), ENABLE TRANSMISSION VIA UART A (TO BE SAFE), AND WAIT HERE
+; UNTIL THE LEVEL 6 INTERRUPT CLEARS OUT ENOUGH BUFFER SPACE FOR US.
+;
+; ENTER WITH DATA BYTE IN D0.
+; TRASHES A0.
+;
+WAIT_A_LIVE
+               MOVE.B  #0B5H,UART_A_CONTROL      ;ENABLE UART "A" TRANSMIT INTERRUPT, MAKE SURE
+                                                 ;MR. "A" IS ACTUALLY TRYING TO GET US MORE SPACE.
+;
+LOAD_A_LIVE
+               CMP     #3FFH,MA_XMIT_LIVE_CNT    ;ARE WE ABOUT TO WRAP THE OUTPUT BUFFER?
+               BCS.S   LOAD_A_LIVE_OK            ;BRANCH IF NOT - GO STUFF HIM BUFFA.
+               BSR     MIDI_OUT_OVERRUN          ;ELSE - SEND A WARNING (IF NOT ALREADY SENT),
+               BRA     WAIT_A_LIVE               ;THEN GO HAMMER ON UART "A".
+;
+LOAD_A_LIVE_OK
+               MOVE    MA_XMIT_LIVE_IN,A0        ;ROOM AVAILABLE IN BUFFER - FETCH INPUT POINTER,
+               MOVE.B  D0,MA_XMIT_LIVE_BUFF(A0)  ;LOAD NEW BYTE INTO BUFFER.
+               ADDQ    #1,MA_XMIT_LIVE_IN        ;ADVANCE BUFFER INPUT POINTER,
+               AND     #3FFH,MA_XMIT_LIVE_IN     ;WRAPPING IT AROUND IF NECESSARY.
+               ADDQ    #1,MA_XMIT_LIVE_CNT       ;INCREMENT COUNT OF BYTES IN BUFFER.
+               MOVE.B  #0B5H,UART_A_CONTROL      ;ENABLE UART TRANSMIT INTERRUPT, KICK IT AWAKE.
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; UTILITY TO PUT A MIDI BYTE INTO UART "A" SEQUENCER EVENT BUFFER.
+; IF THE BUFFER IS FULL (AND WRITING ONE MORE BYTE WOULD OVERFLOW THE
+; BUFFER), ENABLE TRANSMISSION VIA UART A (TO BE SAFE), AND WAIT HERE
+; UNTIL THE LEVEL 6 INTERRUPT CLEARS OUT ENOUGH BUFFER SPACE FOR US -
+; EVEN THOUGH THIS IS TIMED INFORMATION, THE ISSUE IS PRETTY MUCH MOOT
+; BY THE TIME THE BUFFER IS FULL ....
+; NOTE THAT TRANSMISSION-ENABLE IN THIS CASE IS VIA REALTIME INTERRUPT,
+; WHICH OBVIOUSLY MUST BE ENABLED IN ORDER FOR THIS TO WORK!
+;
+; ENTER WITH DATA BYTE IN D0.
+; TRASHES A0.
+;
+LOAD_A_SEQ
+               CMP     #7FFH,MA_XMIT_SEQ_CNT     ;ARE WE ABOUT TO WRAP THE OUTPUT BUFFER?
+               BCS.S   LOAD_A_SEQ_OK             ;BRANCH IF NOT, GO AHEAD AND STUF-IN-BUF.
+;
+               BSR     MIDI_OUT_OVERRUN     ;ELSE - WARN USER (IF WE HAVEN'T ALREADY),
+               MOVE    #1,MA_XMIT_SEQ_TIME  ;FORCE DUMP AS SOON AS LEVEL_3 GETS THERE.
+;
+LOAD_A_SEQ_WAIT
+               CMP     #7FFH,MA_XMIT_SEQ_CNT     ;NOW WE'LL JUST WAIT UNTIL SPACE OPENS UP.
+               BEQ     LOAD_A_SEQ_WAIT
+;
+LOAD_A_SEQ_OK
+                                                 ;WE GOT BUFFER SPACE:
+               MOVE    MA_XMIT_SEQ_IN,A0         ;FETCH BUFFER INPUT POINTER,
+               MOVE.B  D0,MA_XMIT_SEQ_BUFF(A0)   ;LOAD NEW BYTE INTO BUFFER.
+               ADDQ    #1,MA_XMIT_SEQ_IN         ;ADVANCE BUFFER INPUT POINTER,
+               AND     #7FFH,MA_XMIT_SEQ_IN      ;WRAPPING IT AROUND IF NECESSARY.
+               ADDQ    #1,MA_XMIT_SEQ_CNT        ;INCREMENT COUNT OF BYTES IN BUFFER.
+               RTS
+;
+;
+;
+;890314;
+;890314; LITTLE HELPER TO KICK UART "A" SEQ BUFFER TRANSMIT INTO LIFE,
+;890314; INDEPENDENT OF (AND WITHOUT CONFUSING) SEQUENCER UART TIMEOUT OR
+;890314; SEQ-CLOCK GATEKEEPER COUNT (AS MAINTAINED BY REALTIME INTERRUPT) -
+;890314; ALSO AVOIDS SPURIOUS MIDI CLOCK TRANSMISSION:
+;890314; (MAKES SENSE TO USE THIS WHEN SOMETHING'S ALREADY IN XMIT BUFFER.)
+;890314;
+;890314TRIP_A_SEQ_XMIT
+;890314               MOVE.B  #0B5H,UART_A_CONTROL ;ENABLE UART TRANSMIT INTERRUPT, KICK IT AWAKE.
+;890314               TST     MA_XMIT_SEQ_GATE     ;IS OUR INTERRUPT SERVICE ROUTINE CLEARED FOR WORK?
+;890314               BNE.S   TASX_EXIT            ;BRANCH IF YES, DON'T MESS WITH EXISTING GATE COUNT.
+;890314               ADDQ    #1,MA_XMIT_SEQ_GATE  ;ELSE - TELL IT "OK" (NOT TO WORRY, FLAG'LL GET CLEARED
+;890314                                            ;AGAIN BY INT SERVICE WHEN IT SEES WE'RE OUTA DATA).
+;890314TASX_EXIT
+;890314               RTS
+;890314;
+;
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+

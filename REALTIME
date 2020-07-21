@@ -1,0 +1,507 @@
+               INCLUDE HPFIXUPS
+               TITLE "LEVEL 3 - THE REALTIME INT - KEEPIN' THE VOICES UP"
+***************************************************************************************************
+***************************************************************************************************
+***                                                                                             ***
+***            REALTIME INT - PAD CHECKING, BUFFER DUMPING, AND VOICE MAINTENANCE               ***
+***                                                                                             ***
+***************************************************************************************************
+***************************************************************************************************
+;
+NEG_EXT        EQU     0FFFFFF00H      ;USE IN MOVEQ INSTRUCTIONS WHERE ARG IS
+                                       ;80H OR LARGER - HP XASM DOES NOT HANDLE
+                                       ;SIGN-EXTEND CORRECTLY.  COSMETIC, KEEPS
+                                       ;ACTUAL BYTE VALUE CLEARER.
+;
+               INCLUDE EQUATES         ;HDW ADDR AND CONSTANT DEFS, ABS_SHORT DIRECTIVE.
+               INCLUDE S_BLK_EQU       ;SOUND BLOCK EQUATES/OFFSETS
+;
+               GLB     LEVEL_3_INT,NOTHINGNESS,NO_HANDLER
+;
+               EXTERNAL  V_PRIO_TIME
+               EXTERNAL  V_PRIO_VEC
+               EXTERNAL  V_BLOCK_SIZE
+               EXTERNAL  V_PRIO_FLAG
+               EXTERNAL  V_ACTIVE_SUB
+               EXTERNAL  V_CTRL_ADDR
+               EXTERNAL  V_VCF_VECTOR
+               EXTERNAL  V_VCA_VECTOR
+               EXTERNAL  V_BEND_VECTOR
+               EXTERNAL  V_PITCH_PAN
+;
+               EXTERNAL  L_3_COLLIDE
+               EXTERNAL  REAL_LONG_TIME
+               EXTERNAL  VOLUME_OUT_VAL
+               EXTERNAL  POT_VALUE
+               EXTERNAL  MA_XMIT_SEQ_TIME
+               EXTERNAL  MB_XMIT_SEQ_TIME
+               EXTERNAL  MB_XMIT_SEQ_GATE,MA_XMIT_SEQ_GATE
+               EXTERNAL  CONVERT_DEST
+               EXTERNAL  TRIG_ACTION
+               EXTERNAL  AUTORPT_FLAG
+               EXTERNAL  READING_PAD
+               EXTERNAL  PAD_VEL_AVAIL
+               EXTERNAL  PAD_TIMER
+               EXTERNAL  PAD_STATUS
+               EXTERNAL  NEW_PADS_ON
+               EXTERNAL  NEW_PADS_OFF
+               EXTERNAL  PAD_CTRL_STAT
+               EXTERNAL  CUR_PADS_ON
+               EXTERNAL  PAD_VALUE
+               EXTERNAL  READ_PADS_ASAP
+               EXTERNAL  PAD_ARB_INDEX
+               EXTERNAL  TRIGGER_TIMER
+               EXTERNAL  TRIGGER_READ
+               EXTERNAL  TRIGGER_VALUE
+               EXTERNAL  TRIGGER_ON
+               EXTERNAL  TRIG_OF_THRESH
+               EXTERNAL  TRIG_ON_THRESH
+               EXTERNAL  NEW_TRIG_ON
+               EXTERNAL  POT_ARB_INDEX
+               EXTERNAL  PRIO_INDEX
+               EXTERNAL  PRIO_POINTER
+               EXTERNAL  ROTATING_VOICE
+               EXTERNAL  V_BLK_00
+               EXTERNAL  V_BLK_07
+               EXTERNAL  MA_TIME_BUFF,MB_TIME_BUFF
+               EXTERNAL  SENSING_TRIG
+               EXTERNAL  TRIG_VEL_DLY
+               EXTERNAL  TRIG_HOLD_OFF
+               EXTERNAL  LOAD_A_LIVE
+               EXTERNAL  LOAD_B_LIVE
+               EXTERNAL  MIDI_MT_UART
+               EXTERNAL  XPORT_STATE
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             REALTIME - THE MOST IMPORTANT INTERRUPT (??).  HIT EVERY 1.024 msec.
+;             JOBS INCLUDE:
+;
+;              1.      UPDATING THE 'REALTIME' CLOCK (16 BIT ROTATING NUMBER)
+;              2.      FIRING THE MIDI SEQUENCE BUFFERS (IF TIMING OUT)
+;              3.      FINDING WHICH PADS HAVE NEWLY GONE ON OR OFF
+;              4.      CONVERTING POTS & PADS AND SAVING THEIR MOST RECENT VALUES
+;              5.      CHECKING ALL 8 VOICES TO SEE IF ANY 'PRIORITY' WORK NEEDED (AT THIS TIME)
+;              6.      UPDATING NORMAL ENVELOPES (AND S/H's) FOR ONE OF THE 8 VOICES (ROTATION)
+;              7.      SAVING THE WORLD IN GENERAL.   (Oh? Really? THIS I'd like to see!)
+;
+;             ALSO, BEFORE IT DOES ANY OF THIS, IT CHECKS FOR
+;             (AND COUNTS, AND RESOLVES) COLLISONS WITH ITSELF.
+;             WHAT A GUY.
+;
+;             ENTERS EXPECTING AND LEAVES DESTROYING NOTHING, REGISTER-WISE.
+;
+LEVEL_3_INT
+               TST     CLR_1_MSEC           ;BEFORE ANYTHING ELSE - CLEAR THE INTERRUPT REQUEST.
+;
+;
+; NEXT, COLLISION AND BLOCK DETECTION:
+;
+               ADDQ    #1,L_3_COLLIDE       ;INCREMENT COUNT OF 'REALITIMES PENDING COMPLETION'
+               CMP     #1,L_3_COLLIDE       ;ARE WE THE ONLY ONE PENDING?
+               BNE     L_3_EXIT             ;IF NOT, THEN GET OUT AND LET PRIOR REQUESTS COMPLETE!
+;
+;16MAY               TST     L_3_BLOCK            ;IS SOMEONE ELSE (ie. LEVEL 2) BLOCKING US RIGHT NOW?
+;16MAY               BNE     L_3_EXIT             ;IF SO, GET OUT (WE'LL CATCH UP NEXT TIME THRU).
+;16MAYLEVEL_3_NOW
+;16MAY                                            ;NOTE - WE CAN GET TO LEVEL_3_NOW DIRECTLY FROM LEVEL 2
+;16MAY                                            ;IF LEVEL 2 CAUSED A BACKLOG ON LEVEL 3 SERVICING.
+;                      -  NOTE  -
+;  AN EPITAPH TO THE ABOVE CODE, WHICH ALLOWED INHIBITION OF LEVEL 3
+;  EXECUTION VIA THE L_3_BLOCK FLAG (AIMED AT LEVEL2, TO ALLOW IT TO
+;  KEEP FROM GETTING TRAMPLED BY LEVEL 3 WHILE MAINTAINING THE CPU
+;  PRIORITY LEVEL BELOW LEVEL 2 - SINCE LEVEL 2 IS AN EXTREMELY SHORT
+;  ROUTINE RUNNING EVERY 10 MSEC MAX AND COULD COLLIDE WITH ITSELF ONLY
+;  IF OTHER INTERRUPTS WERE ALLOWED TO WALK IN ON IT, IT HAS BEEN SET UP
+;  TO DISABLE ALL INTERRUPTS FOR ITS DURATION VIA THE CPU PRIORITY LEVEL
+;  MAKING THE L_3_BLOCK MECHANISM UNNECESSARY).
+;
+                                            ;WELL ...IT LOOKS LIKE WE'RE REALLY GONNA DO IT NOW ...
+               MOVEM.L D0-D7/A0-A6,-(A7)    ;STRAP CHASTITY BELT ON REGISTERS WE WILL BE FONDLING.
+               MOVE    #2200H,SR            ;LOWER PRIORITY SO THAT WE CAN OVERRUN
+                                            ;IF THINGS GET BEHIND.
+;
+;
+;
+; TASK 1 - UPDATE BIG BEN.
+;
+L3_T1_1                                     ;RE-ENTER AT THIS POINT WHEN REALTIME IS BACKLOGGED.
+;
+               ADDQ.L  #1,REAL_LONG_TIME    ;INCREMENT THE REALTIME CLOCK -
+                                            ;REAL_TIME IS THE LOW-ORDER WORD OF REAL_LONG_TIME.
+;
+;
+;
+; TASK 1 (AND A HALF, OK?) - UPDATE MASTER VOLUME:
+;
+               MOVE    VOLUME_OUT_VAL,VOLUME_OUT      ;FUCK IT - WHY WASTE VALUE-ABLE "REAL" TIME
+                                                      ;ON TESTING TO SEE WHAT TIME IT IS .....
+;
+;
+;
+; TASK 2 - SEE IF SEQUENCER MIDI BUFFERS PENDING; FIRE IF READY.
+;
+               MOVE    #2700H,SR            ;BLOCK UARTS WHILE FIGURING THIS
+
+               TST     MA_XMIT_SEQ_TIME     ;IS MIDI SEQUENCE BUFFER 'A' COUNTING DOWN TO DUMP?
+               BEQ.S   L3_T2_1                   ;IF NOT, THEN IGNORE
+               SUBQ    #1,MA_XMIT_SEQ_TIME            ;ELSE, DECREMENT TIMEOUT
+               BNE.S   L3_T2_1                             ;IF STILL NOT READY TO FIRE, CONTINUE...
+               TST.B   XPORT_STATE
+               BEQ.S   L3_T2_0               ;IF TRANSPORT OFF DONT SEND CLOCK
+               BTST    #0,MIDI_MT_UART+1                      ;IS A UART MIDI CLOCK ENABLED
+               BEQ.S   L3_T2_0
+               MOVE    #0F8H,D0
+               BSR     LOAD_A_LIVE
+L3_T2_0        MOVE.B  #0B5H,UART_A_CONTROL                     ;ELSE, START SENDING
+               ADDQ    #1,MA_XMIT_SEQ_GATE                      ;AND INC CLICKS-WORTH ALLOWED TO DUMP
+               MOVE    MA_TIME_BUFF,MA_XMIT_SEQ_TIME            ;AND LOAD WHEN NEXT ONE OCCURS
+               CLR     MA_TIME_BUFF                             ;AND ANUL 'NEXT' TIME (WE JUST USED IT)
+L3_T2_1
+               TST     MB_XMIT_SEQ_TIME     ;IS MIDI SEQUENCE BUFFER 'B' COUNTING DOWN TO DUMP?
+               BEQ.S   L3_T2_2                   ;IF NOT, THEN IGNORE
+               SUBQ    #1,MB_XMIT_SEQ_TIME            ;ELSE, DECREMENT TIMEOUT
+               BNE.S   L3_T2_2                             ;IF STILL NOT READY TO FIRE, CONTINUE...
+               TST.B   XPORT_STATE
+               BEQ.S   L3_T2_15              ;IF TRANSPORT OFF DONT SEND CLOCK
+               BTST    #1,MIDI_MT_UART+1                      ;IS A UART MIDI CLOCK ENABLED
+               BEQ.S   L3_T2_15
+               MOVE    #0F8H,D0
+               BSR     LOAD_B_LIVE
+L3_T2_15       MOVE.B  #0B5H,UART_B_CONTROL                     ;ELSE, START SENDING
+               ADDQ    #1,MB_XMIT_SEQ_GATE                      ;AND INC CLICKS-WORTH ALLOWED TO DUMP
+               MOVE    MB_TIME_BUFF,MB_XMIT_SEQ_TIME            ;AND LOAD WHEN NEXT ONE OCCURS
+               CLR     MB_TIME_BUFF                             ;AND ANUL 'NEXT' TIME (WE JUST USED IT)
+L3_T2_2
+               MOVE    #2200H,SR            ;LOWER INTS - ALLOW OURSELF TO OVERRUN
+;
+;
+;
+; READ AND STORE RESULT OF LATEST POT/PAD ADC CONVERSION:
+;
+               MOVE    CONVERT_DEST,A0      ;FETCH ADDRESS AT WHICH TO STORE CONVERSION RESULT.
+               MOVE.B  READ_CTRL,(A0)       ;MOVE BYTE RESULT INTO L.S.BYTE OF DESTINATION WORD -
+                                            ;ALWAYS LEAVE M.S.BYTE = 0.
+;
+;
+;
+; NOW GET DOWN WITH PAD AND TRIGGER INPUTS:
+;
+               MOVE.B  PAD_CTRL_STAT,D2     ;MAINTAIN PAD CONTROL STATUS IN D2 WHILE DEALING WITH
+                                            ;PAD/POT/TRIGGER-IN STATUS CHECK AND ARBITRATION.
+               TST.B   AUTORPT_FLAG
+               BNE     AUTO_ARBITRATE       ;IF AUTOREPEAT, HEAD FOR AUTOREPEAT-ARBITRATE ROUTINE.
+;
+                                            ;NEITHER OF ABOVE (NORMAL MODE, THEN) -
+               TST.B   READING_PAD          ;DID WE JUST STORE THE RESULT OF A PAD CONVERSION?
+               BEQ.S   TRIG_CHECK           ;BRANCH IF NOT, SEE IF IT WAS A TRIGGER-INPUT READ.
+               SF      READING_PAD          ;ELSE, ACKNOWLEDGE THAT STATUS (GET OVER IT, ALREADY).
+               BSET    #0,(A0)              ;NOW, BIT O' FUDGE - PREVENT PAD-ON WITH VELOCITY = 0.
+               MOVE    PAD_ARB_INDEX,D1     ;AAND - FETCH THE NUMBER OF THE PAD JUST READ,
+               BSET    D1,PAD_VEL_AVAIL     ;SET BIT TO INDICATE ITS VELOCITY IS NOW AVAILABLE.
+                                            ;THIS WILL BE PICKED UP BY BACKGROUND FOR USE BY MIDI,
+                                            ;MTC, SEQ (VOICE INIT TESTS DIRECTLY FOR NON-ZERO
+                                            ;PAD_VALUE).
+               BRA.S   PAD_CHECK            ;DON'T BOTHER WITH TRIG-READ CHECK - COULDN'TA BEEN.
+;
+TRIG_CHECK
+               TST.B   TRIGGER_READ         ;DID WE JUST STORE TRIGGER-INPUT CONVERSION RESULT?
+               BEQ.S   PAD_CHECK            ;BRANCH IF NOT - HEAD FOR PAD STATUS CHECK.
+               MOVE    TRIGGER_VALUE,D0     ;YES - RETRIEVE VALUE WE JUST STORED.
+               TST.B   TRIGGER_ON           ;IS TRIGGER "ENTITY" CURRENTLY IN "ON" STATE?
+               BNE.S   TRIG_CHK_40          ;BRANCH IF YES.
+               CMP     TRIG_ON_THRESH,D0    ;NOT NOW ON - DID WE JUST CROSS "ON" THRESHOLD?
+               BLE.S   TRIG_CHK_20          ;BRANCH IF NOT - SET DISCHARGE BIT, RESTART TIMER (=1).
+               ST      TRIGGER_ON           ;JUST CAME ON - SET SOME FLAGS,
+               ST      NEW_TRIG_ON          ;THIS ONE'LL TRIGGER AN EVENT.
+               ST      SENSING_TRIG         ;THIS ONE SAYS, "WE'RE IN VELOCITY-SENSE PERIOD NOW."
+               MOVE    TRIG_VEL_DLY,TRIGGER_TIMER     ;TIME ALLOWED FOR COMING TO OUR SENSES.
+               CLR     TRIGGER_VALUE        ;HOLDS BACK VEL-SENSITIVE EVENTS UNTIL VEL IS READ.
+               BRA.S   PAD_CHECK            ;OUT WE GO - NO TRIGGER-INPUT PEAK-HOLD DISCHARGE HERE.
+TRIG_CHK_20
+               ADDQ    #1,TRIGGER_TIMER     ;NOTHING NEW, CHECK BACK AGAIN IN 2 MSEC -
+               BRA.S   TRIG_CHK_80          ;MEANWHILE, DISCHARGE TRIGGER-INPUT PEAK-HOLD CIRCUIT.
+;
+TRIG_CHK_40
+               ADDQ    #4,TRIGGER_TIMER     ;TRIG IS ON - READ EVERY 4 MSEC WHILE AWAITING "OFF".
+               TST.B   SENSING_TRIG         ;ARE WE IN VELOCITY-SENSE PERIOD?
+               BEQ.S   TRIG_CHK_60          ;BRANCH IF NOT, SEE IF WE DONE GONE OFF.
+               SF      SENSING_TRIG         ;WE WERE, IN FACT - WE JUST SENSED IT.
+               MOVE    TRIG_HOLD_OFF,TRIGGER_TIMER    ;NOW IN HOLD-OFF PERIOD, WON'T LOOK AT TRIG
+                                                      ;AGAIN FOR A BIT (NO "OFF" EVENT GENERATED -
+                                                      ;TRIGGER_ON STAYS TRUE IN HOLD-OFF PERIOD).
+               BRA.S   TRIG_CHK_80          ;TRIG-IN STAYS HARD-DISCHARGED DURING HOLD-OFF PERIOD.
+TRIG_CHK_60
+               CMP     TRIG_OF_THRESH,D0    ;NOT VEL-SENSING - HAVE WE SLIPPED BELOW "OFF" THRESH?
+               BGT.S   TRIG_CHK_80          ;NO - DISCHARGE, READ AGAIN IN 4 MSEC.
+               SF      TRIGGER_ON           ;YES - BEGIN THE CYCLE ANEW (LOOKING FOR TRIG "ON").
+;
+TRIG_CHK_80
+               BCLR    #3,D2                ;DISCHARGE THE TRIGGER-INPUT PEAK-HOLD CIRCUIT -
+               MOVE.B  D2,PAD_CONTROL       ;DISCHARGE ENDS AFTER PAD_CHECK.
+;
+;
+PAD_CHECK
+                                            ;SEE WHICH PADS ARE ABOVE THRESHOLD.
+               MOVEQ   #7,D0                ;D0 IS PAD INDEX - DO PADS 7-0.
+               MOVE.B  NEW_PADS_ON,D3       ;MAINTAIN NEW_PADS_ON IN D3 WHILE IN THIS LOOP.
+               MOVE.B  CUR_PADS_ON,D4       ;MAINTAIN CUR_PADS_ON IN D4 WHILE IN THIS LOOP.
+               MOVE.B  NEW_PADS_OFF,D5      ;MAINTAIN NEW_PADS_OFF IN D5 WHILE IN THIS LOOP.
+               MOVE    #14,A0               ;A0 IS WORD POINTER INTO PAD STATUS ARRAYS.
+;
+PAD_CHK_10                                  ;ITERATE FROM HERE ONCE PER PAD.
+;
+               TST.B   PAD_TIMER(A0)        ;SEE IF THIS PAD IS TIMING OUT FOR SOME REASON.
+               BEQ.S   PAD_CHK_20           ;BRANCH IF NOT,
+               SUBQ.B  #1,PAD_TIMER(A0)     ;ELSE DECREMENT TIMEOUT -
+               BRA.S   PAD_CHK_NEXT         ;WE'LL CHECK UP ON THIS PAD AGAIN AT NEXT REALTIME
+                                            ;(NOTE IMPLICIT 1 MSEC TIMEOUT EVEN IF TIMER = 0).
+PAD_CHK_20
+               TST     PAD_STATUS(A0)       ;NOT TIMING OUT - IS VELOCITY READ PENDING?
+               BEQ.S   PAD_CHK_30           ;NO - GO CHECK FOR UNACKNOWLEDGED STATUS TRANSITIONS.
+               BSET    D0,READ_PADS_ASAP    ;ELSE FLAG THIS PAD AS BEING READY TO READ,
+               ST      PAD_TIMER(A0)        ;YANK IT OUT OF STATUS-CHECK LIST WITH LONG TIMEOUT,
+               BRA.S   PAD_CHK_NEXT         ;LOOK AT NEXT PAD.
+PAD_CHK_30
+               BTST    D0,D3                ;IF BACKGROUND HAS NOT YET PROCESSED THE MOST RECENT
+               BNE.S   PAD_CHK_NEXT         ;STATUS TRANSITION ON THIS PAD,
+               BTST    D0,D5                ;SUPPRESS FURTHER STATUS CHECKING FOR THIS PAD.
+               BNE.S   PAD_CHK_NEXT
+;
+               BTST    D0,D4                ;OK - SO IS PAD ON, LATELY?
+               BNE.S   PAD_CHK_40           ;BRANCH IF YES, TEST IT AGAINST "OFF" THRESHOLD.
+;
+                                            ;PAD HAS BEEN OFF - DID IT JUST GO ON?
+               AND.B   #0F8H,D2             ;CLEAR PAD ADDRESS, LEAVE TRIG-IN DISCHARGE BIT ALONE.
+               OR.B    D0,D2                ;IMPLANT NEW PAD ADDRESS.
+               BSET    #5,D2                ;SELECT "ON" THRESHOLD FOR PAD COMPARATOR.
+               MOVE.B  D2,PAD_CONTROL       ;PUT OUT NEW CONTROL WORD - SELECT PAD, THRESHOLD.
+               NOP                          ;1.5 USEC DELAY IN CASE MUX, COMPARATOR NEED IT -
+               NOP                          ;SUBJECT TO TWEAKAGE, FOR SURE.
+               NOP
+               BTST    #3,SWITCH_INPUT      ;SO - IS IT ABOVE "ON" THRESHOLD OR WHAT?
+               BEQ.S   PAD_CHK_NEXT         ;BRANCH IF NOT - NO STATUS CHANGES, NO ACTION.
+;
+               BSET    D0,D3                ;PAD JUST CAME ON - FLAG NEW PAD ON,
+               BSET    D0,D4                ;UPDATE CURRENT PAD STATUS,
+               MOVE    #0FF05H,PAD_STATUS(A0)    ;SET "VEL READ PENDING" STATUS AND 6 MSEC DELAY,
+               CLR     PAD_VALUE(A0)        ;CLEAR CURRENT PAD VALUE (HOLDS BACK VOICE PLAY),
+               BCLR    D0,PAD_VEL_AVAIL     ;CLEAR BIT TO INDICATE VEL NOT YET AVAILABLE
+                                            ;(HOLDS BACK MIDI TRANSMIT, INPUT TO SEQUENCER).
+               BRA.S   PAD_CHK_NEXT         ;GO LOOK AT NEXT PAD IF ANY.
+;
+PAD_CHK_40
+                                            ;PAD'S BEEN ON - HAS IT JUST GONE OFF?
+               AND.B   #0D8H,D2             ;CLEAR PAD ADDRESS, LEAVE TRIG-IN DISCHARGE BIT ALONE -
+                                            ;ALSO, SELECT "OFF" THRESHOLD FOR PAD COMPARATOR.
+               OR.B    D0,D2                ;IMPLANT NEW PAD ADDRESS.
+               MOVE.B  D2,PAD_CONTROL       ;PUT OUT NEW CONTROL WORD - SELECT PAD, THRESHOLD.
+               NOP                          ;1.5 USEC DELAY IN CASE MUX, COMPARATOR NEED IT -
+               NOP                          ;SUBJECT TO TWEAKAGE, FOR SURE.
+               NOP
+               BTST    #3,SWITCH_INPUT      ;SO - IS IT BELOW "OFF" THRESHOLD OR WHAT?
+               BNE.S   PAD_CHK_50           ;BRANCH IF NOT - SET A TIMEOUT BEFORE WE TRY AGAIN.
+               BSET    D0,D5                ;ELSE FLAG NEW PAD OFF,
+               BCLR    D0,D4                ;UPDATE CURRENT PAD STATUS,
+;
+;25NOV               MOVE    #7,PAD_STATUS(A0)    ;DELAY 8 MSEC BEFORE STARTING TO CHECK FOR NEW PAD ON.
+;25NOV               BRA.S   PAD_CHK_NEXT         ;LOOK AT NEXT PAD IF ANY.
+;                         .... FALL-THRU JUST HAPPENS TO BE EQUIVALENT HERE ....
+PAD_CHK_50
+               MOVE    #7,PAD_STATUS(A0)    ;PAD STILL ON - CHECK AGAIN IN 8 MSEC FOR PAD-OFF.
+;
+PAD_CHK_NEXT
+               SUBQ    #2,A0                ;MOVE PAD ARRAY INDEX DOWN TO NEXT PAD'S ENTRIES.
+               DBRA    D0,PAD_CHK_10        ;REPEAT IF ALL PADS NOT CHECKED.
+;
+               MOVE.B  D3,NEW_PADS_ON       ;ELSE STORE NEW VALUES FOR PAD STATUS,
+               MOVE.B  D4,CUR_PADS_ON
+               MOVE.B  D5,NEW_PADS_OFF
+                                            ;FALL THRU INTO READ ARBITRATION PROCEDURE.
+;
+;
+; PAD/POT/TRIGGER-IN READ ARBITRATION - NON-AUTOREPEAT:
+; THIS IS ALSO AN OPPORTUNE POINT AT WHICH TO END TRIGGER-INPUT
+; PEAK-HOLD DISCHARGE (IF APPROPRIATE TO DO SO).
+;
+NORM_ARBITRATE
+               CMP     #4,TRIGGER_TIMER     ;ARE WE 4 "ITS" OR LESS FROM NEXT TRIGGER READ?
+               BHI.S   NORM_ARB_08          ;BRANCH IF NOT - LEAVE PEAK-HOLD DISCHARGE AS IS.
+                                            ;(ALLOW HOLD-OFF HARD-DISCHARGE TO PERSIST UNTIL THEN,
+                                            ;OTHERWISE WE ALWAYS UN-DISCHARGE HERE).
+               BSET    #3,D2                ;ELSE, UN-DISCHARGE IT (MIGHT ALREADY BE THAT WAY -
+               MOVE.B  D2,PAD_CONTROL       ;I.E., IF IN VELOCITY-SENSING PERIOD).
+NORM_ARB_08
+               MOVE.B  READ_PADS_ASAP,D1    ;ARE THERE ANY PADS JUST ACHING TO BE READ?
+               BEQ.S   NORM_ARB_30          ;NO - GO SEE ABOUT TRIGGER-IN, THEN.
+               ST      READING_PAD          ;YES - SET FLAG TO INDICATE A PAD IS BEING READ,
+               MOVE    PAD_ARB_INDEX,D0     ;FIND THE PAD WHICH NEEDS TO BE READ -
+NORM_ARB_10
+               DBRA    D0,NORM_ARB_20       ;STEP TO NEXT PAD IN ROTATION -
+               MOVEQ   #7,D0                ;WRAP AROUND IF NECESSARY.
+NORM_ARB_20
+               BCLR    D0,D1                ;TEST/CLEAR THE READ_ASAP BIT FOR THIS PAD.
+               BEQ     NORM_ARB_10          ;REPEAT IF THIS WAS NOT THE ONE.
+;
+               MOVE.B  D1,READ_PADS_ASAP    ;FOUND ONE - UPDATE READ_ASAP STATUS BYTE,
+               MOVE    D0,PAD_ARB_INDEX     ;MARK THIS POINT FOR NEXT ARBITRATION SEQUENCE,
+               AND.B   #0F8H,D2             ;CLEAR PAD ADDRESS,
+               OR.B    D0,D2                ;IMPLANT NEW PAD ADDRESS.
+               MOVE.B  D2,PAD_CONTROL       ;PUT OUT NEW CONTROL WORD - SELECT PAD TO ADC.
+               ADD     D0,D0                ;SET UP A WORD POINTER,
+               MOVE    D0,A0
+               MOVE    #29,PAD_STATUS(A0)   ;CLEAR "VEL READ PENDING" STATUS, DELAY 30 MSEC
+                                            ;BEFORE STARTING TO CHECK FOR PAD-OFF.
+               ADD     #PAD_VALUE+1,A0      ;COMPUTE AND STORE POINTER TO DESTINATION OF
+               MOVE    A0,CONVERT_DEST      ;THE RESULT OF THIS CONVERSION.
+               MOVE    D0,SELECT_CTRL+PADS  ;START CONVERSION OF PADS CHANNEL ("DON'T CARE" DATA).
+               BRA     ARBITRATE_EXIT       ;NOW WE BE DONE, HEY.
+NORM_ARB_30
+                                            ;NOT GONNA READ A PAD THIS TIME THROUGH -
+               TST.B   TRIGGER_READ         ;YES - DID WE READ TRIGGER-IN LAST TIME THROUGH?
+               BEQ.S   NORM_ARB_50          ;BRANCH IF NOT, MAY WANT TO READ IT THIS TIME -
+               SF      TRIGGER_READ         ;YES - ACKNOWLEDGE, GO READ NEXT POT IN ROTATION.
+               BRA.S   POT_ARBITRATE
+NORM_ARB_50
+               TST     TRIG_ACTION          ;IS TRIGGER-IN ROUTED TO ANYTHING?
+               BEQ.S   POT_ARBITRATE        ;NO - GO FOR NEXT POT IN ROTATION.
+               SUBQ    #1,TRIGGER_TIMER     ;YES - TIME TO READ TRIGGER-IN AGAIN?
+               BNE.S   POT_ARBITRATE        ;NO, NOT YET - GO GET SOME "POT".
+;
+               ST      TRIGGER_READ         ;STRINGAROUNDAFINGA FOR LATER - WHO WE READ THIS TIME.
+               MOVE    #TRIGGER_VALUE+1,CONVERT_DEST  ;WHERE TO STORE RESULT WHEN IT COMES IN.
+               MOVE    D0,SELECT_CTRL+TRIG  ;START THAT ADC COOKIN' (DATA IS "DON'T CARE").
+               BRA.S   ARBITRATE_EXIT       ;ARBITRATION NO LONGER BINDING.
+;
+;
+;
+; PAD/POT READ ARBITRATION - AUTOREPEAT MODE:
+;
+AUTO_ARBITRATE
+;
+               MOVE    PAD_ARB_INDEX,D0     ;INDEX OF LAST ADC CONVERSION -
+               BPL.S   AUTO_ARB_10          ;IF INDEX = 0-7, WE READ THAT PAD LAST TIME.
+               MOVEQ   #7,D0                ;IF INDEX = -1, WE READ A POT LAST TIME -
+               BRA.S   AUTO_ARB_20          ;WRAP BACK AROUND, READ PAD #7 THIS TIME.
+AUTO_ARB_10
+;
+               DBRA    D0,AUTO_ARB_20       ;STEP DOWN TO NEXT PAD -
+               MOVE    D0,PAD_ARB_INDEX     ;IF NEW INDEX = -1, IT'S TIME TO READ A POT.
+               BRA.S   POT_ARBITRATE
+AUTO_ARB_20
+               MOVE    D0,PAD_ARB_INDEX     ;UPDATE INDEX TO REFLECT READ IN PROGRESS.
+               AND.B   #0F8H,D2             ;IMPLANT NEW PAD ADDRESS INTO PAD CONTROL WORD.
+               OR.B    D0,D2
+               MOVE.B  D2,PAD_CONTROL       ;PUT OUT NEW CONTROL WORD TO REGISTER.
+               ADD     D0,D0                ;SET UP A WORD POINTER,
+               ADD     #PAD_VALUE+1,D0      ;COMPUTE AND STORE POINTER TO DESTINATION OF
+               MOVE    D0,CONVERT_DEST      ;THE RESULT OF THIS CONVERSION.
+               MOVE    D0,SELECT_CTRL+PADS  ;START CONVERSION OF PADS CHANNEL ("DON'T CARE" DATA).
+               BRA.S   ARBITRATE_EXIT       ;NOW WE BE DONE.
+               SKIP
+;
+;
+;
+; POT READ ARBITRATION - ALL MODES:
+; POTS ARE READ IN STRAIGHT ROTATION, INTERLEAVED BETWEEN PAD READS
+; IN A MANNER DETERMINED BY THE TRIGGER MODE IN EFFECT.
+;
+POT_ARBITRATE
+               MOVE    POT_ARB_INDEX,D0     ;INDEX OF LAST POT READ -
+               DBRA    D0,POT_ARB_10        ;STEP DOWN TO NEXT POT.
+               MOVEQ   #4,D0                ;WRAP AROUND IF NECESSARY.
+POT_ARB_10
+               MOVE    D0,POT_ARB_INDEX     ;UPDATE POT INDEX.
+               MOVE.L  #SELECT_CTRL+2,A0    ;SET UP POINTER TO FIRST POT CHANNEL ON ADC MUX.
+               ADD     D0,D0                ;SET UP A WORD INDEX.
+               MOVE    D0,0(A0,D0)          ;COMMAND ADC TO READ CHANNEL OF SELECTED POT
+                                            ;(NOTE - DATA IS "DON'T CARE" HERE).
+                                            ;NOW - COMBINE WORD INDEX,
+               ADD     #POT_VALUE+1,D0      ;BASE ADDRESS OF POT_VALUE ARRAY (L.S.BYTE) -
+               MOVE    D0,CONVERT_DEST      ;SET UP POINTER TO DESTINATION OF CONVERSION RESULT.
+;
+ARBITRATE_EXIT
+               MOVE.B  D2,PAD_CTRL_STAT     ;STORE NEW STATUS FOR PAD_CONTROL LATCH.
+               SKIP
+;
+;
+; TASK 5 - SERVICE ANY PENDING PRIORITY ROUTINES FOR ALL 8 VOICES
+;
+               MOVE    #V_BLK_07,PRIO_POINTER    ;SERVICE VOICES 7-0.
+               MOVE    #7,PRIO_INDEX
+L3_T5_1
+               MOVE    PRIO_POINTER,A0      ;SET POINTER TO CURRENT VOICE BLOCK.
+               TST     V_PRIO_TIME(A0)      ;SEE IF A PRIORITY ROUTINE IS TIMING OUT -
+               BEQ.S   L3_T5_2              ;IF NOT, THEN SKIP THIS VOICE.
+               SUBQ    #1,V_PRIO_TIME(A0)   ;ELSE, DECREMENT THE TIMEOUT -
+               BNE.S   L3_T5_2              ;IF NOT TIMED OUT TO '0', SKIP ON AHAID.
+               MOVE    V_PRIO_VEC(A0),A2    ;ELSE, LOAD PRIORITY ROUTINE VECTOR ....
+               JSR     (A2)                 ;.... AND EXECUTE IT.
+L3_T5_2
+               SUB     #V_BLOCK_SIZE,PRIO_POINTER     ;MOVE ON TO THE NEXT VOICE BLOCK.
+               SUBQ    #1,PRIO_INDEX                  ;DO ALL 8!
+               BCC     L3_T5_1
+;
+;
+;
+; TASK 6 - UPDATE ENVELOPES & S/H's FOR ONE OF THE 8 VOICES (ROTATING)
+;
+               MOVE    ROTATING_VOICE,A0    ;LOAD UP POINTER TO LAST-SERVICED VOICE BLOCK.
+               ADD     #V_BLOCK_SIZE,A0     ;BUMP UP TO THE NEXT VOICE -
+               CMP     #V_BLK_07,A0         ;ARE WE POINTING BEYOND EXISTING VOICE BLOCKS?
+               BLS.S   L3_T6_1              ;IF NOT, CONTINUE...
+               MOVE    #V_BLK_00,A0         ;ELSE, WRAP BACK TO VOICE BLOCK 0.
+L3_T6_1
+               MOVE    A0,ROTATING_VOICE    ;SAVE POINTER TO THIS VOICE ARRAY
+;
+               TST.B   V_PRIO_FLAG(A0)      ;IS THIS VOICE ALLOWED TO EXECUTE?
+               BNE.S   L_3_DONE                  ;IF NOT, THEN EXIT LEVEL 3 - DONE
+;
+               MOVE    V_ACTIVE_SUB(A0),A1  ;LOAD UP ACTIVE VOICE SUB-BLOCK ADDRESS.
+               MOVE.L  V_CTRL_ADDR(A0),A2   ;LOAD UP ADDRESS OF THIS VOICE'S S/H CHANNELS.
+;
+                                            ;NOTE - NON-PRIORITY VECTORS ARE ASSUMED NOT TO
+                                            ;TAMPER WITH POINTERS IN A0-A2.
+;
+               MOVE    V_VCF_VECTOR(A1),A3  ;LOAD UP VECTOR TO FILTER ROUTINE,
+               JSR     (A3)                 ;UPDATE CONTROL VOLTAGE AND ENVELOPE.
+;
+               MOVE    V_VCA_VECTOR(A1),A3  ;LOAD UP VECTOR TO AMPLIFIER ROUTINE,
+               JSR     (A3)                 ;UPDATE CONTROL VOLTAGE AND ENVELOPE.
+;
+               MOVE    V_BEND_VECTOR(A1),A3 ;LOAD UP VECTOR TO PITCH BEND ROUTINE,
+               JSR     (A3)                 ;UPDATE ENVELOPE AND PITCH.
+;
+               MOVE    V_PITCH_PAN(A1),4(A2)     ;REFRESH PAN CONTROL VOLTAGE (NOTE: THIS VALUE IS
+                                                 ;JAMMED TO CENTER BY VCA RELEASE ROUTINE WHEN VCA
+                                                 ;ENVELOPE GOES TO ZERO).
+;
+;
+;
+L_3_DONE
+               SUBQ    #1,L_3_COLLIDE       ;OKAY, WE'VE FINISHED ONE LEVEL 3
+               BNE     L3_T1_1              ;IF MORE PENDING, THEN RE-ENTER AND DO ANOTHER
+;
+;
+;
+; HAVING SAVED THE WORLD, WE GO ON OUR MERRY WAY!
+;
+               MOVEM.L (A7)+,D0-D7/A0-A6    ;UNSTRAP - ER, UNSTACK - THE REGISTERS WE USED,
+;
+L_3_EXIT                                    ;AND GET THE HELLOUTAHERE.
+NO_HANDLER                                  ;NOTE - UNDEFINED INTERRUPTS VECTOR TO THIS ADDRESS.
+               RTE
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+NOTHINGNESS
+;
+; VECTORS AND THEIR MANY FRIENDS AND RELATIVES - AND EVEN TOTAL
+; STRANGERS - COME HERE WHEN THEY GOT NO BIZNISS TO BE ANYWHERE ELSE -
+; BUT, THEY DON'T STAY LONG.
+;
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA

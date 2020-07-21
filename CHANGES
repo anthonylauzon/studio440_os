@@ -1,0 +1,110 @@
+
+
+Running log of feature/function changes, bug fixes:
+
+
+-------------------------------------------------------------------------------
+
+2.13:
+
+Sample dump, of course.
+
+When creating sound (or loading 2000 sound from disk, or receive via SDS),
+VCA release rate defaults to 10 instead of 40 -
+mainly to ease sample start-point/end-point editing.
+
+After sampling, sampled sound's kit is not automatically installed on pads.
+(This was being done immediately upon sample return, and often caused
+spurious changes to CURRENT_SOUND immediately following sampling, such that
+new sample was usually lost.  Workaround - select sound for sampling using
+pads, to avoid spurious change to different sample number).
+See SET_ROOT_PITCH, SAMSUBS.
+
+-------------------------------------------------------------------------------
+
+2.14
+
+Minor modifications to sample dump header interpretation/generation:
+on transmit, set loop points = end if loop mode = off.
+on receive, set loop points = end if beyond end (per Akai S1000, P3000) -
+               also, set loop mode = off if loop points are equal.
+
+-------------------------------------------------------------------------------
+
+2.20
+
+Same damned thing as 2.14, but formal release version.
+
+-------------------------------------------------------------------------------
+
+2.21
+
+Modification of SCSI routines to accommodate standard CCS drives.
+Until further notice, limited to 100 banks per drive (approx 80 meg).
+Added user_id_screen display to power-up procedure,
+and encoded all power-up screens for obscurity.
+
+-------------------------------------------------------------------------------
+
+2.22
+
+
+09-May-90
+
+Added resetjmp module, to permit standardized, constant entry address
+upon power-up or other hard reset - used 100h as entry point.
+
+
+21-Jun-90
+
+space reclamation - begin with codecapp = 1f8de:
+       .  removal of work loop function - codecapp = 1f4c8
+       .  removal of drive_sel_sub - codecapp = 1f462
+       .  removal of all code related to MTC clocking - codecapp = 1ec66
+
+
+07-Aug-90
+
+decode_scrnbuf moved from reset_44 into lcd as WRITE_ENCODED_SCREEN,
+added to LCD_FUNS as WR_ENCD_SCRN.  now copies encoded text to screen
+buffer and then decodes it, thus operates like WR_SCRN for encoded text.
+also implemented DISP_ENCODED_SCREEN / DSP_ENCD_SCRN.
+
+first-pass copy protection routines installed -
+armed by user's first function switch hit, executed after timeout.
+
+
+24-oct-90
+
+change made in perf_mid to fix up a mapped-mode stuck-note bug -
+refer to that file for details.
+unprotected version given to peter rudolfi, who discovered the bug -
+not sure if this included updated scsi stuff, or what became of the rom files.
+
+
+09-oct-91
+
+unprotected version custom-built for ken reyes - he got a syquest drive.
+defeated copy-pro by removing backgrou branch to do_copypro_check.
+just for the heck of it - did this by putting a conditional switch in equates.
+don't forget that you did this!  maybe you'll put it back immediately ....
+also updated stripinc.bat to reflect new environment.
+
+-------------------------------------------------------------------------------
+
+2.23
+
+
+920813
+restored absent smpte sync code from banished pro_mtc as pro_tcm.
+a customized copy of this was shipped to luc allen.
+
+921008
+assorted changes to make the scsi implementation more robust
+with respect to syquest/ccs drives.  eliminated user_id_screen
+display as part of powerup init - this is for custom versions only.
+reset procedure now explicitly initializes stack pointer,
+for use with generic mon68k (hp64000 emulation monitor).
+
+i called this version 2.30 - shipped it to dave seznak.
+

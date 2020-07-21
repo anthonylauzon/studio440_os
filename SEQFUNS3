@@ -1,0 +1,2547 @@
+               INCLUDE HPFIXUPS
+               TITLE "SEQFUNS3"
+***************************************************************************************************
+***************************************************************************************************
+***                                                                                             ***
+***            SEQFUNS3 - SUBFUNCTIONS UNDER "SONG", "EDIT 1" FUNCTION SWITCHES                 ***
+***                                                                                             ***
+***************************************************************************************************
+***************************************************************************************************
+;
+NEG_EXT        EQU     0FFFFFF00H      ;USE IN MOVEQ INSTRUCTIONS WHERE ARG IS
+                                       ;80H OR LARGER - HP XASM DOES NOT HANDLE
+                                       ;SIGN-EXTEND CORRECTLY.  COSMETIC, KEEPS
+                                       ;ACTUAL BYTE VALUE CLEARER.
+;
+                ABS_SHORT
+;
+               INCLUDE TRAPDEFS        ; system function access definitions.
+;
+               INCLUDE LCD_FUNS        ; LCD/SCREEN_BUFFER system function defs.
+;
+               INCLUDE FIELD_EQU       ;SUBFUNCTION/FIELD BLOCK DEFINITIONS.
+;
+               INCLUDE S_BLK_EQU       ;SOUND BLOCK EQUATES/OFFSETS
+;
+; FOR STARTERS, GLOBAL DECLARATIONS FOR THE SUBFUNCTION BLOCKS -
+; THEY'RE ACCESSED FROM SWITCHBOY MODULE:
+;
+                                            ;SEQ_ED_1_GROUP.
+               GLB     SEQ_ERASE_SUB
+               GLB     SEQ_ERASE_SUB_2
+               GLB     TRANSPOSE_SUB
+               GLB     CHANNELIZE_SUB
+               GLB     SEQ_REPLACE_SUB
+               GLB     SEQ_VEL_SCALE_SUB
+;
+                                            ;OTHER GLOBAL KINDA STUFF.
+               GLB     READ_TO_PUNCH
+               GLB     READ_TO_BAR_1
+               GLB     CHK_PUNCH_OUT
+               GLB     CHK_TRACK_NUM
+               GLB     S_CHK_TRACK_NUM
+               GLB     NULL_SEQ_TEST
+;
+                                            ;ROM-THINGS.
+               EXTERNAL     USER_STALL
+;890320               EXTERNAL     WRITE_STRING
+               EXTERNAL     WRITE_PARAM_STRING
+;890320               EXTERNAL     DISP_BUFFER
+;890320               EXTERNAL     DISP_SCREEN
+               EXTERNAL     DISP_SEQ_EMPTY
+               EXTERNAL     GET_S_BLK_PTR
+               EXTERNAL     GET_CUR_SEQ_DIR
+               EXTERNAL     SEQ1_DSTR_READ
+               EXTERNAL     SEQ_NDSTR_READ
+               EXTERNAL     SEQ_WRITE
+               EXTERNAL     SEQ1_DRD_SETUP
+               EXTERNAL     SEQX_NDRD_SETUP
+               EXTERNAL     SEQ1_RMW_EATER
+               EXTERNAL     SEQ_NDRD_EATER
+               EXTERNAL     SEQ1_DRD_EATER
+               EXTERNAL     CHECK_OLD_MIDI
+               EXTERNAL     CHECK_OLD_PADS
+               EXTERNAL     LOG_IN_OLD_MIDI
+               EXTERNAL     LOG_OUT_OLD_MIDI
+               EXTERNAL     LOG_IN_OLD_PAD
+               EXTERNAL     LOG_OUT_OLD_PAD
+;
+               EXTERNAL     BLIND_FLUSH_NOTE_BUFS
+;
+               EXTERNAL     SEQ_CONSOLIDATE
+               EXTERNAL     SEQ_TURNAROUND
+               EXTERNAL     UPDATE_SEQ_SIZE
+               EXTERNAL     SOLID_ENTER
+               EXTERNAL     SET_ENTER_FLASH
+               EXTERNAL     SEQ_RUNNING_TEST
+               EXTERNAL     KEY_STRINGS
+;
+                                            ;RAM-THINGS.
+               EXTERNAL     CURRENT_SEQUENCE
+               EXTERNAL     TRANS_AMT
+               EXTERNAL     CHAN_NUM
+               EXTERNAL     SCALE_AMT
+               EXTERNAL     TO_TRACK_NUM
+               EXTERNAL     FROM_TRACK_NUM
+               EXTERNAL     TO_SEQ_NUM
+               EXTERNAL     FROM_SEQ_NUM
+               EXTERNAL     DATA_TYPE
+               EXTERNAL     LAST_MIDI
+               EXTERNAL     FROM_NUM_STRING
+               EXTERNAL     PUNCH_IN_BAR
+               EXTERNAL     PUNCH_IN_CLICK
+               EXTERNAL     PUNCH_OUT_BAR
+               EXTERNAL     PUNCH_OUT_CLICK
+               EXTERNAL     Q_STATUS
+               EXTERNAL     SUBFUN_INSTALL
+               EXTERNAL     CUR_SUB_BLOCK
+               EXTERNAL     DI_TEMP_7_B
+               EXTERNAL     DI_TEMP_9_B
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; THE SUBFUNCTION BLOCKS -
+; EACH BEGINS WITH THE DEFAULT SCREEN TEXT FOR THE SUBFUNCTION.
+;
+;
+;
+;
+;************************************************************************************************
+;
+; SEQ_ED_1_GROUP:
+;
+;**************************************************************************************************
+;
+SEQ_ERASE_SUB
+               ASC     "ERASE TR:  C:   "
+               ASC     "                "
+
+;TRACK NUMBER FIELD
+
+               DC.B    9
+               DC.B    1
+               DC.W    ACCESS+DIR_PTR
+               DC.W    TO_TRACK_NUM
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+MIN_LIMIT
+               DC.W    0
+               DC.W    DISPLAY+MAX_LIMIT
+               DC.W    9
+               DC.W    DISPLAY+MAX_STRNG
+               DC.L    A_STRING1
+               DC.W    DISPLAY+MIN_STRNG
+               DC.L    A_STRING1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    9
+               DC.W    EDIT+ENTR_VEC
+               DC.L    ERASE_SEQ
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    FIELD_END
+;
+;CHANNEL NUMBER FIELD
+;
+               DC.B    13
+               DC.B    3
+               DC.W    ACCESS+SET_PTR
+               DC.L    ACC_CHAN_NUM
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    CHAN_NUM_STRING
+               DC.W    EDIT+HI_LIMIT
+               DC.W    32
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+ENTR_VEC
+               DC.L    ERASE_SEQ
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    FIELD_END
+;
+;DATA TYPE FIELD
+
+               DC.B    16
+               DC.B    1
+               DC.W    ACCESS+DIR_PTR
+               DC.W    DATA_TYPE
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    ERASE_DISP_ACC
+               DC.W    EDIT+HI_LIMIT
+               DC.W    103
+               DC.W    EDIT+ENTR_VEC
+               DC.L    ERASE_SEQ
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    ERASE_1_CUSTOM
+               DC.W    EDIT+LINKED
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    SUBFUN_END
+;
+;
+;
+; FOLLOWING VERSION OF SUBFUNCTION IS SAME AS THE "BASIC" ONE EXCEPT
+; THAT IT INCLUDES AN EXTRA FIELD FOR DISPLAYING/EDITING NOTE VALUES
+; FOR THE "ERASE NOTES ABOVE/BELOW xxx" SPECIFICATION:
+;
+SEQ_ERASE_SUB_2
+               ASC     "ERASE TR:  C:   "
+               ASC     "                "
+
+;TRACK NUMBER FIELD
+
+               DC.B    9
+               DC.B    1
+               DC.W    ACCESS+DIR_PTR
+               DC.W    TO_TRACK_NUM
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+MIN_LIMIT
+               DC.W    0
+               DC.W    DISPLAY+MAX_LIMIT
+               DC.W    9
+               DC.W    DISPLAY+MAX_STRNG
+               DC.L    A_STRING1
+               DC.W    DISPLAY+MIN_STRNG
+               DC.L    A_STRING1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    9
+               DC.W    EDIT+ENTR_VEC
+               DC.L    ERASE_SEQ
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    FIELD_END
+;
+;CHANNEL NUMBER FIELD
+;
+               DC.B    13
+               DC.B    3
+               DC.W    ACCESS+SET_PTR
+               DC.L    ACC_CHAN_NUM
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    CHAN_NUM_STRING
+               DC.W    EDIT+HI_LIMIT
+               DC.W    32
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+ENTR_VEC
+               DC.L    ERASE_SEQ
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    FIELD_END
+;
+;DATA TYPE FIELD
+
+               DC.B    16
+               DC.B    1
+               DC.W    ACCESS+DIR_PTR
+               DC.W    DATA_TYPE
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    ERASE_DISP_ACC
+               DC.W    EDIT+HI_LIMIT
+               DC.W    103
+               DC.W    EDIT+ENTR_VEC
+               DC.L    ERASE_SEQ
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    ERASE_2_CUSTOM
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+
+;NOTE NUMBER FIELD
+
+               DC.B    28
+               DC.B    4
+               DC.W    ACCESS+DIR_PTR
+               DC.W    LAST_MIDI
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    ERASE_DISP_NOTE
+               DC.W    EDIT+LO_LIMIT
+               DC.W    21
+               DC.W    EDIT+HI_LIMIT
+               DC.W    108
+               DC.W    EDIT+ENTR_VEC
+               DC.L    ERASE_SEQ
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    SUBFUN_END
+;
+ALLL_STRING
+CHAN_NUM_STRING ASC    "ALL"
+CHAN_NUM_STR_1 ASC     " 1A 1B 2A 2B 3A 3B 4A 4B"
+               ASC     " 5A 5B 6A 6B 7A 7B 8A 8B"
+               ASC     " 9A 9B10A10B11A11B12A12B"
+               ASC     "13A13B14A14B15A15B16A16B"
+               ASC     " "
+
+A_STRING1      DC.B    9
+               DC.B    1
+               ASC     "A "
+;
+;
+;
+;                      EDIT SPEC SCREENS:        VALUES FOR DATA_TYPE:
+;
+EVERYTHING     ASC     " ALL SOUND/MIDI "        ; 0
+A_DRUM_SCRN    ASC     "SND:            "        ; 2-65
+ALL_DRUMS_SCRN ASC     "ALL SOUND EVENTS"        ; 1
+ERASE_SCRNS    ASC     " ALL MIDI DATA  "        ; 66
+               ASC     "MIDI NOTE EVENTS"        ; 67
+               ASC     " MIDI BELOW     "        ; 68
+               ASC     " MIDI ABOVE     "        ; 69
+               ASC     "   MOD WHEEL    "        ; 70
+               ASC     " BREATH CNTRLR  "        ; .
+               ASC     "  FOOT PEDAL    "        ; .
+               ASC     "PORTAMENTO TIME "        ; .
+               ASC     "   DATA ENTRY   "        ; .
+               ASC     "  MAIN VOLUME   "        ; 75
+               ASC     "  MIDI BALANCE  "        ; .
+               ASC     "    MIDI PAN    "        ; .
+               ASC     "EXPRESSION PEDAL"        ; .
+               ASC     " GEN. PURP.   1 "        ; .
+               ASC     " GEN. PURP.   2 "        ; 80
+               ASC     " GEN. PURP.   3 "        ; .
+               ASC     " GEN. PURP.   4 "        ; .
+               ASC     "   HOLD PEDAL   "        ; .
+               ASC     "  PORT  ON/OFF  "        ; .
+               ASC     "   SOSTENUTO    "        ; 85
+               ASC     "   SOFT PEDAL   "        ; .
+               ASC     "    HOLD  2     "        ; .
+               ASC     " GEN. PURP.   5 "        ; .
+               ASC     " GEN. PURP.   6 "        ; .
+               ASC     " GEN. PURP.   7 "        ; 90
+               ASC     " GEN. PURP.   8 "        ; .
+               ASC     "  DATA  INC/DEC "        ; .
+               ASC     "PARAMETER NUMBER"        ; .
+               ASC     "  MODE CHANGES  "        ; .
+               ASC     "PROGRAM CHANGES "        ; 95
+               ASC     "CHANNEL PRESSURE"        ; .
+               ASC     "  KEY PRESSURE  "        ; .
+               ASC     "   PITCH BEND   "        ; .
+               ASC     " SYSTEM COMMON  "        ; .
+               ASC     "SYSTEM EXCLUSIVE"        ; 100
+               ASC     "   TAP TRACK    "        ; .
+               ASC     " TEMPO CHANGES  "        ; .
+               ASC     "MIDI TIME SHIFT "        ; 103
+;
+;
+;
+ACC_CHAN_NUM   CMP     #32,CHAN_NUM
+               BLE.S   ACC_CHAN_1
+               CLR     CHAN_NUM
+ACC_CHAN_1     MOVE.L  #CHAN_NUM,D0
+               RTS
+
+ERASE_DISP_ACC MOVEM.L D0-D2/A0-A2,-(A7)
+               MOVE    #1010H,D1
+               MOVE    DATA_TYPE,D0                  ;GET EDIT
+               BNE.S   ERASE_ACC_0                   ;SEE IF ALL DRUMS
+               MOVE.L  #EVERYTHING,A2
+;890320                ABS_LONG
+;890320               JSR     WRITE_STRING
+;890320                ABS_SHORT
+               CALL    LCD_FUNS,WR_STRNG
+               BRA     ERASE_ACC_END
+ERASE_ACC_0    CMP     #1,D0
+               BNE.S   ERASE_ACC_1
+               MOVE.L  #ALL_DRUMS_SCRN,A2
+;890320                ABS_LONG
+;890320               JSR     WRITE_STRING                  ;WRITE ALL DRUMS DISPLAY
+;890320                ABS_SHORT
+               CALL    LCD_FUNS,WR_STRNG
+               BRA.S   ERASE_ACC_END
+;
+ERASE_ACC_1    CMP     #65,D0                        ;SEE IF A DRUMS
+               BGT.S   ERASE_ACC_2
+               MOVE.L  #A_DRUM_SCRN,A2               ;DISPLAY A DRUM SCREEN
+;890320                ABS_LONG
+;890320               JSR     WRITE_STRING
+;890320                ABS_SHORT
+               CALL    LCD_FUNS,WR_STRNG
+               SUBQ    #2,D0
+               MOVE.L  #FROM_NUM_STRING,A2
+               ADD     D0,A2
+               ADD     D0,A2
+               ADD     D0,A2
+               MOVE    #1403H,D1                     ;DISPLAY DRUM NUMBER
+;890320                ABS_LONG
+;890320               JSR     WRITE_STRING
+;890320                ABS_SHORT
+               CALL    LCD_FUNS,WR_STRNG
+               LSR     #1,D0
+               MOVE    D0,A0
+               JSR     GET_S_BLK_PTR                ;GET DRUM NAME
+               LEA     S_NAME(A0),A2
+               MOVE    #1808H,D1
+;890320                ABS_LONG
+;890320               JSR     WRITE_STRING
+;890320                ABS_SHORT
+               CALL    LCD_FUNS,WR_STRNG
+               BRA.S   ERASE_ACC_END
+;
+ERASE_ACC_2    MOVE.L  #ERASE_SCRNS,A2               ;LOAD UP POINTER TO ALL OTHER SCREENS
+               SUB     #66,D0                        ;REFERENCED TO START OF SCREENS
+               LSL     #4,D0                         ;SCREENS ARE 16 CHARACTERS
+               ADD     D0,A2
+               LSR     #4,D0
+;890320                ABS_LONG
+;890320               JSR     WRITE_STRING
+;890320                ABS_SHORT
+               CALL    LCD_FUNS,WR_STRNG
+               CMP     #2,D0
+               BEQ.S   ERASE_DISP_N_1               ;ALSO DISPLAY LAST MIDI NOTE IF APPROPRIATE
+               CMP     #3,D0
+               BEQ.S   ERASE_DISP_N_1
+;
+ERASE_ACC_END
+               MOVEM.L (A7)+,D0-D2/A0-A2
+               RTS
+
+ERASE_DISP_NOTE MOVEM.L D0-D2/A0-A2,-(A7)
+ERASE_DISP_N_1 MOVE    LAST_MIDI,D0
+               SUB     #15H,D0                        ;ELIMINATE MIDI OFFSET
+               LSL     #2,D0                         ;X4 FOR STRING INDEX
+               MOVE.L  #KEY_STRINGS,A2
+               ADD     D0,A2
+               MOVE    #1C04H,D1                     ;DISPLAY NOTE #
+;890320                ABS_LONG
+;890320               JSR     WRITE_STRING
+;890320                ABS_SHORT
+               CALL    LCD_FUNS,WR_STRNG
+               MOVEM.L (A7)+,D0-D2/A0-A2
+               RTS
+
+
+ERASE_1_CUSTOM MOVE.L  D0,-(A7)
+               MOVE    DATA_TYPE,D0
+               CMP     #68,D0
+               BEQ.S   ERASE_1_CUST_1
+               CMP     #69,D0
+               BEQ.S   ERASE_1_CUST_1
+                ABS_LONG
+               JSR     SET_ENTER_FLASH
+                ABS_SHORT
+ERASE_1_CUST_0 MOVE.L  (A7)+,D0
+               RTS
+
+ERASE_1_CUST_1 MOVE.L  #SEQ_ERASE_SUB_2,CUR_SUB_BLOCK
+               ST      SUBFUN_INSTALL
+               BRA.S   ERASE_1_CUST_0
+
+
+ERASE_2_CUSTOM MOVE.L  D0,-(A7)
+               MOVE    DATA_TYPE,D0
+               CMP     #68,D0
+               BEQ.S   ERASE_2_CUST_1
+               CMP     #69,D0
+               BEQ.S   ERASE_2_CUST_1
+               MOVE.L  #SEQ_ERASE_SUB,CUR_SUB_BLOCK
+               ST      SUBFUN_INSTALL
+ERASE_2_CUST_0 MOVE.L  (A7)+,D0
+               RTS
+                ABS_LONG
+ERASE_2_CUST_1 JSR     SET_ENTER_FLASH
+                ABS_SHORT
+               BRA.S   ERASE_2_CUST_0
+
+
+;
+;
+ERASING_SCRN   ASC     "ERASING "
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; DO SOME ERASIN' ....
+;
+ERASE_SEQ
+               JSR     SEQ_RUNNING_TEST     ;IS SEQUENCER RUNNING? (NOT COOL TO AUTO-STOP IT ....)
+               BNE     ERASE_STALL          ;EXIT IF YES (MESSAGE IS IN LCD ....)
+;
+               BSR     NULL_SEQ_TEST        ;IS USER TRYING TO ERASE FROM THE null seqUENCE?
+               BNE     ERASE_STALL          ;EXIT IF YES (MESSAGE IS IN LCD ....)
+;
+               MOVE    #0008H,D1                ;PUT UP ERASING SCREEN
+               MOVE.L  #ERASING_SCRN,A2
+;890320                ABS_LONG
+;890320               JSR     WRITE_STRING
+;890320               JSR     DISP_BUFFER
+;890320                ABS_SHORT
+               CALL    LCD_FUNS,WR_STRNG
+               CALL    LCD_FUNS,DSP_BUF
+               BSR     SOLID_ENTER
+;
+               CLR     D5                   ;CLEAR THESE, POSSIBLY FOR SOME REASON.
+               CLR     D6
+;
+               JSR     GET_CUR_SEQ_DIR      ;SEE IF SEQUENCE EXISTS, EVEN -
+               TST     Q_STATUS(A0)
+               BNE.S   ERASE_SEQ_10         ;BRANCH IF YES, CONTINUE.
+               BSR     DISP_SEQ_EMPTY       ;ELSE - POST ERROR MESSAGE,
+               BRA     ERASE_STALL          ;GET OUT.
+;
+ERASE_SEQ_10
+               MOVE    #2700H,SR
+               BSR     DRD_TO_PUNCH         ;READ DESTRUCTIVELY UP TO PUNCH IN POINT
+               MOVE    DATA_TYPE,D1         ;DATA_TYPE INDICATES WHAT KIND OF EVENT(S) TO ERASE:
+               BEQ     ERASE_ALL_PERF       ;0 = ALL PERFORMANCE EVENTS (SOUND/MIDI STUFF).
+               CMP     #1,D1
+               BEQ     ERASE_DR_ALL         ;1 = ALL "DRUMS" (INTERNAL SOUND EVENTS).
+               CMP     #66,D1
+               BLT     ERASE_DRUM           ;2-65 = INDIVIDUAL SOUNDS (1-32a).
+               BEQ     ERASE_ALL_MIDI       ;66 = ALL MIDI DATA.
+               CMP     #67,D1
+               BEQ     ERASE_M_NOTE         ;67 = ALL MIDI NOTE EVENTS.
+               CMP     #69,D1
+               BLE     ERASE_BELOW          ;68/69 = MIDI NOTES ABOVE/BELOW xxx.
+               CMP     #94,D1
+               BLE     ERASE_CONTROL        ;70-94 = MIDI CONTROLLER EVENTS.
+               CMP     #98,D1
+               BLE     ERASE_NO_CNTRL       ;95-98 = PGM CHANGE, CHAN/POLY PRESSURE, PITCH WHEEL.
+               CMP     #99,D1
+               BEQ     ERASE_SONG           ;99 = SONG SELECT (SYSTEM COMMON).
+               CMP     #100,D1
+               BEQ     ERASE_SYS_X          ;100 = SYSTEM-EXCLUSIVE MESSAGES.
+               CMP     #101,D1
+               BEQ     ERASE_TAP            ;101 = TAP-TRACK EVENTS.
+               CMP     #102,D1
+               BEQ     ERASE_ACC_RIT        ;102 = ACCELERANDO/RITARDANDO EVENTS (TEMPO CHANGES).
+               BRA     ERASE_UART_TIME      ;103 = UART ADVANCE/DELAY EVENTS.
+;
+;
+; NORMAL EXIT POINT FOR ERASE FUNCTIONS:
+;
+ERASE_SEQ_X
+               BTST    #1,D1                ;DID WE EXIT UPON ENCOUNTERING END-OF-SEQ MARK?
+               BNE.S   ERASE_SEQ_X_2        ;BRANCH IF YES, DON'T DON'T DON'T CONSOLIDATE !
+               JSR     SEQ_CONSOLIDATE      ;ELSE - NO PROBLEM, MON.
+ERASE_SEQ_X_2
+               JSR     SEQ_TURNAROUND       ;TIE OFF ENDS OF SEQUENCE,
+               JSR     UPDATE_SEQ_SIZE      ;UPDATE MEMORY USAGE FIGURES.
+               MOVE.L  #ERASE_DONE_SCRN,A1  ;SET POINTER TO MESSAGE FOR NORMAL COMPLETION.
+;890320                ABS_LONG
+;890320               JSR     DISP_SCREEN
+;890320                ABS_SHORT
+               CALL    LCD_FUNS,DSP_SCRN
+               MOVE    #2000H,SR
+ERASE_STALL
+               BRA     USER_STALL
+;
+;
+;
+NULL_SEQ_TEST
+               CMP     #99,CURRENT_SEQUENCE ;IS USER INADVERTENTLY TRIYING TO EDIT NULL SEQ?
+               BNE.S   NULL_SEQ_20          ;BRANCH IF NOT - WE'RE COOL SO FAR, RETURN "Z TRUE".
+               LEA     CANT_EDIT_NULL_SCRN(PC),A1     ;ELSE - LEAVE ERROR MESSAGE IN LCD,
+;890320                ABS_LONG
+;890320               JSR     DISP_SCREEN
+;890320                ABS_SHORT
+               CALL    LCD_FUNS,DSP_SCRN
+               MOVEQ   #1,D0                          ;RETURN "Z FALSE" TO INDICATE ERROR.
+               BRA.S   NULL_SEQ_EXIT
+;
+NULL_SEQ_20
+               CLR     D0                   ;RETURN "Z TRUE" IF NOT TRYING TO EDIT NULL SEQUENCE.
+;
+NULL_SEQ_EXIT
+               RTS
+;
+;
+;
+ERASE_DONE_SCRN
+                ASC    " ERASE COMPLETE "
+                ASC    "PRESS ANY SWITCH"
+;
+;
+CANT_EDIT_NULL_SCRN
+                ASC    "ERROR!  null seq"
+                ASC    "CANNOT BE EDITED"
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; EVERYTHING MUST GO (WITHIN LIMITS):
+; ACTUALLY, WE ERASE ONLY PERFORMANCE EVENTS (INTERNAL/MIDI STUFF) -
+; NON-TRACK-ORIENTED STUFF LIKE TAP-TEMPO, UART TIMING, ETC. IS LEFT IN.
+;
+ERASE_ALL_PERF
+               BSR     DSTR_PUNCH_OUT       ;ARE WE AT/PAST PUNCH-OUT OR AT END OF SEQUENCE?
+               TST     D1
+               BNE     ERASE_SEQ_X          ;EXIT IF ONE OF THE ABOVE.
+;
+               BSR     CHK_TRACK_NUM        ;LOOK FOR PERFORMANCE EVENT MATCHING ERASE TRACK SPEC -
+               BEQ.S   ERASE_ALL_20         ;BRANCH IF SOMETHING ELSE, KEEP IT IN THE SEQUENCE.
+               CMP     #2,D0                ;NOW ABOUT THAT EVENT ....
+               BLT.S   ERASE_ALL_10         ;ERASE IT IF IT'S AN INTERNAL NOTE-ON.
+               BEQ.S   ERASE_ALL_20         ;DON'T TOUCH IT IF IT'S AN INTERNAL NOTE-OFF.
+               CMP     #4,D0                ;IS IT A MIDI NOTE-OFF EVENT, THEN?
+               BEQ.S   ERASE_ALL_20         ;BRANCH IF YES, DON'T TOUCH IT.
+               BSR     CHK_CHAN_NUM         ;OTHERWISE - IS IT ON AN "ERASE" CHANNEL?
+               BEQ.S   ERASE_ALL_20         ;BRANCH IF NOT, LEAVE IT IN SEQUENCE.
+;
+ERASE_ALL_10
+               JSR     SEQ1_DRD_EATER       ;ERASE THIS EVENT - READ THRU W/O COPY, GET NEXT EVENT.
+               BRA     ERASE_ALL_PERF
+;
+ERASE_ALL_20
+               JSR     SEQ1_RMW_EATER       ;KEEP THIS EVENT - COPY THRU TO NEXT EVENT.
+               BRA     ERASE_ALL_PERF
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+;
+;
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; ERASE ALL INTERNAL SOUND EVENTS:
+;
+ERASE_DR_ALL
+               BSR     DSTR_PUNCH_OUT       ;ARE WE AT/PAST PUNCH-OUT OR AT END OF SEQUENCE?
+               TST     D1
+               BNE     ERASE_SEQ_X          ;EXIT IF ONE OF THE ABOVE.
+;
+               CMP     #1,D0                ;IN FACT WE ERASE ONLY INTERNAL NOTE-ON EVENTS -
+               BNE.S   ERASE_DR_ALL_2       ;KEEP ANYTHING ELSE.
+               BSR     CHK_TRACK_NUM        ;AND, EVENT GOTTA BE ON AN ERASE TRACK -
+               BEQ.S   ERASE_DR_ALL_2       ;IF NO TRACK MATCH, DON'T ERASE IT.
+               JSR     SEQ1_DRD_EATER       ;ELSE - KISS IT OFF.
+               BRA     ERASE_DR_ALL
+;
+ERASE_DR_ALL_2
+               JSR     SEQ1_RMW_EATER
+               BRA     ERASE_DR_ALL
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+;
+;
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; ERASE INTERNAL SOUND EVENTS OF ONE FLAVOR ONLY:
+;
+ERASE_DRUM
+               MOVE    D1,D4           ;COPY DATA_TYPE VALUE,
+               SUBQ    #2,D4           ;LOP OFF "ALL" AND "ALL DRUMS" SETTINGS,
+               LSL     #7,D4           ;SHIFT RESULT INTO SOUND NUMBER / ALT-PARAMS POSITION,
+               ADDQ    #1,D4           ;TACK ON AN INTERNAL NOTE-ON ID NIBBLE -
+                                       ;NOW WE'RE READY TO LOOK FOR MATCHES ....
+;
+ERASE_DRUM_1
+               BSR     DSTR_PUNCH_OUT       ;ARE WE AT/PAST PUNCH-OUT OR AT END OF SEQUENCE?
+               TST     D1
+               BNE     ERASE_SEQ_X          ;EXIT IF ONE OF THE ABOVE.
+;
+               MOVE    D7,D3                ;COPY EVENT ID WORD,
+               AND     #1F8FH,D3            ;MASK IT DOWN TO SOUND/ALT AND EVENT TYPE ID FIELDS -
+               CMP     D4,D3                ;HAS IT GOT WHAT WE'RE LOOKIN' FOR?
+               BNE.S   ERASE_DRUM_2         ;BRANCH IF NOT - IT STAYS.
+               BSR     CHK_TRACK_NUM        ;WE GOT A MATCH - IS EVENT ON AN ERASE TRACK?
+               BEQ.S   ERASE_DRUM_2         ;BRANCH IF NOT, AGAIN NO ERASE.
+               JSR     SEQ1_DRD_EATER       ;ELSE - ADIEU, MON SOUND EVENTTE ....
+               BRA     ERASE_DRUM_1
+;
+ERASE_DRUM_2
+               JSR     SEQ1_RMW_EATER       ;KEEP THIS EVENT.
+               BRA     ERASE_DRUM_1
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; ERASE ALL MIDI DATA, HEY:
+;
+ERASE_ALL_MIDI
+               BSR     DSTR_PUNCH_OUT       ;ARE WE AT/PAST PUNCH-OUT OR AT END OF SEQUENCE?
+               TST     D1
+               BNE     ERASE_SEQ_X          ;EXIT IF ONE OF THE ABOVE.
+;
+               BSR     CHK_TRACK_NUM        ;IS EVENT ON AN ERASE TRACK?
+               BEQ.S   ERASE_ALL_M_2        ;BRANCH IF NOT, IT STAYS.
+               BSR     CHK_CHAN_NUM         ;CHECK FOR A MIDI EVENT ON AN ERASE CHANNEL -
+               BEQ.S   ERASE_ALL_M_2        ;BRANCH IF NOT, LEAVE IT IN SEQUENCE.
+               CMP     #4,D0                ;DON'T ERASE MIDI NOTE-OFFS, EITHER.
+               BEQ.S   ERASE_ALL_M_2
+               JSR     SEQ1_DRD_EATER       ;OTHERWISE - EVENT HAS EVENT-ED ITS LAST ....
+               BRA     ERASE_ALL_MIDI
+;
+ERASE_ALL_M_2
+               JSR     SEQ1_RMW_EATER       ;KEEP THIS EVENT.
+               BRA     ERASE_ALL_MIDI
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+;
+;
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; ERASE MIDI NOTE EVENTS:
+;
+ERASE_M_NOTE
+               BSR     DSTR_PUNCH_OUT       ;ARE WE AT/PAST PUNCH-OUT OR AT END OF SEQUENCE?
+               TST     D1
+               BNE     ERASE_SEQ_X          ;EXIT IF ONE OF THE ABOVE.
+;
+               CMP     #3,D0                ;IN FACT WE ERASE ONLY MIDI NOTE-ON EVENTS -
+               BNE.S   ERASE_M_EAT          ;BRANCH IF THIS IS NOT ONE OF THOSE.
+               BSR     CHK_TRACK_NUM        ;IS THIS EVENT ON AN ERASE TRACK?
+               BEQ.S   ERASE_M_EAT          ;BRANCH IF NOT, HERE IT STAYS.
+               BSR     CHK_CHAN_NUM         ;IS IT ON AN ERASE CHANNEL?
+               BEQ.S   ERASE_M_EAT          ;BRANCH IF NOT, WE'LL SPARE IT.
+               JSR     SEQ1_DRD_EATER       ;ELSE - THIS NOTE HAS DIED FOR THE FINAL TIME ....
+               BRA     ERASE_M_NOTE
+;
+ERASE_M_EAT
+               JSR     SEQ1_RMW_EATER       ;THIS EVENT, HE STAYS.
+               BRA     ERASE_M_NOTE
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; ERASE MIDI NOTES ABOVE OR BELOW THE SPECIFIED MIDI NOTE -
+; DEFAULTS TO LAST MIDI NOTE-ON RECEIVED:
+;
+ERASE_BELOW
+               BSR     DSTR_PUNCH_OUT       ;ARE WE AT/PAST PUNCH-OUT OR AT END OF SEQUENCE?
+               TST     D1
+               BNE     ERASE_SEQ_X          ;EXIT IF ONE OF THE ABOVE.
+;
+               CMP     #3,D0                ;WE'RE ONLY INTERESTED IN MIDI NOTE-ONS HERE -
+               BNE.S   ERS_BEL_EAT          ;SKIP PAST ANYTHING ELSE, LEAVE IT IN SEQUENCE.
+               BSR     CHK_TRACK_NUM        ;IS THIS EVENT ON AN "ERASE" TRACK?
+               BEQ.S   ERS_BEL_EAT          ;BRANCH IF NOT, IT STAYS.
+               BSR     CHK_CHAN_NUM         ;IS IT ON AN ERASE CHANNEL?
+               BEQ.S   ERS_BEL_EAT          ;LIKEWISE .... KEEP IT IN IF NOT.
+;
+               MOVE    D7,D4                ;ELSE - SAVE EVENT ID WORD,
+               MOVE    (A5),D7              ;READ KEY-NUMBER WORD (WITHOUT ADVANCING DESTR READ).
+               MOVE    D7,D1                ;ISOLATE KEY NUMBER IN D1.
+               LSR     #8,D1
+;
+               CMP     #68,DATA_TYPE        ;"ERASE ABOVE" OR "ERASE BELOW"?
+               BEQ.S   ERS_BEL_0            ;BRANCH FOR "ERASE BELOW" - SEPARATE TEST.
+;
+               CMP     LAST_MIDI,D1         ;"ERASE ABOVE" - HOW DOES THIS EVENT COMPARE?
+               BGT.S   ERS_BEL_2            ;BRANCH IF ABOVE xxxx - CHEW IT UP, SPIT IT OUT - GONE.
+               BRA.S   ERS_BEL_1            ;ELSE - LET IT BE, LET IT BE, LET IT BE, LET IT BE.
+;
+ERS_BEL_0
+               CMP     LAST_MIDI,D1         ;"ERASE BELOW" - WHAT'S THE VERDICK?
+               BLT.S   ERS_BEL_2            ;BRANCH IF BELOW xxxx - OUT IT GOES.
+;
+;
+ERS_BEL_1
+               MOVE    D4,D7                ;RETRIEVE ID WORD OF EVENT NOT BEING ERASED -
+ERS_BEL_EAT
+               JSR     SEQ1_RMW_EATER       ;THIS EVENT STAYS - COPY THROUGH IT TO NEXT.
+               BRA     ERASE_BELOW          ;BACK TO TOP, DEAL WITH THIS NEW EVENT.
+;
+ERS_BEL_2
+               JSR     SEQ1_DRD_EATER       ;THIS EVENT GOES - READ THRU TO NEXT WITHOUT COPYING.
+               BRA     ERASE_BELOW          ;BACK TO TOP, DEAL WITH THIS NEW EVENT.
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; ERASE ASSORTED CONTROLLER INFO:
+;
+ERASE_CONTROL
+               MOVE.L  #CONTROL_MASK,A0         ;SET UP MASK FOR PARTICULAR CONTROL NUMBER
+               SUB     #70,D1
+               LSL     #1,D1                    ;MAKE INTO WORD OFFSET FOR CONTROL # TABLE
+               MOVE    0(A0,D1),D4
+;
+ERASE_CNTRL_01
+               BSR     DSTR_PUNCH_OUT           ;CHECK FOR PUNCHOUT POINT
+               TST     D1
+               BNE     ERASE_SEQ_X
+               MOVE    D7,D1                    ;SEE IF THIS IS A CONTROL BYTE
+               AND     #0F00FH,D1
+               CMP     #0B005H,D1
+               BNE.S   ERASE_CD_EAT
+               BSR     CHK_TRACK_NUM
+               BEQ.S   ERASE_CD_EAT
+               BSR     CHK_CHAN_NUM
+               BEQ.S   ERASE_CD_EAT
+               MOVE    D7,D3                    ;SAVE THE EVENT ID WORD,
+;
+               MOVE    (A5),D7              ;READ KEY-NUMBER WORD (WITHOUT ADVANCING DESTR READ).
+;
+               MOVE    D7,D1                    ;MATCH THE CONTROL #
+               LSR     #8,D1
+               CMP     #31,D4                   ;IS IT A CONTNOUS CONTLLER
+               BGT.S   ERASE_CNTRL_1
+               CMP     D1,D4                    ;LOOK FOR MATCH
+               BEQ.S   ERASE_CNTRL_0
+               SUB     #32,D1                   ;ALSO ERASE LSB OF CONTINUOUS CONTOLLERS
+               CMP     D1,D4
+               BNE.S   ERASE_CNTRL_4
+;
+ERASE_CNTRL_0
+               JSR     SEQ1_DRD_EATER       ;ERASING EVENT - READ THRU TO NEXT WITHOUT COPYING.
+               BRA     ERASE_CNTRL_01       ;LOOP BACK UP AND HANDLE NEW EVENT.
+;
+;
+ERASE_CNTRL_1  CMP     #96,D4                   ;ERASE DATA INC/DEC
+               BNE.S   ERASE_CNTRL_2
+               CMP     #96,D1
+               BEQ.S   ERASE_CNTRL_0
+               CMP     #97,D1
+               BNE.S   ERASE_CNTRL_4
+               BRA.S   ERASE_CNTRL_0
+
+ERASE_CNTRL_2  CMP     #98,D4                  ;ERASE PARAMETER NUMBER
+               BNE.S   ERASE_CNTRL_3
+               CMP     #98,D1
+               BLT.S   ERASE_CNTRL_4
+               CMP     #101,D1
+               BGT.S   ERASE_CNTRL_4
+               BRA.S   ERASE_CNTRL_0
+
+ERASE_CNTRL_3  CMP     #122,D4                  ;ERASE MODE CHANGES
+               BNE.S   ERASE_CNTRL_35
+               CMP     #122,D4
+               BGE.S   ERASE_CNTRL_0
+
+ERASE_CNTRL_35 CMP     D1,D4
+               BEQ.S   ERASE_CNTRL_0
+;
+ERASE_CNTRL_4
+               MOVE    D3,D7                ;RETRIEVE ID WORD OF EVENT NOT BEING ERASED -
+;
+ERASE_CD_EAT
+               JSR     SEQ1_RMW_EATER       ;THIS EVENT STAYS - COPY THRU IT TO NEXT EVENT.
+               BRA     ERASE_CNTRL_01       ;LOOP BACK UP AND HANDLE THE NEXT EVENT.
+
+
+CONTROL_MASK
+               DC.W    1
+               DC.W    2
+               DC.W    4
+               DC.W    5
+               DC.W    6
+               DC.W    7
+               DC.W    8
+               DC.W    10
+               DC.W    11
+               DC.W    16
+               DC.W    17
+               DC.W    18
+               DC.W    19
+               DC.W    64
+               DC.W    65
+               DC.W    66
+               DC.W    67
+               DC.W    69
+               DC.W    80
+               DC.W    81
+               DC.W    82
+               DC.W    83
+               DC.W    96
+               DC.W    98
+               DC.W    122
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; ERASE "NORMAL" CONTROLLER INFO -
+; PROGRAM CHANGE, CHANNEL OR KEY PRESSURE, PITCH WHEEL:
+;
+ERASE_NO_CNTRL MOVE.L  #NO_CNTRL_MASK,A0        ;SET UP MASK FOR OTHER CONTROLS LIKE PITHC BEND
+               SUB     #95,D1
+               LSL     #1,D1
+               MOVE    0(A0,D1),D4              ;D4 = VALUE FOR ERASE
+
+ERASE_N_CTRL_1 BSR     DSTR_PUNCH_OUT
+               TST     D1
+               BNE     ERASE_SEQ_X
+               BSR     CHK_TRACK_NUM            ;MATCH TRACK NUMBER
+               BEQ.S   ERASE_N_CTRL_E
+               CMP     #5,D0
+               BNE.S   ERASE_N_CTRL_E           ;IF NOT TYPE 5 THEN SKIP IT
+               MOVE    D7,D3
+               AND     #0F000H,D3
+               CMP     #0F000H,D3               ;IGNORE SYSTEM REALTIME
+               BEQ.S   ERASE_N_CTRL_E
+               MOVE    CHAN_NUM,D1
+               BEQ.S   ERASE_N_CTRL_2           ;IF SO NO NEED TO CHECK CHANNEL #
+               MOVE    D7,D1
+               LSR     #7,D1                    ;GET CHAN_NUM
+               AND     #1FH,D1
+               ADDQ    #1,D1
+               CMP     CHAN_NUM,D1
+               BNE.S   ERASE_N_CTRL_E
+ERASE_N_CTRL_2 CMP     D4,D3                    ;CHECK FOR MASK CHECK
+               BNE.S   ERASE_N_CTRL_E
+               JSR     SEQ1_DRD_EATER
+               BRA.S   ERASE_N_CTRL_1
+
+ERASE_N_CTRL_E JSR     SEQ1_RMW_EATER
+               BRA.S   ERASE_N_CTRL_1
+
+NO_CNTRL_MASK  DC.W    0C000H               ;PROGRAM CHANGE.
+               DC.W    0D000H               ;CHANNEL PRESSURE.
+               DC.W    0A000H               ;POLY (KEY) PRESSURE.
+               DC.W    0E000H               ;PITCH WHEEL.
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+ERASE_SONG     MOVE    #0F305H,D4               ;SETUP MASK TO ERASE SONG SELECT
+               MOVE    CHAN_NUM,D1
+               BEQ.S   ERASE_SONG_1
+               SUBQ    #1,D1
+               BTST    #0,D1                    ;CHECK FOR A OR B CHANNEL
+               BEQ.S   ERASE_SONG_1
+               BSET    #7,D4
+ERASE_SONG_1   BSR     DSTR_PUNCH_OUT
+               TST     D1
+               BNE     ERASE_SEQ_X
+               BSR     CHK_TRACK_NUM
+               BEQ.S   ERASE_SONG_EAT
+               MOVE    D7,D1
+               TST     CHAN_NUM                 ;IF ALL CHANNELS
+               BNE.S   ERASE_SONG_2
+               AND     #0FF0FH,D1               ;THEN IGNORE A/B UART BIT
+               BRA.S   ERASE_SONG_21
+ERASE_SONG_2   AND     #0FF8FH,D1
+ERASE_SONG_21  CMP     D4,D1                    ;SEE IF WE HAVE A WEINER
+               BNE.S   ERASE_SONG_EAT
+               JSR     SEQ1_DRD_EATER
+               BRA.S   ERASE_SONG_1
+
+ERASE_SONG_EAT JSR     SEQ1_RMW_EATER
+               BRA.S   ERASE_SONG_1
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+;
+;
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+ERASE_SYS_X    BSR     DSTR_PUNCH_OUT
+               TST     D1
+               BNE     ERASE_SEQ_X
+               BSR     CHK_TRACK_NUM
+               BEQ.S   ERASE_SYS_X_EAT
+               MOVE    D7,D1
+               LSR     #7,D1
+               MOVE    CHAN_NUM,D4
+               BEQ.S   ERASE_SYS_X_2
+               EOR     D4,D1
+               BTST    #0,D1
+               BEQ.S   ERASE_SYS_X_2
+               BRA.S   ERASE_SYS_X_EAT
+
+ERASE_SYS_X_2  CMP     #6,D0
+               BNE.S   ERASE_SYS_X_EAT
+               JSR     SEQ1_DRD_EATER
+               BRA.S   ERASE_SYS_X
+
+ERASE_SYS_X_EAT
+               JSR    SEQ1_RMW_EATER
+               BRA.S   ERASE_SYS_X
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; ERASE TAP-TRACK EVENTS:
+;
+ERASE_TAP
+               BSR     DSTR_PUNCH_OUT       ;IF AT/PAST PUNCH-OUT OR AT END OF SEQUENCE ....
+               TST     D1
+               BNE     ERASE_SEQ_X          ;THEN, LET US BEGONE.
+;
+               CMP     #10,D0               ;ELSE - DOES THIS LOOK LIKE A TAP-TRACK EVENT TO US?
+               BNE.S   ERASE_TAP_1          ;NAH - FORGET ABOUT IT, KEEP GOING.
+               JSR     SEQ1_DRD_EATER       ;ELSE - LET'S FUCK IT UP, MAN, YEAH!  HA-HAAAAHHH!
+               BRA     ERASE_TAP
+;
+ERASE_TAP_1
+               JSR     SEQ1_RMW_EATER       ;WE DON'T MIND, IT CAN STAY - WHO'S NEXT?
+               BRA     ERASE_TAP
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+;
+;
+;
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; ERASE ACCELERANDO/RITARDANDO EVENTS (ALSO KNOWN AS TEMPO CHANGES):
+;
+ERASE_ACC_RIT
+               BSR     DSTR_PUNCH_OUT       ;IF AT/PAST PUNCH-OUT OR AT END OF SEQUENCE ....
+               TST     D1
+               BNE     ERASE_SEQ_X          ;THEN, LET US BEGONE.
+;
+               CMP     #11,D0               ;ELSE - DOES THIS LOOK LIKE A TEMPO-CHANGE EVENT TO US?
+               BNE.S   ERASE_A_R_1          ;NAH - FORGET ABOUT IT, KEEP GOING.
+               JSR     SEQ1_DRD_EATER       ;ELSE - LET'S FUCK IT UP, MAN, YEAH!  HA-HAAAAHHH!
+               BRA     ERASE_ACC_RIT
+;
+ERASE_A_R_1
+               JSR     SEQ1_RMW_EATER       ;WE DON'T MIND, IT CAN STAY - WHO'S NEXT?
+               BRA     ERASE_ACC_RIT
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+;
+;
+;
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; "ERASE" UART ADVANCE/DELAY EVENTS -
+; IN REALITY (PERPETUATING A CLUNKY SYSTEM CONVENTION), THESE EVENTS ARE
+; NEVER ERASED FROM A SEQUENCE - BUT WE WILL GO SO FAR AS TO NULL OUT
+; THE ONES WE RUN ACROSS, SO IT'S AS IF WE DID ERASE THEM ....
+;
+ERASE_UART_TIME
+               BSR     DSTR_PUNCH_OUT       ;IF AT/PAST PUNCH-OUT OR AT END OF SEQUENCE ....
+               TST     D1
+               BNE     ERASE_SEQ_X          ;THEN, LET US BEGONE.
+;
+               CMP     #12,D0               ;ELSE - DOES THIS LOOK LIKE A UART-TIME EVENT TO US?
+               BNE.S   ERASE_U_T_1          ;NAH - FORGET ABOUT IT, KEEP GOING.
+               MOVE    #820CH,D7            ;ELSE - LET'S CHANGE IT TO THE "NO CHANGE" VERSION.
+ERASE_U_T_1
+               JSR     SEQ1_RMW_EATER       ;WE DON'T MIND, IT CAN STAY - WHO'S NEXT?
+               BRA     ERASE_UART_TIME
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;**************************************************************************
+;CHECK FOR MATCH OF CHANNEL #
+;ENTER D7=STATUS WORD
+;
+CHK_CHAN_NUM   MOVEM.L D0-D4,-(A7)
+               MOVE    D7,D0                    ;ISOLATE ID#
+               AND     #0FH,D0
+               CMP     #2,D0                    ;IF A DRUM EVENT IT DOESNT HAVE A CHANNEL
+               BLE.S   CHK_CHAN_X
+               CMP     #6,D0
+               BGT.S   CHK_CHAN_X               ;IF NOT A PERFORMANCE EVENT THEN NO MATCH
+               MOVE    CHAN_NUM,D4
+               BEQ.S   CHK_CHAN_1
+               SUBQ    #1,D4
+               CMP     #5,D0
+               BLT.S   CHK_CHAN_0
+               MOVE    D7,D3
+               AND     #0F000H,D3
+               CMP     #0F000H,D3
+               BNE.S   CHK_CHAN_0
+
+               MOVE    D7,D3                    ;FOR SYSTEM COMMON AND SYS X  JUST CHECK A/B UART SELECT
+               AND     #080H,D3
+               LSR     #7,D3
+               EOR     D3,D4
+               BTST    #0,D4
+               BEQ.S   CHK_CHAN_1
+               BRA.S   CHK_CHAN_X
+
+CHK_CHAN_0     MOVE    D7,D3                    ;CHECK FOR CHANNEL NUMBER MATCH
+               AND     #0F80H,D3
+               LSR     #7,D3
+               CMP     D4,D3
+               BNE.S   CHK_CHAN_X
+CHK_CHAN_1     MOVEQ   #1,D1
+               MOVEM.L (A7)+,D0-D4
+               RTS
+
+CHK_CHAN_X     CMP     D1,D1
+               MOVEM.L (A7)+,D0-D4
+               RTS
+
+;****************************************************************************
+;CHECK DESTINATION TRACK NUMBER FOR A MATCH
+;ENTER D7=STATUS WORD
+
+CHK_TRACK_NUM  MOVEM.L D1-D3,-(A7)
+               MOVE    D7,D0
+               AND     #0FH,D0                  ;ID # OF EVENT
+               CMP     #6,D0                    ;SPLIT IF NOT A PERFORMANCE EVENT
+               BGT.S   CHK_TRK_X
+               MOVE    TO_TRACK_NUM,D1
+               BEQ.S   CHK_TRK_1                ;IF "ALL" THEN TRACK NUMBER MATCHES
+               CMP     #9,D1
+               BEQ.S   CHK_TRK_1
+               MOVE    D7,D3
+               AND     #70H,D3
+               LSR     #4,D3
+               SUBQ    #1,D1                    ;CONVERT TRACK # TO 0-7
+               CMP     D1,D3
+               BNE.S   CHK_TRK_X
+CHK_TRK_1      MOVEQ   #1,D1
+               MOVEM.L (A7)+,D1-D3
+               RTS
+CHK_TRK_X      CMP     D1,D1
+               MOVEM.L (A7)+,D1-D3
+               RTS
+
+
+;****************************************************************************
+;CHECK SOURCE TRACK NUMBER FOR A MATCH
+;ENTER D7=STATUS WORD
+
+S_CHK_TRACK_NUM  MOVEM.L  D1-D3,-(A7)
+               MOVE    D7,D0
+               AND     #0FH,D0                  ;ID # OF EVENT
+               CMP     #6,D0                    ;SPLIT IF NOT A PERFORMANCE EVENT
+               BGT.S   S_CHK_TRK_X
+               MOVE    FROM_TRACK_NUM,D1
+               BEQ.S   S_CHK_TRK_1                ;IF "ALL" THEN TRACK NUMBER MATCHES
+               CMP     #9,D1
+               BEQ.S   S_CHK_TRK_1
+               MOVE    D7,D3
+               AND     #70H,D3
+               LSR     #4,D3
+               SUBQ    #1,D1                    ;CONVERT TRACK # TO 0-7
+               CMP     D1,D3
+               BNE.S   S_CHK_TRK_X
+S_CHK_TRK_1    MOVEQ   #1,D1
+               MOVEM.L (A7)+,D1-D3
+               RTS
+S_CHK_TRK_X    CMP     D1,D1
+               MOVEM.L (A7)+,D1-D3
+               RTS
+
+
+;******************************************************************************************
+;
+TRANSPOSE_SUB
+               ASC     "TRANSPOSE SEQ.  "
+               ASC     "TR:   CH:       "
+
+;SEQUENCE NUMBER FIELD
+;
+               DC.B    14
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CURRENT_SEQUENCE
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+HI_LIMIT
+               DC.W    98
+               DC.W    EDIT+ENTR_VEC
+               DC.L    TRANSPOSE_SEQ
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    FIELD_END
+
+;TRACK NUMBER FIELD
+
+               DC.B    19
+               DC.B    1
+               DC.W    ACCESS+DIR_PTR
+               DC.W    TO_TRACK_NUM
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+MIN_LIMIT
+               DC.W    0
+               DC.W    DISPLAY+MAX_LIMIT
+               DC.W    9
+               DC.W    DISPLAY+MAX_STRNG
+               DC.L    A_STRING
+               DC.W    DISPLAY+MIN_STRNG
+               DC.L    A_STRING
+               DC.W    EDIT+HI_LIMIT
+               DC.W    9
+               DC.W    EDIT+ENTR_VEC
+               DC.L    TRANSPOSE_SEQ
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+;
+;CHANNEL NUMBER FIELD
+;
+               DC.B    24
+               DC.B    3
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CHAN_NUM
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    VEL_SCALE_ACCESS
+               DC.W    EDIT+HI_LIMIT
+               DC.W    98
+               DC.W    EDIT+ENTR_VEC
+               DC.L    TRANSPOSE_SEQ
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    FIELD_END
+;
+;TRANSPOSE AMOUNT FIELD
+;
+               DC.B    29
+               DC.B    3
+               DC.W    ACCESS+DIR_PTR
+               DC.W    TRANS_AMT
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+SIGNED
+               DC.W    EDIT+LO_LIMIT
+               DC.W    -24
+               DC.W    EDIT+HI_LIMIT
+               DC.W    24
+               DC.W    EDIT+ENTR_VEC
+               DC.L    TRANSPOSE_SEQ
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    SUBFUN_END
+;
+ALL_STRING     DC.B    20
+               DC.B    3
+               ASC     "ALL "
+
+TRANS_SCRN     ASC     "TRANSPOSING S."
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+TRANSPOSE_SEQ
+               JSR     SEQ_RUNNING_TEST     ;IS SEQUENCER RUNNING? (NOT COOL TO AUTO-STOP IT ....)
+               BNE     TRANS_STALL          ;EXIT IF YES (MESSAGE IS IN LCD ....)
+;
+               BSR     NULL_SEQ_TEST        ;IS USER TRYING TO TRANSPOSE IN THE null seqUENCE?
+               BNE     TRANS_STALL          ;EXIT IF YES (MESSAGE IS IN LCD ....)
+;
+               JSR     GET_CUR_SEQ_DIR      ;SEE IF OUR SEQUENCE EXISTS -
+               TST     Q_STATUS(A0)
+               BNE.S   TRANS_SEQ_00         ;BRANCH IF YES, CONTINUE.
+               BSR     DISP_SEQ_EMPTY       ;ELSE - POST ERROR MESSAGE,
+               BRA     TRANS_STALL          ;GET OUT.
+;
+TRANS_SEQ_00
+               MOVE    #000EH,D1                ;WRITE "TRANSPOSING" SCREEN
+               MOVE.L  #TRANS_SCRN,A2
+;890320               BSR     WRITE_STRING
+;890320               BSR     DISP_BUFFER
+               CALL    LCD_FUNS,WR_STRNG
+               CALL    LCD_FUNS,DSP_BUF
+               BSR     SOLID_ENTER
+               MOVE    #2700H,SR
+
+               TST     TRANS_AMT            ;DONT HASSLE WITH A "0" TRANSPOSE -
+               BEQ     TRANS_SEQ_X_1        ;LET'S NOT AND SAY WE DID, ETC ....
+               MOVE    CURRENT_SEQUENCE,D0
+               BSR     READ_TO_PUNCH
+               CLR     D5
+               CLR     D6
+TRANS_SEQ_1    BSR     CHK_PUNCH_OUT
+               TST     D1                       ;SEE IF WERE AT PUNCH OUT POINT
+               BNE     TRANS_SEQ_2
+               AND     #0FH,D0              ;ELSE - MASK OFF ID #
+               BEQ     TRANS_EAT                ;IF A KILLED EVENT THEN IGNORE
+               CMP     #4,D0
+               BGT     TRANS_EAT                ;SKIP IT IF NOT A NOTE EVENT
+               MOVE    TO_TRACK_NUM,D1
+               BEQ.S   TRANS_IT                 ;IF ALL TRACKS THEN GO AHEAD AND TRANSPOSE
+               CMP     #9,D1
+               BEQ.S   TRANS_IT
+               SUBQ    #1,D1
+               MOVE    D7,D2
+               AND     #70H,D2                  ;MASK OFF TRACK NUMBER
+               LSR     #4,D2                    ;SHIFT INTO POSITION
+               CMP     D1,D2                    ;SEE IF TRACK NUMBER MATCHES
+               BNE     TRANS_EAT                ;IF NOT DONT  TRANSPOSE
+
+TRANS_IT       CMP     #2,D0                    ;SEE IF MIDI OR INTERNAL EVENT
+               BGT     MIDI_TRANS
+               MOVE    CHAN_NUM,D3              ;GET CHANNEL NUMBER
+               CMP     #32,D3
+               BLE     TRANS_EAT                ;IF MIDI TRANSPOSE THEN SKIP DRUMS
+               CMP     #97,D3
+               BGE.S   TRANS_IT_000             ;IF TRANSPOSE ALL DRUMS THEN DOIT
+               MOVE    D7,D1                    ;OTHERWISE MATCH DRUM NUMBER
+               AND     #1F80H,D1
+               LSR     #7,D1
+               ADDI    #33,D1
+               CMP     D1,D3
+               BNE     TRANS_EAT                ;NO MATCH THEN DONT TRANSPOSE
+TRANS_IT_000   SWAP    D7
+               JSR     SEQ_NDSTR_READ
+               CMP     #2,D0                    ;SEE IF MIDI OR INTERNAL EVENT
+               BNE.S   TRANS_IT_0
+                ABS_LONG
+               JSR     CHECK_OLD_PADS           ;SEE IF THIS PAD IS ON IN PUNCHED IN AREA
+                ABS_SHORT
+               BNE.S   TRANS_IT_01              ;IF SO GO AHEAD AND TRANSPOSE
+TRANS_IT_00    JSR     SEQ_NDSTR_READ
+               MOVE    D7,D0
+               AND     #0FH,D0
+               BRA     TRANS_SEQ_1
+
+                ABS_LONG
+TRANS_IT_0     JSR     LOG_IN_OLD_PAD           ;LOG IN NOTE ON
+                ABS_SHORT
+               BRA.S   TRANS_IT_02
+                ABS_LONG
+TRANS_IT_01    JSR     LOG_OUT_OLD_PAD          ;LOG OUT NOTE OFF
+                ABS_SHORT
+TRANS_IT_02    MOVE    D7,D1                    ;INTERNAL EVENT
+               AND     #7C00H,D1                ;MASK OFF PITCH
+               LSR     #8,D1
+               LSR     #2,D1
+               ADD     TRANS_AMT,D1             ;ADD TRANSPOSE AMOUNT TO PITCH
+TRANS_IT_1     BPL.S   TRANS_IT_2
+               ADD     #12,D1                   ;WRAP OCTAVE IF NECESSARY
+               BRA.S   TRANS_IT_1
+TRANS_IT_2     CMP     #31,D1                   ;WRAP OCTAVE IF NECESSARY
+               BLE.S   TRANS_IT_3
+               SUB     #12,D1
+               BRA.S   TRANS_IT_2
+TRANS_IT_3     LSL     #8,D1
+               LSL     #2,D1                    ;SHIFT INTO POSITION
+               AND     #83FFH,D7                ;MASK OFF OLD PITCH VALUE
+               OR      D1,D7                    ;OR ON NEW PITCH VALUE
+               MOVE    D7,(A4)                  ;SAVE TO SEQUENCE
+               CMP     #2,D0                    ;SEE IF NOTE ON OR NOTE OFF
+               BEQ.S   TRANS_IT_4
+               JSR     SEQ_NDSTR_READ           ;NOTE ON HAS AN EXTRA WORD
+TRANS_IT_4     BRA     TRANS_IT_00              ;AND DO IT AGAIN
+
+MIDI_TRANS     MOVE    CHAN_NUM,D3
+               BEQ.S   MIDI_TRANS_00            ;IF ALL MIDI THEN DO IT
+               CMP     #98,D3
+               BEQ.S   MIDI_TRANS_00            ;IF "ALL" THEN DO IT
+               CMP     #32,D3
+               BGT.S   TRANS_EAT                ;IF DRUM TRANSPOSE THEN DONT TRANSPOSE MIDI
+               SUBQ    #1,D3                    ;MATCH CHANNEL NUMBER OF MIDI
+               MOVE    D7,D1
+               AND     #0FFFH,D1
+               LSR     #7,D1
+               CMP     D1,D3
+               BNE.S   TRANS_EAT
+MIDI_TRANS_00  SWAP    D7
+               JSR     SEQ_NDSTR_READ
+               CMP     #3,D0                    ;LOOK FOR NOTE ON
+               BEQ.S   MIDI_TRANS_0
+                ABS_LONG
+               JSR     CHECK_OLD_MIDI           ;SEE IF THIS NOTE OFFS NOTE IS ON
+                ABS_SHORT
+               BEQ     TRANS_IT_00
+               BRA.S   MIDI_TRANS_01
+
+                ABS_LONG
+MIDI_TRANS_0   JSR     LOG_IN_OLD_MIDI          ;LOG IN MIDI NOTE ON
+                ABS_SHORT
+               BRA.S   MIDI_TRANS_02
+                ABS_LONG
+MIDI_TRANS_01  JSR     LOG_OUT_OLD_MIDI         ;LOG OUT MIDI NOTE OFF
+                ABS_SHORT
+MIDI_TRANS_02  MOVE    D7,D1
+               LSR     #8,D1                    ;GET KEY NUMBER
+               ADD     TRANS_AMT,D1             ;ADD TRANSPOSE AMOUNT
+MIDI_TRANS_1   BPL.S   MIDI_TRANS_2
+               ADD     #12,D1                   ;WRAP OCTAVE IF NECESSARY
+               BRA.S   MIDI_TRANS_1
+MIDI_TRANS_2   CMP     #127,D1
+               BLE.S   MIDI_TRANS_3             ;WRAP IF NECESSARY
+               SUB     #12,D1
+               BRA.S   MIDI_TRANS_2
+MIDI_TRANS_3   LSL     #8,D1                    ;SHIFT INTO POSITION
+               AND     #0FFH,D7                 ;MASK OFF OLD KEY NUMBER
+               OR      D1,D7                    ;OR ON NEW KERY NUMBER
+               MOVE    D7,(A4)                  ;SAVE WORD
+               BRA     TRANS_IT_00              ;AND DO IT AGAIN
+
+TRANS_EAT      JSR     SEQ_NDRD_EATER           ;CRUISE THROUGH NON NOTE EVENTS
+               BRA     TRANS_SEQ_1
+
+;**********************************************************************************
+;AT THIS POINT WE HAVE TRANSPOSED THE NOTE ONS AND APPROPRIATE NOTE OFFS IN
+;THE PUNCHED IN AREA. WE ARE NOW READY TO CHECK NOTE OFFS TO SEE IF THEIR NOTE
+;ONS WERE TRANSPOSED, AND IF SO WE TRANSPOSE THEM
+;
+TRANS_SEQ_2    BTST    #1,D1                    ;SEE IF WERE AT END OF SEQUENCE
+               BNE     TRANS_SEQ_X              ;IF SO WERE DONE
+TRANS_SEQ_20   CMP     #4,D0
+               BEQ.S   MIDI_TRANS2
+               CMP     #2,D0                    ;INTERNAL NOTE OFF ?
+               BNE     TRANS2_SEQ_EAT
+               SWAP    D7
+               JSR     SEQ_NDSTR_READ           ;GET DATA WORD
+                ABS_LONG
+               JSR     CHECK_OLD_PADS           ;SEE IF IT WAS ON IN PUNCHIN AREA
+                ABS_SHORT
+               BEQ.S   TRANS2_IT_4
+
+                ABS_LONG
+TRANS2_IT      JSR     LOG_OUT_OLD_PAD          ;LOG OUT THIS NOTE OFF THEN TRANSPOSE
+                ABS_SHORT
+               MOVE    D7,D1                    ;INTERNAL EVENT
+               AND     #7C00H,D1                ;MASK OFF PITCH
+               LSR     #8,D1
+               LSR     #2,D1
+               ADD     TRANS_AMT,D1             ;ADD TRANSPOSE AMOUNT TO PITCH
+TRANS2_IT_1    BPL.S   TRANS2_IT_2
+               ADD     #12,D1                   ;WRAP OCTAVE IF NECESSARY
+               BRA.S   TRANS2_IT_1
+TRANS2_IT_2    CMP     #31,D1                   ;WRAP OCTAVE IF NECESSARY
+               BLE.S   TRANS2_IT_3
+               SUB     #12,D1
+               BRA.S   TRANS2_IT_2
+TRANS2_IT_3    LSL     #8,D1
+               LSL     #2,D1                    ;SHIFT INTO POSITION
+               AND     #83FFH,D7                ;MASK OFF OLD PITCH VALUE
+               OR      D1,D7                    ;OR ON NEW PITCH VALUE
+               MOVE    D7,(A4)                  ;SAVE TO SEQUENCE
+               CMP     #2,D0                    ;SEE IF NOTE ON OR NOTE OFF
+               BEQ.S   TRANS2_IT_4
+               JSR     SEQ_NDSTR_READ           ;NOTE ON HAS AN EXTRA WORD
+;
+TRANS2_IT_4    JSR     SEQ_NDSTR_READ           ;GET NEXT SEQUENCE WORD
+TRANS2_IT_5    MOVE    D7,D0
+               AND     #0FH,D0
+               BRA     TRANS_SEQ_20             ;AND DO IT AGAIN
+
+
+MIDI_TRANS2    SWAP    D7
+               JSR     SEQ_NDSTR_READ
+                ABS_LONG
+               JSR     CHECK_OLD_MIDI           ;SEE IF NOTE ON WAS TRANSPOSED
+                ABS_SHORT
+               BEQ.S   TRANS2_IT_4
+
+                ABS_LONG
+               JSR    LOG_OUT_OLD_MIDI
+                ABS_SHORT
+               MOVE    D7,D1
+               LSR     #8,D1                    ;GET KEY NUMBER
+               ADD     TRANS_AMT,D1             ;ADD TRANSPOSE AMOUNT
+MIDI_TRANS2_1  BPL.S   MIDI_TRANS2_2
+               ADD     #12,D1                   ;WRAP OCTAVE IF NECESSARY
+               BRA.S   MIDI_TRANS2_1
+MIDI_TRANS2_2  CMP     #127,D1
+               BLE.S   MIDI_TRANS2_3             ;WRAP IF NECESSARY
+               SUB     #12,D1
+               BRA.S   MIDI_TRANS2_2
+MIDI_TRANS2_3  LSL     #8,D1                    ;SHIFT INTO POSITION
+               AND     #0FFH,D7                 ;MASK OFF OLD KEY NUMBER
+               OR      D1,D7                    ;OR ON NEW KERY NUMBER
+               MOVE    D7,(A4)                  ;SAVE WORD
+               BRA     TRANS2_IT_4              ;AND DO IT AGAIN
+
+TRANS2_SEQ_EAT CMP     #0FH,D0                  ;LOOK FOR END OF SEQUENCE
+               BEQ.S   TRANS_SEQ_X
+               JSR     SEQ_NDRD_EATER
+               BRA     TRANS_SEQ_20
+;
+;
+TRANS_SEQ_X
+                ABS_LONG
+               JSR     BLIND_FLUSH_NOTE_BUFS
+                ABS_SHORT
+;
+TRANS_SEQ_X_1
+               MOVE.L  #TRANSPOSE_DONE,A1
+;890320               BSR     DISP_SCREEN
+               CALL    LCD_FUNS,DSP_SCRN
+               MOVE    #2000H,SR
+TRANS_STALL
+               BRA     USER_STALL
+;
+;
+;
+TRANSPOSE_DONE
+               ASC     "TRANSPOSE CMPLT."
+               ASC     "PRESS ANY SWITCH"
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+
+;*************************************************************************************************
+;READS THROUGH SEQUENCE TO PUNCH IN POINT THEN RETURNS
+;ENTER D0=SEQUENCE #
+
+
+READ_TO_PUNCH  JSR     SEQX_NDRD_SETUP           ;SETUP FOR NONDESTRUCTIVE READ OF SEQUENCE
+READ_TO_BAR_1  JSR     SEQ_NDSTR_READ
+               MOVE    D7,D0
+               AND     #0FH,D0                  ;MASK OFF ID #
+READ_TO_BAR_2  CMP     #8,D0                    ;CHECK FO BAR MARKER
+               BNE.S   NEXT_WORD_B              ;IF NOT KEEP LOOKING
+               MOVE    D7,DI_TEMP_7_B
+               JSR     SEQ_NDSTR_READ           ;GET BAR #
+               CMP     PUNCH_IN_BAR,D7          ;CHECK AGAINST PUNCH IN POINT
+               BEQ.S   READ_TO_CLICK        ;IF AT PUNCH-IN BAR, START LOOKING FOR PUNCH-IN CLICK.
+               BRA.S   READ_TO_BAR_1
+NEXT_WORD_B    JSR     SEQ_NDRD_EATER
+               BRA.S   READ_TO_BAR_2
+
+READ_TO_CLICK  CLR     DI_TEMP_9_B
+               TST     PUNCH_IN_CLICK           ;IS CLICK A 0
+               BEQ.S   NO_TIME_1                ;IF SO WERE THERE
+               JSR     SEQ_NDSTR_READ           ;GET NEXT STATUS WORD
+               MOVE    D7,D0
+               AND     #0FH,D0                  ;MASK OFF ID #
+READ_TO_CLK_1  CMP     #8,D0                    ;IF WE GET TO NEXT BAR MARKER THEN THERE WAS NO CLICK
+               BEQ.S   NO_TIME
+               CMP     #9,D0
+               BNE.S   NEXT_WORD_C              ;IF NOT CLICK KEEP LOOKING
+               MOVE    D7,DI_TEMP_9_B
+               MOVE    D7,D0                    ;GET TIME WORD
+               LSR     #4,D0                    ;SHIFT INTO POSITION
+               CMP     PUNCH_IN_CLICK,D0        ;SEE IF WERE AT OR PAST CLICK
+               BLT.S   READ_TO_CLICK
+               BGT.S   NO_TIME_2
+               BRA.S   NO_TIME_1
+NO_TIME        MOVE    #-1,DI_TEMP_9_B
+               BRA.S   NO_TIME_2
+NO_TIME_1      JSR     SEQ_NDSTR_READ           ;POINT AT NEXT STATUS
+NO_TIME_2      MOVE    PUNCH_IN_BAR,D5
+               MOVE    PUNCH_IN_CLICK,D6
+               MOVE    D7,D0                    ;RETURN WITH D0=ID #
+               AND     #0FH,D0
+               RTS
+
+NEXT_WORD_C    JSR     SEQ_NDRD_EATER
+               BRA     READ_TO_CLK_1
+
+;**************************************************************************************************
+;CHECKS FOR PUNCH OUT POINT REACHED OR END OF SEQUENCE. KEEPS RUNNING COUNT OF BAR AND CLICK
+;ENTER D7=SEQUNCE EVENT STATUS WORD
+;EXIT  D5=CURRENT BAR #
+;      D6=CURRENT CLICK #
+;      D1=BIT 0 SET=PUNCH OUT REACHED. BIT 1 SET = END OF SEQUENCE REACHED
+
+CHK_PUNCH_OUT
+               CLR     D1                       ;CLEAR STATUS FLAG
+               CMP     #8,D0                    ;SEE IF A BAR MARKER
+               BNE.S   CHK_PO_1
+               JSR     SEQ_NDSTR_READ           ;GET BAR #
+               MOVE    D7,D5                    ;SAVE NEW BAR #
+               CLR     D6                       ;CLEAR OUT CLICK #
+               JSR     SEQ_NDSTR_READ           ;GET NEXT STATUS WORD
+               MOVE    D7,D0
+               AND     #0FH,D0
+               BRA.S   CHK_PO_2             ;GO SEE WHAT IT ALL MEANS.
+;
+CHK_PO_1
+               CMP     #9,D0                    ;SEE IF WERE AT A TIME MARKER
+               BNE.S   CHK_PO_3
+               LSR     #4,D7                    ;GET CLICK #
+               MOVE    D7,D6                    ;SAVE IT
+               JSR     SEQ_NDSTR_READ           ;GET NEXT STATUS WORD
+               MOVE    D7,D0
+               AND     #0FH,D0
+;
+CHK_PO_2
+               CMP     PUNCH_OUT_BAR,D5
+               BLT.S   CHK_PO_3
+               BGT.S   CHK_PO_21
+               CMP     PUNCH_OUT_CLICK,D6
+;23JUL               BLE.S   CHK_PO_3
+               BLT.S   CHK_PO_3             ;PUNCH OUT ON (NOT AFTER) THE INDICATED CLOCK.
+CHK_PO_21
+               BSET    #0,D1                    ;SET PUNCH OUT POINT REACHED FLAG
+CHK_PO_3
+               CMP     #0FH,D0                  ;SEE IF END OF SEQUENCE
+               BNE.S   CHK_PO_4
+               BSET    #1,D1                    ;SET END OF SEQUENCE REACHED FLAG
+CHK_PO_4
+               RTS
+
+
+;*******************************************************************************************************
+;*************************************************************************************************
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; SET UP DESTRUCTIVE READ/WRITE OF CURRENT SEQUENCE,
+; READ THROUGH SEQUENCE TO PUNCH-IN POINT.
+;
+DRD_TO_PUNCH
+               JSR     SEQ1_DRD_SETUP       ;SET UP DESTRUCTIVE READ/WRITE OF SEQUENCE.
+DRD_TO_BAR_1
+               JSR     SEQ1_DSTR_READ
+               MOVE    D7,D0
+               AND     #0FH,D0                  ;MASK OFF ID #
+DRD_TO_BAR_2   CMP     #8,D0                    ;CHECK FO BAR MARKER
+               BNE.S   D_NEXT_WORD_B              ;IF NOT KEEP LOOKING
+               JSR     SEQ_WRITE
+               JSR     SEQ1_DSTR_READ           ;GET BAR #
+               JSR     SEQ_WRITE
+               CMP     PUNCH_IN_BAR,D7          ;CHECK AGAINST PUNCH IN POINT
+               BEQ.S   DRD_TO_CLICK            ;IF WERE AT THE RIGHT BAR START LOOKING FOR THE RIGHT CLICK
+               BRA.S   DRD_TO_BAR_1
+;
+D_NEXT_WORD_B  JSR     SEQ1_RMW_EATER
+               BRA.S   DRD_TO_BAR_2
+;
+DRD_TO_CLICK   TST     PUNCH_IN_CLICK
+               BEQ.S   D_NO_TIME_1
+               JSR     SEQ1_DSTR_READ           ;GET NEXT STATUS WORD
+               MOVE    D7,D0
+               AND     #0FH,D0                  ;MASK OFF ID #
+DRD_TO_CLK_1   CMP     #8,D0                    ;IF WE GET TO NEXT BAR MARKER THEN THERE WAS NO CLICK
+               BEQ.S   D_NO_TIME
+               CMP     #9,D0
+               BNE.S   D_NEXT_WORD_C              ;IF NOT CLICK KEEP LOOKING
+               JSR     SEQ_WRITE
+               MOVE    D7,D0                    ;GET TIME WORD
+               LSR     #4,D0                    ;SHIFT INTO POSITION
+               CMP     PUNCH_IN_CLICK,D0        ;SEE IF WERE AT OR PAST CLICK
+               BLT.S   DRD_TO_CLICK
+               BRA.S   D_NO_TIME_1
+;
+D_NO_TIME      JSR     SEQ_WRITE
+               JSR     SEQ1_DSTR_READ
+               JSR     SEQ_WRITE
+;
+D_NO_TIME_1    JSR     SEQ1_DSTR_READ           ;POINT AT NEXT STATUS
+               MOVE    PUNCH_IN_BAR,D5
+               MOVE    PUNCH_IN_CLICK,D6
+               MOVE    D7,D0                    ;RETURN WITH D0=ID #
+               AND     #0FH,D0
+               RTS
+;
+D_NEXT_WORD_C  JSR     SEQ1_RMW_EATER
+               BRA.S   DRD_TO_CLK_1
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;**************************************************************************************************
+;CHECKS FOR PUNCH OUT POINT REACHED OR END OF SEQUENCE. KEEPS RUNNING COUNT OF BAR AND CLICK
+;ENTER D7=SEQUNCE EVENT STATUS WORD
+;EXIT  D5=CURRENT BAR #
+;      D6=CURRENT CLICK #
+;      D1=BIT 0 SET=PUNCH OUT REACHED. BIT 1 SET = END OF SEQUENCE REACHED
+
+DSTR_PUNCH_OUT CLR     D1                       ;CLEAR STATUS FLAG
+               CMP     #8,D0                    ;SEE IF A BAR MARKER
+               BNE.S   DSTR_PO_1
+               JSR     SEQ_WRITE
+               JSR     SEQ1_DSTR_READ           ;GET BAR #
+               JSR     SEQ_WRITE
+               MOVE    D7,D5                    ;SAVE NEW BAR #
+               CLR     D6                       ;CLEAR OUT CLICK #
+               CMP     PUNCH_OUT_BAR,D5
+               BLT.S   DSTR_PO_3
+               BGT.S   DSTR_PO_21
+               TST     PUNCH_OUT_CLICK
+               BEQ.S   DSTR_PO_21
+               BRA.S   DSTR_PO_3
+;
+DSTR_PO_1
+               CMP     #9,D0                    ;SEE IF WERE AT A TIME MARKER
+               BNE.S   DSTR_PO_4
+               MOVE    D7,D1
+               LSR     #4,D1                    ;GET CLICK #
+               MOVE    D1,D6                    ;SAVE IT
+               CLR     D1
+               JSR     SEQ_WRITE
+DSTR_PO_2
+               CMP     PUNCH_OUT_BAR,D5
+               BNE.S   DSTR_PO_3
+               CMP     PUNCH_OUT_CLICK,D6
+               BLT.S   DSTR_PO_3
+;
+DSTR_PO_21
+               BSET    #0,D1                    ;SET PUNCH OUT POINT REACHED FLAG
+               RTS
+;
+DSTR_PO_3
+               JSR     SEQ1_DSTR_READ           ;GET NEXT STATUS WORD
+               MOVE    D7,D0
+               AND     #0FH,D0
+               BRA.S   DSTR_PUNCH_OUT
+;
+DSTR_PO_4
+               CMP     #0FH,D0
+               BNE.S   DSTR_PO_5
+               JSR     SEQ_WRITE
+               BSET    #1,D1
+DSTR_PO_5
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+CHANNELIZE_SUB
+               ASC     "CHANNELIZE SEQ  "
+               ASC     "TRK:    CHAN:   "
+
+;SEQUENCE NUMBER FIELD
+;
+               DC.B    14
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CURRENT_SEQUENCE
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+HI_LIMIT
+               DC.W    98
+               DC.W    EDIT+ENTR_VEC
+               DC.L    CHANNELIZE
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    FIELD_END
+;
+;TRACK NUMBER FIELD
+
+               DC.B    21
+               DC.B    1
+               DC.W    ACCESS+DIR_PTR
+               DC.W    TO_TRACK_NUM
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+MIN_LIMIT
+               DC.W    0
+               DC.W    DISPLAY+MAX_LIMIT
+               DC.W    9
+               DC.W    DISPLAY+MAX_STRNG
+               DC.L    ALL_STRING
+               DC.W    DISPLAY+MIN_STRNG
+               DC.L    ALL_STRING
+               DC.W    EDIT+HI_LIMIT
+               DC.W    9
+               DC.W    EDIT+ENTR_VEC
+               DC.L    CHANNELIZE
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+;
+;CHANNEL NUMBER FIELD
+;
+               DC.B    29
+               DC.B    3
+               DC.W    ACCESS+SET_PTR
+               DC.L    ACC_CHAN_NUM
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    CHAN_NUM_STR_1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    31
+               DC.W    EDIT+ENTR_VEC
+               DC.L    CHANNELIZE
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    SUBFUN_END
+
+CHAN_SCRN      ASC     "CHANNELIZING S"
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; MIDI DATA CHANNELIZATION ROUTINE -
+; NON-CHANNEL STUFF (SYS COMMON, SYS EXCLUSIVE) CAN BE UART-SHIFTED:
+;
+CHANNELIZE
+               JSR     SEQ_RUNNING_TEST     ;IS SEQUENCER RUNNING? (NOT COOL TO AUTO-STOP IT ....)
+               BNE     CHANLIZ_STALL        ;EXIT IF YES (MESSAGE IS IN LCD ....)
+;
+               BSR     NULL_SEQ_TEST        ;IS USER TRYING TO CHANNELIZE IN THE null seqUENCE?
+               BNE     CHANLIZ_STALL        ;EXIT IF YES (MESSAGE IS IN LCD ....)
+;
+               JSR     GET_CUR_SEQ_DIR      ;DOES OUR SEQUENCE EXIST?
+               TST     Q_STATUS(A0)
+               BNE.S   CHANLIZ_10           ;BRANCH IF YES, CONTINUE.
+               BSR     DISP_SEQ_EMPTY       ;ELSE - POST ERROR MESSAGE,
+               BRA     CHANLIZ_STALL        ;GET OUT.
+;
+CHANLIZ_10
+               MOVE    #000EH,D1            ;DISPLAY "CHANNELIZING" SCREEN
+               MOVE.L  #CHAN_SCRN,A2
+;890320               BSR     WRITE_STRING
+;890320               BSR     DISP_BUFFER
+               CALL    LCD_FUNS,WR_STRNG
+               CALL    LCD_FUNS,DSP_BUF
+               BSR     SOLID_ENTER
+               MOVE    #2700H,SR            ;KILL INTERRUPTS - GO FAST.
+;
+               MOVE    CHAN_NUM,D3          ;FETCH THE "CHANNELIZE TO" SETTING,
+               LSL     #7,D3                ;SET UP VALUE FOR CHANNEL/UART REPLACEMENT.
+;
+               MOVE    CURRENT_SEQUENCE,D0  ;DO NON-DESTR READ TO FIRST EVENT PAST PUNCH-IN POINT.
+               BSR     READ_TO_PUNCH
+;
+               CLR     D5                   ;THESE ARE USED BY CHK_PUNCH_OUT, SO HECK - CLEAR 'EM.
+               CLR     D6
+;
+;
+;
+; THIS BE THE TOP OF THE CHANNEL-EYE-ZATION LOOP:
+;
+CHANLIZ_20
+               BSR     CHK_PUNCH_OUT        ;ARE WE AT/PAST PUNCH-OUT, OR AT END OF SEQ?
+               TST     D1
+               BNE     CHANLIZ_70           ;BRANCH IF ONE OF THE ABOVE.
+;
+               MOVE    D7,D0                ;ELSE - ISOLATE EVENT ID IN D0.
+               AND     #0FH,D0
+               CMP     #3,D0                ;WE DEAL ONLY WITH EVENTS IN THE MIDI DOMAIN ....
+               BLT     CHANLIZ_EAT          ;CHEW THRU OTHER SHIT, LEAVE IT ALONE.
+               CMP     #6,D0
+               BGT.S   CHANLIZ_EAT
+;
+               MOVE    TO_TRACK_NUM,D1      ;SEE IF EVENT IS ON A CHANNELIZE TRACK -
+               BEQ.S   CHANLIZ_30           ;IF DOING ALL TRACKS, THEN YES, YES, YES IT'S OKAY ....
+               CMP     #9,D1
+               BEQ.S   CHANLIZ_30
+               SUBQ    #1,D1                ;ELSE, GOTTA BE MORE PARTIC'LER -
+               MOVE    D7,D2                ;ISOLATE EVENT TRACK NUMBER IN D2,
+               AND     #70H,D2
+               LSR     #4,D2
+               CMP     D1,D2                ;SEE IF TRACK NUMBERS MATCH -
+               BNE.S   CHANLIZ_EAT          ;IF NOT, LEAVE EVENT WHERE IT IS.
+;
+CHANLIZ_30
+               CMP     #5,D0                ;IS EVENT A NOTE EVENT?
+               BLT.S   CHANLIZ_NOTE         ;BRANCH IF YES, GOTTA LOG THAT SHIT.
+               BGT.S   CHANLIZ_SYS          ;IF SYS EXCLUSIVE, GO DO UART-ONLY CHANNELIZE.
+               MOVE    D7,D1                ;ELSE, TYPE 5 EVENT - IS IT A SYSTEM COMMON EVENT?
+               AND     #0F000H,D1           ;YES, IF M.S.NIBBLE = "F" ....
+               CMP     #0F000H,D1
+               BEQ.S   CHANLIZ_SYS          ;BRANCH IF SYS COMMON, DO UART-ONLY CHANNELIZE.
+;
+               AND     #0F07FH,(A4)         ;ELSE - BLOT OUT EXISTING CHANNEL/UART IN ID WORD,
+               OR      D3,(A4)              ;THIS IS THE NEW STUFF,
+               BRA.S   CHANLIZ_EAT          ;EAT OUR WAY TO THE NEXT EVENT AND CONTINUE.
+;
+;
+CHANLIZ_SYS
+               AND     #0FF7FH,(A4)         ;NON-CHANNELIZED SYS-COMMON/EXCL DATA - BLOT UART BIT,
+               MOVE    D3,D1                ;DROP IN A NEW ONE PER "CHANNELIZE TO" SETTING.
+               AND     #80H,D1
+               OR      D1,(A4)
+               BRA.S   CHANLIZ_EAT          ;NOW, EAT OUR WAY TO THE NEXT EVENT AND CONTINUE.
+;
+;
+CHANLIZ_NOTE
+               SWAP    D7                   ;MIDI NOTE EVENT - ASSEMBLE IT IN D7.L -
+               MOVE.L  A4,A3                ;SAVE READ POINTER FIRST, SO WE CAN FIND ID WORD LATER.
+               JSR     SEQ_NDSTR_READ       ;READ THAT DATA WORD NOW.
+               CMP     #4,D0                ;WAS THIS A NOTE-OFF EVENT?
+               BNE.S   CHANLIZ_40           ;BRANCH IF NOT, ASSUME NOTE-ON.
+                ABS_LONG
+               JSR     CHECK_OLD_MIDI       ;NOTE-OFF - HAVE WE CHANNELIZED A MATCHING NOTE-ON?
+                ABS_SHORT
+               BEQ.S   CHANLIZ_60           ;BRANCH IF NOT, DON'T MESS WITH THIS NOTE OFF.
+                ABS_LONG
+               JSR     LOG_OUT_OLD_MIDI     ;ELSE LOG IT OUT,
+                ABS_SHORT
+               BRA.S   CHANLIZ_50           ;GO CHANNELIZE IT.
+;
+CHANLIZ_40
+                ABS_LONG
+               JSR     LOG_IN_OLD_MIDI      ;NOTE-ON - LOG IT IN (BEFORE CHANNELIZING, SO WE CAN
+                                            ;MATCH NOTE-OFF TO IT LATER ....)
+                ABS_SHORT
+                                            ;FALL THROUGH AND CHANNELIZE IT.
+;
+CHANLIZ_50
+               AND     #0F07FH,(A3)         ;BLOT OUT EXISTING CHANNEL/UART IN ID WORD,
+               OR      D3,(A3)              ;THIS IS THE NEW STUFF.
+;
+;
+; READ TO TO NEXT EVENT -
+; WE'VE ALREADY READ BOTH WORDS OF THIS NOTE EVENT ....
+; ISOLATE NEW EVENT ID IN D0, LOOP BACK AND CONTINUE THE ACTION:
+;
+CHANLIZ_60
+               JSR     SEQ_NDSTR_READ
+               MOVE    D7,D0
+               AND     #0FH,D0
+               BRA     CHANLIZ_20
+;
+;
+;
+;
+; READ THROUGH EVENT WHOSE ID WORD WE ARE POINTING AT -
+; GET NEXT EVENT ID, GO BACK TO TOP O' LOOP:
+;
+CHANLIZ_EAT
+               JSR     SEQ_NDRD_EATER
+               BRA     CHANLIZ_20
+;
+;
+;
+;
+; WE'VE HIT/PASSED PUNCH-OUT POINT, OR HIT END OF SEQUENCE -
+; TIME TO CHANGE OUR ACT A LITTLE:
+;
+CHANLIZ_70
+               BTST    #1,D1                ;SO - DID WE HIT END OF SEQ?
+               BNE.S   CHANLIZ_X            ;THAT WE DID, OUT WE GO.
+;
+;
+; NOT AT END YET - AS WE HEAD THERE, CHANNELIZE ANY MIDI NOTE-OFF EVENTS
+; WHICH MATCH A STILL-LOGGED (HENCE, CHANNELIZED) MIDI NOTE-ON:
+;
+CHANLIZ_80
+               CMP     #4,D0                ;IF NOT A MIDI NOTE-OFF ....
+               BNE.S   CHANLIZ_CHEW         ;.... WE COULD GIVE A SHIT.
+               SWAP    D7                   ;MIDI NOTE-OFF EVENT - ASSEMBLE IT IN D7.L -
+               MOVE.L  A4,A3                ;SAVE READ POINTER FIRST, SO WE CAN FIND ID WORD LATER.
+               JSR     SEQ_NDSTR_READ       ;READ THAT DATA WORD NOW.
+                ABS_LONG
+               JSR     CHECK_OLD_MIDI       ;DID WE CHANNELIZE A MATCHING NOTE-ON BEFORE PUNCH-OUT?
+               BEQ.S   CHANLIZ_90           ;BRANCH IF NOT, LEAVE THIS NOTE-OFF AS IS.
+               JSR     LOG_OUT_OLD_MIDI     ;ELSE - TAKE IT OFF THE "WANTED" LIST, CHANNELIZE IT.
+                ABS_SHORT
+               AND     #0F07FH,(A3)         ;BLOT OUT EXISTING CHANNEL/UART IN ID WORD,
+               OR      D3,(A3)              ;THIS IS THE NEW STUFF.
+CHANLIZ_90
+               JSR     SEQ_NDSTR_READ       ;READ TO NEXT EVENT, GET ID, LOOP BACK AND CONTINUE.
+               MOVE    D7,D0
+               AND     #0FH,D0
+               BRA     CHANLIZ_80
+;
+;
+; READ THROUGH EVENT WHOSE ID WORD WE ARE POINTING AT -
+; UNLESS IT'S THE END OF SEQUENCE MARKER, THAT IS ....
+; GET NEXT EVENT ID, GO BACK TO TOP O' LOOP:
+;
+CHANLIZ_CHEW
+               CMP     #0FH,D0              ;IS THIS THE END?
+               BEQ.S   CHANLIZ_X            ;BRANCH IF YES (MY ONLY FRIEND) ....
+               JSR     SEQ_NDRD_EATER       ;ELSE, GET NEXT EVENT SHIT,
+               BRA     CHANLIZ_80           ;KEEP GOING.
+;
+;
+;
+; AND, OUT WE GO:
+;
+CHANLIZ_X
+                ABS_LONG
+               JSR     BLIND_FLUSH_NOTE_BUFS     ;WIPE 'EM STERILE-LIKE.
+                ABS_SHORT
+               MOVE.L  #CHNLIZE_DONE,A1
+;890320               BSR     DISP_SCREEN
+               CALL    LCD_FUNS,DSP_SCRN
+               MOVE    #2000H,SR
+;
+CHANLIZ_STALL
+               BRA     USER_STALL
+;
+;
+;
+CHNLIZE_DONE   ASC     "CHANNELIZE DONE "
+               ASC     "PRESS ANY SWITCH"
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+SEQ_REPLACE_SUB
+               ASC     "REPLACE SND #   "
+               ASC     "WITH #    TRK:  "
+;
+;SOUND NUMBER TO BE REPLACED
+;
+               DC.B    13
+               DC.B    3
+               DC.W    ACCESS+SET_PTR
+               DC.L    ACC_FSND_NUM
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    FROM_NUM_STRING
+               DC.W    EDIT+HI_LIMIT
+               DC.W    63
+               DC.W    EDIT+ENTR_VEC
+               DC.L    REPLACE_SOUND
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    FIELD_END
+
+;SOUND NUMBER TO BE REPLACED WITH
+;
+               DC.B    22
+               DC.B    3
+               DC.W    ACCESS+SET_PTR
+               DC.L    ACC_TSND_NUM
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    FROM_NUM_STRING
+               DC.W    EDIT+HI_LIMIT
+               DC.W    63
+               DC.W    EDIT+ENTR_VEC
+               DC.L    REPLACE_SOUND
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    FIELD_END
+
+;TRACK NUMBER FIELD
+
+               DC.B    31
+               DC.B    1
+               DC.W    ACCESS+DIR_PTR
+               DC.W    TO_TRACK_NUM
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+MIN_LIMIT
+               DC.W    0
+               DC.W    DISPLAY+MAX_LIMIT
+               DC.W    9
+               DC.W    DISPLAY+MAX_STRNG
+               DC.L    A_STRNG
+               DC.W    DISPLAY+MIN_STRNG
+               DC.L    A_STRNG
+               DC.W    EDIT+HI_LIMIT
+               DC.W    9
+               DC.W    EDIT+ENTR_VEC
+               DC.L    REPLACE_SOUND
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    SUBFUN_END
+;
+A_STRNG        DC.B    31
+               DC.B    1
+               ASC     "A "
+RPLC_SCRN      ASC     "REPLACING   "
+
+ACC_FSND_NUM   CMP     #63,FROM_SEQ_NUM         ;INITIALIZE FROM SOUND NUMBER
+               BLE.S   ACC_FSND_1
+               CLR     FROM_SEQ_NUM
+ACC_FSND_1     MOVE.L  #FROM_SEQ_NUM,D0
+               RTS
+
+ACC_TSND_NUM   CMP     #63,TO_SEQ_NUM           ;INITIALIZE TO SOUND NUMBER
+               BLE.S   ACC_TSND_1
+               CLR     TO_SEQ_NUM
+ACC_TSND_1     MOVE.L  #TO_SEQ_NUM,D0
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+REPLACE_SOUND
+               JSR     SEQ_RUNNING_TEST     ;IS SEQUENCER RUNNING? (NOT COOL TO AUTO-STOP IT ....)
+               BNE     SEQ_RPLC_STALL       ;EXIT IF YES (MESSAGE IS IN LCD ....)
+;
+               BSR     NULL_SEQ_TEST        ;IS USER TRYING TO REPLACE IN THE null seqUENCE?
+               BNE     SEQ_RPLC_STALL       ;EXIT IF YES (MESSAGE IS IN LCD ....)
+;
+               JSR     GET_CUR_SEQ_DIR      ;DOES OUR SEQUENCE EXIST?
+               TST     Q_STATUS(A0)
+               BNE.S   SEQ_RPLC_00          ;BRANCH IF YES, CONTINUE.
+               BSR     DISP_SEQ_EMPTY       ;ELSE - POST ERROR MESSAGE,
+               BRA     SEQ_RPLC_STALL       ;GET OUT.
+;
+SEQ_RPLC_00
+               MOVE    #000CH,D1                ;DISPLAY"REPLACING" SCREEN
+               MOVE.L  #RPLC_SCRN,A2
+;890320               BSR     WRITE_STRING
+;890320               BSR     DISP_BUFFER
+               CALL    LCD_FUNS,WR_STRNG
+               CALL    LCD_FUNS,DSP_BUF
+               BSR     SOLID_ENTER
+               MOVE    #2700H,SR
+               MOVE    CURRENT_SEQUENCE,D0
+               BSR     READ_TO_PUNCH
+               MOVE    TO_SEQ_NUM,D2            ;DESTINATION SOUND NUMBER
+               LSL     #7,D2
+               CLR     D5
+               CLR     D6
+SEQ_RPLC_1     BSR     CHK_PUNCH_OUT
+               TST     D1
+               BNE     SEQ_RPLC_2
+               CMP     #2,D0                    ;SPLIT IF NOT A NOTE EVENT
+               BGT.S   SEQ_RPLC_EAT
+               MOVE    TO_TRACK_NUM,D1          ;CHECK FOR CORRECT TRACK NUMBER
+               BEQ.S   SEQ_RPLC_11
+               CMP     #9,D1
+               BEQ.S   SEQ_RPLC_11
+               SUBQ    #1,D1                    ;TRACK NUMBERS FROM 0-7
+               MOVE    D7,D3
+               AND     #70H,D3
+               LSR     #4,D3
+               CMP     D1,D3
+               BNE.S   SEQ_RPLC_EAT
+
+SEQ_RPLC_11    MOVE    D7,D1
+               AND     #1F80H,D1
+               LSR     #7,D1
+               CMP     FROM_SEQ_NUM,D1          ;LOOK FOR NOTE ON EVENTS WITH CORRECT SOUND NUMBER
+               BNE.S   SEQ_RPLC_EAT
+               SWAP    D7                       ;STATUS BYTE TO HIGH ORDER WORD
+               MOVE.L  A4,A3
+               JSR     SEQ_NDSTR_READ           ;GET DATA WORD
+               CMP     #2,D0                    ;IS IT A NOTE OFF
+               BNE.S   SEQ_RPLC_13
+                ABS_LONG
+               JSR     CHECK_OLD_PADS           ;SEE IF THIS OFF HAS AN ON IN PUNCH IN AREA
+                ABS_SHORT
+               BNE.S   SEQ_RPLC_14
+SEQ_RPLC_12    JSR     SEQ_NDSTR_READ           ;IF NOT THEN DONT REPLACE IT
+               MOVE    D7,D0
+               AND     #0FH,D0
+               BRA.S   SEQ_RPLC_1
+
+                ABS_LONG
+SEQ_RPLC_13    JSR     LOG_IN_OLD_PAD           ;LOG IN NOTE ON EVENT
+                ABS_SHORT
+               BRA.S   SEQ_RPLC_15
+                ABS_LONG
+SEQ_RPLC_14    JSR     LOG_OUT_OLD_PAD          ;LOG OUT NOTE OFF EVENT
+                ABS_SHORT
+SEQ_RPLC_15    SWAP    D7                       ;GET BACK STATUS WORD
+SEQ_RPLC_16    AND     #0E07FH,D7                ;MASK OFF OLD SOUND NUMBER
+               OR      D2,D7                    ;OR ON NEW SOUND NUMBER
+               MOVE    D7,(A3)
+               CMP     #1,D0
+               BNE.S   SEQ_RPLC_12
+               JSR     SEQ_NDSTR_READ
+               BRA.S   SEQ_RPLC_12
+
+SEQ_RPLC_EAT   JSR     SEQ_NDRD_EATER
+               BRA     SEQ_RPLC_1
+
+SEQ_RPLC_2     BTST    #1,D1                    ;CHECK FOR END OF SEQUENCE
+               BNE.S   SEQ_RPLC_X
+SEQ_RPLC_20    CMP     #2,D0
+               BNE.S   SEQ_RPLC2_EAT            ;ONLY INTERESTED IN NOTE OFFS HERE
+               MOVE.L  A4,A3
+               SWAP    D7
+               JSR     SEQ_NDSTR_READ
+                ABS_LONG
+               JSR     CHECK_OLD_PADS
+               BEQ.S   SEQ_RPLC_26
+               JSR     LOG_OUT_OLD_PAD          ;IF IT WAS ON THEN LOG IT OUT AND REPLACE IT
+                ABS_SHORT
+               SWAP    D7
+SEQ_RPLC_21    AND     #0E07FH,D7                ;MASK OFF OLD SOUND NUMBER
+               OR      D2,D7                    ;OR ON NEW SOUND NUMBER
+               MOVE    D7,(A3)
+SEQ_RPLC_26    JSR     SEQ_NDSTR_READ
+               MOVE    D7,D0
+               AND     #0FH,D0
+               BRA.S   SEQ_RPLC_20
+
+SEQ_RPLC2_EAT  CMP     #0FH,D0
+               BEQ.S   SEQ_RPLC_X
+               JSR     SEQ_NDRD_EATER
+               BRA     SEQ_RPLC_20
+;
+;
+SEQ_RPLC_X
+                ABS_LONG
+               JSR     BLIND_FLUSH_NOTE_BUFS
+                ABS_SHORT
+               MOVE.L  #REPLACE_DONE_SCRN,A1
+;890320               BSR     DISP_SCREEN
+               CALL    LCD_FUNS,DSP_SCRN
+               MOVE    #2000H,SR
+;
+SEQ_RPLC_STALL
+               BRA     USER_STALL
+;
+;
+;
+REPLACE_DONE_SCRN
+               ASC     " SOUND REPLACED "
+               ASC     "PRESS ANY SWITCH"
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+SEQ_VEL_SCALE_SUB
+               ASC     "VEL. SCALE  S.  "
+               ASC     "TR:  CH:       %"
+
+               DC.B    14
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CURRENT_SEQUENCE
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+HI_LIMIT
+               DC.W    98
+               DC.W    EDIT+ENTR_VEC
+               DC.L    VEL_SCALE_SEQ
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    FIELD_END
+
+;TRACK NUMBER FIELD
+
+               DC.B    19
+               DC.B    1
+               DC.W    ACCESS+DIR_PTR
+               DC.W    TO_TRACK_NUM
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+MIN_LIMIT
+               DC.W    0
+               DC.W    DISPLAY+MAX_LIMIT
+               DC.W    9
+               DC.W    DISPLAY+MAX_STRNG
+               DC.L    A_STRING
+               DC.W    DISPLAY+MIN_STRNG
+               DC.L    A_STRING
+               DC.W    EDIT+HI_LIMIT
+               DC.W    9
+               DC.W    EDIT+ENTR_VEC
+               DC.L    VEL_SCALE_SEQ
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+;
+;CHANNEL NUMBER FIELD
+;
+               DC.B    24
+               DC.B    3
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CHAN_NUM
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    VEL_SCALE_ACCESS
+               DC.W    EDIT+HI_LIMIT
+               DC.W    98
+               DC.W    EDIT+ENTR_VEC
+               DC.L    VEL_SCALE_SEQ
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    FIELD_END
+;
+;SCALE AMOUNT FIELD
+;
+               DC.B    28
+               DC.B    3
+               DC.W    ACCESS+DIR_PTR
+               DC.W    SCALE_AMT
+               DC.W    ACCESS+WORD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    250
+               DC.W    EDIT+ENTR_VEC
+               DC.L    VEL_SCALE_SEQ
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    SUBFUN_END
+;
+;
+VEL_SCALE_ACCESS
+               MOVEM.L D0-D2/A2,-(A7)
+               MOVE    CHAN_NUM,D0              ;GET CHANNEL NUMBER
+               CMP     #32,D0                   ;SEE IF A CHAANNEL NUMBER
+               BGT.S   VEL_ACC_1                ;IF NOT IT MUST BE A DRUM
+               MOVE.L  #CH_SCRN,A2              ;SET UP CHANNEL SCREEN
+               MOVE    #1503H,D1
+;890320               BSR     WRITE_STRING
+               CALL    LCD_FUNS,WR_STRNG
+               MOVE.L  #CHAN_NUM_STRING,A2
+               ADD     D0,A2
+               ADD     D0,A2
+               ADD     D0,A2                    ;INDEX TO DISPLAY
+               MOVE    #1803H,D1
+               BRA.S   VEL_ACC_END
+VEL_ACC_1      CMP     #96,D0                   ;CHECK FOR A DRUM SCREEN
+               BGT.S   VEL_ACC_2
+               MOVE.L  #DR_SCRN,A2
+               MOVE    #1503H,D1
+;890320               BSR     WRITE_STRING             ;WRITE "DR: " SCREEN
+               CALL    LCD_FUNS,WR_STRNG
+               SUBI    #33,D0
+               MOVE.L  #FROM_NUM_STRING,A2      ;DISPLAY DRUM NUMBER
+               EXT.L   D0
+               ADD.L   D0,A2
+               ADD.L   D0,A2
+               ADD.L   D0,A2
+               MOVE    #1803H,D1
+               BRA.S   VEL_ACC_END
+VEL_ACC_2      CMP     #97,D0
+               BGT.S   VEL_ACC_3
+               MOVE.L  #DR_SCRN,A2
+               MOVE    #1503H,D1
+;890320               BSR     WRITE_STRING
+               CALL    LCD_FUNS,WR_STRNG
+               MOVE.L  #ALLL_STRING,A2          ;DISPLAY   "DR:ALL "
+               MOVE    #1803H,D1
+               BRA.S   VEL_ACC_END
+VEL_ACC_3      MOVE.L  #ALLLL_STRING,A2
+               MOVE    #1506H,D1
+VEL_ACC_END
+;
+;890320               BSR     WRITE_STRING
+;890320               BSR     DISP_BUFFER
+               CALL    LCD_FUNS,WR_STRNG
+               CALL    LCD_FUNS,DSP_BUF
+               MOVEM.L (A7)+,D0-D2/A2
+               RTS
+;
+A_STRING       DC.B    19
+               DC.B    1
+               ASC     "A "
+CH_SCRN        ASC     "CH: "
+DR_SCRN        ASC     "DR: "
+ALLLL_STRING   ASC     "  ALL "
+VEL_SCL_SCRN   ASC     "SCALING VELOCITY"
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; LET'S SCALE US SOME EVENT VEE-LASS-OH-TEEZ:
+;
+VEL_SCALE_SEQ
+               JSR     SEQ_RUNNING_TEST     ;IS SEQUENCER RUNNING? (NOT COOL TO AUTO-STOP IT ....)
+               BNE     VEL_SCALE_STALL      ;EXIT IF YES (MESSAGE IS IN LCD ....)
+;
+               BSR     NULL_SEQ_TEST        ;IS USER TRYING TO VELOCITY-SCALE IN THE null seqUENCE?
+               BNE     VEL_SCALE_STALL      ;EXIT IF YES (MESSAGE IS IN LCD ....)
+;
+               JSR     GET_CUR_SEQ_DIR      ;DOES OUR SEQUENCE EXIST?
+               TST     Q_STATUS(A0)
+               BNE.S   VELSCALE_00          ;BRANCH IF YES, CONTINUE.
+               BSR     DISP_SEQ_EMPTY       ;ELSE - POST ERROR MESSAGE,
+               BRA     VEL_SCALE_STALL      ;GET OUT.
+;
+VELSCALE_00
+               MOVE    #2700H,SR            ;KILL INTERRUPTS - GO FAST.
+               MOVE    #0010H,D1            ;PUT UP "SCALING" SCREEN
+               MOVE.L  #VEL_SCL_SCRN,A2
+;890320               BSR     WRITE_STRING
+;890320               BSR     DISP_BUFFER
+               CALL    LCD_FUNS,WR_STRNG
+               CALL    LCD_FUNS,DSP_BUF
+               BSR     SOLID_ENTER
+;
+               MOVE    CURRENT_SEQUENCE,D0  ;DO NON-DESTRUCTIVE READ THROUGH SEQ TO PUNCH-IN POINT.
+               BSR     READ_TO_PUNCH
+;
+               CLR     D5                   ;D5-D6 PROBABLY POINTLESS.
+               CLR     D6
+;
+VEL_SCALE_10
+               BSR     CHK_PUNCH_OUT        ;ARE WE PAST PUNCH-OUT POINT OR AT END OF SEQ?
+               TST     D1
+               BNE     VEL_SCALE_G0         ;BRANCH IF YES, GO SEE WHICH AND DEAL WITH IT.
+;
+                                            ;D0 HAS ISOLATED ID CODE OF LAST EVENT READ:
+               TST     D0                   ;IF WE SOMEHOW HAPPEN TO RUN ACROSS A NULL EVENT,
+               BEQ     VEL_SCALE_EAT        ;JUST EAT THROUGH IT (I.E., PASS BY, SKIP OVER, ETC.)
+               CMP     #3,D0                ;WE DEAL WITH MIDI NOTE-ONS, INTERNAL NOTE-ONS/OFFS -
+               BGT     VEL_SCALE_EAT        ;ANYTHING ELSE IS IRRELEVANT TO VELOCITY SCALING.
+;
+               MOVE    TO_TRACK_NUM,D1      ;GET TRACK NUMBER TO BE SCALED -
+               BEQ.S   VEL_SCALE_20         ;IF 0 THEN SCALE ALL TRACKS.
+               CMP     #9,D1
+               BEQ.S   VEL_SCALE_20         ;IF 9 THEN SCALE ALL TRACKS.
+               SUBQ    #1,D1                ;VALUES 1-8 INDICATE SINGLE TRACK SCALE - MAKE 0-REL.
+               MOVE    D7,D2                ;EXTRACT EVENT TRACK NUMBER -
+               AND     #70H,D2
+               LSR     #4,D2
+               CMP     D1,D2                ;IS OUR EVENT ON THIS TRACK?
+               BNE     VEL_SCALE_EAT        ;IF NOT, LEAVE IT ALONE - SKIP TO NEXT EVENT.
+;
+VEL_SCALE_20
+                                            ;EVENT MATCHES SCALE-TRACK SPECIFICATION:
+               MOVE    CHAN_NUM,D3          ;WHAT TYPE(S) OF EVENT ARE WE INTERESTED IN?
+               BEQ.S   VEL_SCALE_30         ;BRANCH IF SCALING "ALL MIDI" EVENTS.
+               CMP     #32,D3               ;CHECK FOR A SINGLE MIDI CHANNEL EVENT SPEC -
+               BGT.S   VEL_SCALE_40         ;BRANCH IF NOT - SCALING SOUND EVENTS, OR ALL EVENTS.
+               CMP     #3,D0                ;SCALING MIDI DATA - IS THIS EVENT A MIDI EVENT?
+               BLT     VEL_SCALE_EAT        ;BRANCH IF NOT, HEAD FOR NEXT EVENT.
+               SUBQ    #1,D3                ;ELSE - ADJUST FOR "ALL MIDI" SETTING TO GET CHANNEL,
+               MOVE    D7,D1                ;ISOLATE CHANNEL NUMBER OF THE EVENT -
+               AND     #0FFFH,D1
+               LSR     #7,D1                ;(REMINDER - BIT 7 OF ID WORD IS UART, WHICH WE USE.)
+               CMP     D1,D3                ;SEE IF CHANNEL NUMBER / UART BIT MATCHES -
+               BNE     VEL_SCALE_EAT        ;BRANCH IF NOT - DON'T SCALE THIS EVENT, HEAD FOR NEXT.
+               BRA     VEL_SCALE_D0         ;ELSE - POP DOWN TO MIDI EVENT VEL-SCALE PROCEDURE.
+;
+VEL_SCALE_30
+               CMP     #3,D0                ;SCALING "ALL MIDI" - IS EVENT A MIDI EVENT?
+               BLT     VEL_SCALE_EAT        ;BRANCH IF NOT, SKIP TO NEXT EVENT.
+               BRA     VEL_SCALE_D0         ;IF IT IS THEN SCALE IT
+;
+;
+VEL_SCALE_40
+               CMP     #96,D3               ;SCALING "ALL" OR "ALL SOUND" EVENTS?
+               BGT.S   VEL_SCALE_50         ;BRANCH IF YES -
+               CMP     #3,D0                ;ELSE, SCALING ONE SOUND ONLY - IS THIS A SOUND EVENT?
+               BGE     VEL_SCALE_EAT        ;BRANCH IF NOT, WE PISS IT OUT INTO THE GUTTER.
+               MOVE    D7,D1                ;ELSE, ISOLATE EVENT SOUND NUMBER / ALT-PARAMS BIT,
+               AND     #1F80H,D1
+               LSR     #7,D1
+               ADDI    #33,D1               ;FUDGE IT INTO SOUND/ALT-P SETTING -
+               CMP     D1,D3                ;DOES IT MATCH OUR SETTING?
+               BNE     VEL_SCALE_EAT        ;BRANCH IF NOT, IT AIN'T THE ONE WE WANTS.
+               BRA.S   VEL_SCALE_70         ;ELSE - PULL UP YER SOX AN' GIT MOOOOVING!
+;
+VEL_SCALE_50
+               CMP     #97,D3               ;SCALING "ALL" OR "ALL SOUNDS" - BUT WHICH?
+               BNE.S   VEL_SCALE_60         ;BRANCH IF SCALING "ALL" EVER-THANG.
+               CMP     #3,D0                ;ELSE - IS THIS A SOUND EVENT OR WHAT?
+               BGE     VEL_SCALE_EAT        ;BRANCH IF "WHAT", WE AIN' INARRESTED.
+               BRA.S   VEL_SCALE_70         ;ELSE - ZIP UP AND LOOK SHARP, IT'S SCALE-TIME.
+;
+VEL_SCALE_60
+               CMP     #3,D0                ;SCALING "ALL" EVER-THANG - WHO DO WE GOT HERE?
+               BGE.S   VEL_SCALE_D0         ;BRANCH IF IT BE MIDI-ISH, SERVE IT THUSLY.
+;
+;
+;
+; SOUND EVENT BEING SCALED, YAH:
+; YOOST A REMINDER, DER SOUND NOTE-OFF HAS SAME VELOCITY (UND EVRY-TING)
+; VOM DER SOUND NOTE-ON, MUST BE ALZO SCALED - ONLY EVENT ID DIFFERENT.
+; THUS MUST ALSO LOG THESE GUYS, SO CAN DEAL WITH NOTES THAT EXTEND PAST
+; THE PUNCH-OUT POINT.
+;
+VEL_SCALE_70
+               SWAP    D7                   ;SWEEP ID WORD ASIDE,
+               JSR     SEQ_NDSTR_READ       ;GET EVENT SECOND WORD -
+               CMP     #1,D0                ;WAS THIS A NOTE-ON EVENT?
+               BNE.S   VEL_SCALE_80         ;BRANCH IF NOT -
+                ABS_LONG
+               JSR     LOG_IN_OLD_PAD       ;ELSE, LOG THIS EVENT INTO "OLD" BUF (PRE-SCALE, SO WE
+               BRA.S   VEL_SCALE_90         ;CAN MATCH ITS NOTE-OFF TO IT LATER).
+VEL_SCALE_80
+               JSR     CHECK_OLD_PADS       ;NOTE-OFF - HAVE WE SCALED A MATCHING NOTE-ON?
+               BEQ.S   VEL_SCALE_C0         ;BRANCH IF NOT, LEAVE THIS NOTE-OFF ALONE - SKIP IT.
+               JSR     LOG_OUT_OLD_PAD      ;ELSE - PULL IT OUT OF "SCALED" LIST, THEN SCALE IT.
+                ABS_SHORT
+VEL_SCALE_90
+               BSR.S   VEL_SCALE_SOUND      ;THIS HANDLES IT.
+               CMP     #2,D0                ;UH, WAS THAT A NOTE-ON?
+               BEQ.S   VEL_SCALE_C0         ;BRANCH IF NOT, WE'RE UP TO NEXT EVENT -
+               JSR     SEQ_NDSTR_READ       ;ELSE - READ THRU EXTRA WORD IN NOTE-ON TO GET THERE.
+;
+;
+VEL_SCALE_C0
+               JSR     SEQ_NDSTR_READ       ;READ FIRST WORD OF NEXT EVENT,
+               MOVE    D7,D0                ;ISOLATE ITS ID IN D0,
+               AND     #0FH,D0
+               BRA     VEL_SCALE_10         ;GO BACK TO TOP AND DEAL WITH IT.
+;
+;
+;
+; MIDI NOTE-ON EVENT BEING SCALED:
+; SINCE MIDI NOTE-OFF EVENTS ALWAYS HAVE ZEROS IN VELOCITY FIELD,
+; WE DON'T NEED TO DO ANYTHING WITH THEM TO MAINTAIN NOTE PARITY, AND
+; DON'T NEED TO KEEP TRACK OF MIDI EVENTS AS WE DO WITH SOUND EVENTS.
+;
+VEL_SCALE_D0
+               JSR     SEQ_NDSTR_READ       ;GET DAT SECONT WORT.
+               MOVE    D7,D1                ;ISOLATING ITS VELOCITY.
+               AND     #7FH,D1
+               MULU    SCALE_AMT,D1         ;SCALING NOW.
+               DIVU    #100,D1
+               CMP     #0,D1                ;WAS THAT A "BIT" OVERDONE?
+               BNE.S   VEL_SCALE_E0         ;NO - STILL GOT NON-ZERO VELOCITY, SO GO AHEAD.
+               MOVEQ   #1,D1                ;ELSE - VELOCITY FLOOR OF "1".
+                                            ;(SLIDE THROUGH THE CLIP CHECK WHICH FOLLOWS.)
+VEL_SCALE_E0
+               CMP     #7FH,D1              ;CLIP VELOCITY AT 7FH.
+               BLE.S   VEL_SCALE_F0
+               MOVEQ   #7FH,D1
+VEL_SCALE_F0
+               AND     #0FF00H,D7           ;MASK OFF OLD EVENT VELOCITY,
+               OR      D1,D7                ;DROP IN NEW VELOCITY,
+               MOVE    D7,(A4)              ;WRITE ADJUSTED WORD BACK TO ORIGINAL PLACE IN SEQ.
+               BRA     VEL_SCALE_C0         ;GET THEE TO NEXT EVENT, AND CONTINUE.
+;
+;
+;
+; AN EVENT NOT TO BE TAMPERED WITH - SLIDE PAST IT TO NEXT EVENT:
+;
+VEL_SCALE_EAT
+               JSR     SEQ_NDRD_EATER       ;READ THROUGH EVENT NOT BEING SCALED, GET NEXT -
+               BRA     VEL_SCALE_10         ;BACK TO TOP, CHECK IT OUT.
+;
+;
+;
+; SUBROUTINE-THING FOR SOUND EVENT VELOCITY SCALING:
+;
+VEL_SCALE_SOUND
+               MOVE    D7,D1                ;OKAY THEN - ISOLATE EVENT VELOCITY,
+               AND     #1FH,D1
+               MULU    SCALE_AMT,D1         ;SCALE IT (PERCENT-LIKE) -
+               DIVU    #100,D1
+               TST     D1                   ;DID WE SCALE IT OUT OF EXISTENCE?
+               BNE.S   VSS_10               ;BRANCH IF NOT, GO ON -
+               MOVEQ   #1,D1                ;ELSE - IT GOES NO LOWER THAN THIS, SET IT HERE.
+                                            ;(WE'LL OF COURSE SLIP RIGHT THROUGH THE CLIP CHECK.)
+VSS_10
+               CMP     #1FH,D1              ;CLIP VELOCITY AT 1FH.
+               BLE.S   VSS_20
+               MOVEQ   #1FH,D1
+VSS_20
+               AND     #0FFE0H,D7           ;MASK OUT OLD EVENT VELOCITY,
+               OR      D1,D7                ;DROP IN NEW VELOCITY,
+               MOVE    D7,(A4)              ;WRITE ADJUSTED WORD BACK TO ORIGINAL PLACE IN SEQ.
+               RTS
+;
+;
+;
+;
+; WE'VE HIT/PASSED PUNCH-OUT OR HAVE HIT END OF SEQUENCE -
+; ONE WAY OR THE OTHER, WE'RE DONE SCALING (NEW NOTES, ANYWAY -
+; IF ANY SOUND NOTE-ONS HAVEN'T HAD THEIR NOTE-OFFS SCALED, WE'LL HAVE
+; TO TAKE CARE OF THEM ON THE WAY OUT ....)
+;
+VEL_SCALE_G0
+               BTST    #1,D1                ;DID WE HIT END OF SEQUENCE?
+               BNE.S   VEL_SCALE_X          ;U-BET, SO WE HAVE LITTLE LEFT TO DO.
+;
+;
+; WELL, NOT OUTA THE WOODS YET - WE "CHEAP OUT" HERE BY LOOKING ONLY FOR
+; SOUND NOTE-OFFS AND ASSUMING (CORRECTLY, THOUGH) THAT IF A MATCHING
+; NOTE-ON IS STILL LOGGED IN, WE SHOULD SCALE THE NOTE-OFF LIKEWISE -
+; THUS WE AVOID DUPLICATING ALL OF THAT MESSY TRACK, CHANNEL AND DATA
+; TYPE TESTING WE HAD TO DO UP ABOVE:
+;
+VEL_SCALE_H0
+               CMP     #2,D0                ;FOISTA VALL, IS DIS A SOUND NOTE-OFF?
+               BNE.S   VEL_SCALE_CHEW       ;BRANCH IF NOT, JUST GNAW THROUGH IT.
+               SWAP    D7                   ;ELSE - SWEEP ID WORD ASIDE,
+               JSR     SEQ_NDSTR_READ       ;READ DATA WORD AND ASSEMBLE FULL EVENT IN D7.
+                ABS_LONG
+               JSR     CHECK_OLD_PADS       ;DID WE SCALE A MATCHING NOTE-ON SOMEWHERE BACK THERE?
+               BEQ.S   VEL_SCALE_I0         ;BRANCH IF NO SIGN OF THIS, SKIP TO NEXT EVENT.
+               JSR     LOG_OUT_OLD_PAD      ;ELSE - LOG THIS NOTE OUT, THEN SCALE IT.
+                ABS_SHORT
+               BSR     VEL_SCALE_SOUND      ;THIS'LL FIX IT.
+VEL_SCALE_I0
+               JSR     SEQ_NDSTR_READ       ;READ NEXT EVENT ID WORD,
+               MOVE    D7,D0                ;ISOLATE ID IN D0,
+               AND     #0FH,D0
+               BRA.S   VEL_SCALE_H0         ;GO BACK AND SEE WHAT IT IS.
+;
+VEL_SCALE_CHEW
+               CMP     #0FH,D0              ;WELL, MY SON MY SON - IS THIS THE END (OF SEQUENCE)?
+               BEQ.S   VEL_SCALE_X          ;YOU BET, DAD - SAY, "BYE".
+               JSR     SEQ_NDRD_EATER       ;OTHER-WYSE, GET US TO NEXT EVENT,
+               BRA     VEL_SCALE_H0         ;GET BACK ONTO IT.
+;
+;
+;
+VEL_SCALE_X
+                ABS_LONG
+               JSR     BLIND_FLUSH_NOTE_BUFS     ;WIPE 'EM CLEAN AND DRY.
+                ABS_SHORT
+               MOVE.L  #VEL_SCALE_DONE,A1
+;890320               BSR     DISP_SCREEN
+               CALL    LCD_FUNS,DSP_SCRN
+               MOVE    #2000H,SR
+;
+VEL_SCALE_STALL
+               BRA     USER_STALL
+;
+;
+;
+VEL_SCALE_DONE
+               ASC     "VELOCITY SCALED "
+               ASC     "PRESS ANY SWITCH"
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+

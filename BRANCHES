@@ -1,0 +1,54 @@
+********************************************************************************
+********************************************************************************
+********************************************************************************
+****                                                                        ****
+****   Name:           BRANCHES                                             ****
+****   Description:    BRA/JMP clearinghouse module - first attempt ....    ****
+****                   Intended for location below 8000H                    ****
+****                                                                        ****
+****     Created by Matthew S. Isaacson for PointSource - 1989              ****
+****                                                                        ****
+********************************************************************************
+********************************************************************************
+********************************************************************************
+;
+;
+               .ALONG                  ; use BRA for code within + or - 32K,
+                                       ; otherwise must use JMP.L.
+;
+;
+;
+;
+               .EXPORT SYS_EX_IN
+               .EXPORT SDS_OUT_EXEC
+               .EXPORT SEND_SDS_REQ
+               .EXPORT SDS_REQ_CHECK
+               .EXPORT INSTALL_KIT
+               .EXPORT GENL_SHUTDOWN
+               .export capture_cp_key
+               .export copypro_check
+;
+               .IMPORT _SYS_EX_IN
+               .IMPORT _SDS_OUT_EXEC
+               .IMPORT _SEND_SDS_REQ
+               .IMPORT _SDS_REQ_CHECK
+               .IMPORT _INSTALL_KIT
+               .IMPORT _GENL_SHUTDOWN
+               .import _capture_cp_key
+               .import _copypro_check
+;
+;
+;
+;
+SYS_EX_IN      JMP     _SYS_EX_IN
+SDS_OUT_EXEC   JMP     _SDS_OUT_EXEC
+SEND_SDS_REQ   JMP     _SEND_SDS_REQ
+SDS_REQ_CHECK  JMP     _SDS_REQ_CHECK
+
+INSTALL_KIT    JMP     _INSTALL_KIT
+GENL_SHUTDOWN  JMP     _GENL_SHUTDOWN
+
+capture_cp_key jmp     _capture_cp_key
+copypro_check  jmp     _copypro_check
+
+

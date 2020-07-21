@@ -1,0 +1,512 @@
+               INCLUDE HPFIXUPS
+               TITLE "DISKLOW2"
+***************************************************************************************************
+***************************************************************************************************
+***                                                                                             ***
+***            DISKLOW2 - LOW-LEVEL FORMATTING AND 8-BIT DATA TRANSFER                          ***
+***                                                                                             ***
+***************************************************************************************************
+***************************************************************************************************
+;
+NEG_EXT        EQU     0FFFFFF00H      ;USE IN MOVEQ INSTRUCTIONS WHERE ARG IS
+                                       ;80H OR LARGER - HP XASM DOES NOT HANDLE
+                                       ;SIGN-EXTEND CORRECTLY.  COSMETIC, KEEPS
+                                       ;ACTUAL BYTE VALUE CLEARER.
+;
+               INCLUDE EQUATES         ;HDW ADDR AND CONSTANT DEFS, ABS_SHORT DIRECTIVE.
+;
+               INCLUDE DISKDEFS        ;DISK SYSTEM DEFINITIONS.
+;
+               GLB     ADDR_READ,SECTOR_READ,TRK_WR_TAG
+               GLB     SECTOR_WRITE,SECTOR_VER,TRACK_WRITE,AWAIT_DRQ
+               GLB     TEST_COMPL_STAT,TEST_WRITE_STAT,TEST_VERFY_STAT
+;
+               EXTERNAL  DELAY_32USEC
+;
+               EXTERNAL  ADDR_BUF
+               EXTERNAL  BEGIN_TRUNC
+               EXTERNAL  BYTE_LENGTH
+               EXTERNAL  CURRENT_SEC
+               EXTERNAL  CURRENT_TRACK
+               EXTERNAL  CURRENT_SIDE
+;
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; UNFORMATTED READ OF AN ENTIRE TRACK INTO CPU RAM AT ADDRESS
+; POINTED TO BY A0 UPON ENTRY. REQUIRES APPROX 1900H BYTES.
+;
+;20AUGTRACK_READ
+;20AUG               MOVE.W  #MAX_TRK_BYTES,D2    ;MAX NUMBER OF BYTES/TRACK - SHOULDN'T READ THIS MANY.
+;20AUG               CLR.B   BEGIN_TRUNC          ;DON'T SKIP ANY DATA.
+;20AUG               MOVEQ   #NEG_EXT+READ_TRACK,D0    ;FETCH FDC COMMAND BYTE.
+;20AUG               BRA.S   DISK_READ
+;
+;
+;
+; PLACE CONTENTS OF FIRST-ENCOUNTERED ID FIELD INTO ADDR_BUF.
+; ADDR_READ RETURNS: TRACK ADDRESS, SIDE NUMBER,
+; SECTOR ADDRESS, SECTOR LENGTH, CRC 1, CRC 2.
+;
+ADDR_READ
+               MOVEQ   #NEG_EXT+READ_ADDR,D0     ;FETCH FDC COMMAND BYTE.
+               MOVEQ   #6,D2                ;INDICATE TRANSFER LENGTH OF 6 BYTES.
+               MOVE    #ADDR_BUF,A0         ;HERE IS WHERE THEY'LL GO.
+               CLR.B   BEGIN_TRUNC          ;DON'T SKIP ANY DATA.
+               BRA.S   DISK_READ
+;
+;
+;
+; READ SECTOR ON CURRENT TRACK WHOSE NUMBER IS PASSED IN D0,
+; PUT DATA INTO CPU RAM AT ADDRESS PASSED IN A0.
+; IF BEGIN_TRUNC = 0 UPON ENTRY:
+; D2 INDICATES NUMBER OF BYTES TO STORE, REMAINDER DISCARDED.
+; IF BEGIN_TRUNC > 0 UPON ENTRY:
+; D2 INDICATES # OF BYTES TO SKIP FROM BEGINNING OF SECTOR
+; BEFORE DATA STORAGE BEGINS, BYTE_LENGTH INDICATES THE # OF
+; BYTES WHICH ARE THEN STORED (REMAINDER, IF ANY, DISCARDED).
+;
+SECTOR_READ
+               MOVE.B  D0,DISK_SEC               ;PASS SECTOR NUMBER TO FDC.
+               MOVEQ   #NEG_EXT+READ_SECTOR,D0   ;FETCH FDC COMMAND BYTE.
+;
+;
+;
+DISK_READ
+               MOVE.B  D0,DISK_CMD          ;ISSUE COMMAND TO FDC.
+;
+               BSR     DELAY_32USEC         ;ALLOW TIME FOR FDC STATUS TO BECOME VALID.
+               TST.B   BEGIN_TRUNC          ;SKIP OVER ANY DATA BEFORE STORING TO RAM BEGINS?
+               BNE.S   DISK_RD_B            ;BRANCH IF YES.
+;
+               BSR     AWAIT_DRQ            ;(88) ALLOW 250 MSEC TO FIRST DRQ.
+               BRA.S   DISK_RD_2            ;(10) UPON DRQ, JUMP INTO READ LOOP AT DATA READ POINT.
+;
+DISK_RD_B
+               BSR     AWAIT_DRQ            ;(88) ALLOW 250 MSEC TO FIRST DRQ.
+               BRA.S   DISK_RD_D            ;(10) UPON DRQ, JUMP INTO SKIP LOOP AT DATA READ POINT.
+;
+DISK_RD_1
+               MOVE.B  DISK_STAT,D1         ;(16) LOOP UNTIL FDC NOT BUSY, OR D2 BYTES READ.
+               BTST    #DRQ,D1              ;(10) IS DATA AVAILABLE FROM FDC?
+               BNE.S   DISK_RD_2            ;(12) YES - READ IT AND GET BACK PRONTO.
+               BTST    #FDC_BUSY,D1         ;(10) NO - IS FDC STILL BUSY?
+               BNE     DISK_RD_1            ;(10) IF YES, IMMEDIATELY REPEAT POLL FOR DRQ.
+               BRA.S   DISK_RD_3            ;     IF NO, GO CHECK COMPLETION STATUS.
+DISK_RD_2
+               MOVE.B  DISK_DATA,(A0)+      ;(20) READ AND STORE A BYTE.
+               SUBQ    #1,D2                ;( 4) HAS ALL REQUESTED DATA BEEN READ?
+               BNE     DISK_RD_1            ;(10) NO - GO BACK INTO DATA READ LOOP.
+;
+DISK_RD_9
+               MOVE.B  DISK_STAT,D1         ;(16) AS PER ABOVE LOOP, BUT READ DATA IS NOT STORED.
+               BTST    #DRQ,D1              ;(10)
+               BNE.S   DISK_RD_A            ;(12) DATA AVAILABLE - READ IT.
+               BTST    #FDC_BUSY,D1         ;(10)
+               BNE     DISK_RD_9            ;(10) NO DATA AVAILABLE - KEEP WATCHING.
+               BRA.S   DISK_RD_3            ;     COMMAND ENDED - READ COMPLETION STATUS.
+DISK_RD_A
+               MOVE.B  DISK_DATA,D0         ;(16) DUMMY READ, DATA NOT STORED.
+               BRA     DISK_RD_9            ;(10) KEEP ON KEEPIN' ON TILL FDC SAYS "I QUIT!"
+;
+DISK_RD_C
+               MOVE.B  DISK_STAT,D1         ;(16) AS PER ABOVE LOOP, BUT REPEATS DELIMITED BY D2.
+               BTST    #DRQ,D1              ;(10)
+               BNE.S   DISK_RD_D            ;(12) DATA AVAILABLE - GO READ IT.
+               BTST    #FDC_BUSY,D1         ;(10) IS FDC STILL BUSY?
+               BNE     DISK_RD_C            ;(10) YES - KEEP LOOPING.
+               BRA.S   DISK_RD_3            ;NO - GO CHECK COMPLETION STATUS IN D1.
+DISK_RD_D
+               MOVE.B  DISK_DATA,D0         ;(16) DUMMY READ, DATA NOT STORED.
+               SUBQ    #1,D2                ;( 4) ENOUGH BYTES SKIPPED?
+               BNE     DISK_RD_C            ;(10) NO - STAY IN SKIP LOOP.
+               MOVE    BYTE_LENGTH,D2       ;(12) YES - FETCH DATA TRANSFER LENGTH.
+               BRA     DISK_RD_1            ;(10) JUMP INTO DATA STORE LOOP.
+;
+DISK_RD_3
+               BSR     TEST_COMPL_STAT      ;GET DISK SYS CODE IN D0 FOR FDC STATUS NOW IN D1.
+DISK_RD_EXIT
+               RTS
+;
+MAX_TRK_BYTES  EQU     6538                 ;UNFORMATTED BYTES PER TRACK, NOMINAL PLUS 5%.
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; WRITE SECTOR WHOSE NUMBER IS PASSED IN D0,
+; USING BLOCK OF CPU RAM PASSED VIA A0 (AS POINTER).
+; D2 INDICATES NUMBER OF DATA BYTES TO WRITE -
+; REMAINDER OF SECTOR (IF ANY) IS FILLED WITH ZEROES.
+;
+SECTOR_WRITE
+               MOVE.B  D0,DISK_SEC               ;PASS SECTOR NUMBER TO FDC.
+               MOVE.B  #WRITE_SECTOR,DISK_CMD    ;ISSUE COMMAND TO FDC.
+;
+               BSR     DELAY_32USEC         ;ALLOW TIME FOR FDC STATUS TO BECOME VALID.
+;
+               BSR     AWAIT_DRQ            ;(88) ALLOW 250 MSEC TO FIRST DRQ - WHEN IT OCCURS,
+               BRA.S   DISK_WR_2            ;(10) JUMP INTO WRITE LOOP AT DATA FETCH POINT.
+;
+DISK_WR_1
+               MOVE.B  DISK_STAT,D1         ;(16) LOOP UNTIL FDC NOT BUSY, OR D2 BYTES WRITTEN.
+               BTST    #DRQ,D1              ;(10) IS DATA REQUESTED BY FDC?
+               BNE.S   DISK_WR_2            ;(12) YES - SEND IT AND GET BACK PRONTO.
+               BTST    #FDC_BUSY,D1         ;(10) NO - IS FDC STILL BUSY?
+               BNE     DISK_WR_1            ;(10) IF YES, IMMEDIATELY REPEAT DRQ POLL.
+               BRA.S   DISK_WR_3            ;     IF NO, GO CHECK COMPLETION STATUS.
+DISK_WR_2
+               MOVE.B  (A0)+,DISK_DATA      ;(20) FETCH AND WRITE CURRENT DATA BYTE.
+               SUBQ    #1,D2                ;( 4) HAS ALL REQUESTED DATA BEEN WRITTEN?
+               BNE     DISK_WR_1            ;(10) NO - GO BACK INTO DATA WRITE LOOP.
+               MOVE.L  #TRK_WR_TBL,A0
+;
+DISK_WR_10
+               MOVE.B  DISK_STAT,D1         ;(16) AS PER ABOVE LOOP, BUT REPEATEDLY WRITES 00H.
+               BTST    #DRQ,D1              ;(10)
+               BNE.S   DISK_WR_11           ;(12) DATA REQUESTED - WRITE IT.
+               BTST    #FDC_BUSY,D1         ;(10)
+               BNE     DISK_WR_10           ;(10) NO DATA REQUESTED - KEEP WATCHING.
+               BRA.S   DISK_WR_3            ;     COMMAND ENDED - READ COMPLETION STATUS.
+DISK_WR_11
+               MOVE.B  (A0)+,D0
+               NOT     D0
+               MOVE.B  D0,DISK_DATA         ;(16) FILLER WRITE, DATA = 0.
+               BRA     DISK_WR_10           ;(10) KEEP ON KEEPIN' ON TILL FDC SAYS "I QUIT!"
+;
+DISK_WR_3
+               BSR.S   TEST_WRITE_STAT      ;GET DISK SYS CODE IN D0 FOR FDC STATUS NOW IN D1.
+DISK_WR_EXIT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; D1 CONTAINS FINAL FDC STATUS (D1 IS LEFT UNCHANGED).
+; TEST FOR FDC/DISK ERRORS ASSOCIATED WITH DISK READ OR WRITE,
+; RETURN ASSOCIATED DISK SYSTEM ERROR CODE IN D0 (WITH Z FLAG FALSE),
+; OR RETURN WITH Z FLAG TRUE TO INDICATE NO ERROR DETECTED.
+;
+TEST_WRITE_STAT
+               BTST    #WRT_PROT,D1         ;THIS ERROR POSSIBLE ONLY DURING WRITE.
+               BNE.S   TST_CMP_9
+;
+                                            ;REMAINING ERRORS CAN OCCUR DURING READ OR WRITE.
+TEST_COMPL_STAT
+               BTST    #SEC_NOT_FND,D1      ;REQUESTED SECTOR NOT FOUND OR ID HAD BAD CRC.
+               BNE.S   TST_CMP_5
+               BTST    #CRC_ERR,D1          ;DATA FIELD HAD BAD CRC.
+               BNE.S   TST_CMP_6
+               BTST    #LOST_DATA,D1        ;CPU DID NOT STAY CAUGHT UP WITH FDC, MISSED DATA.
+               BNE.S   TST_CMP_7
+               BTST    #DEL_DATA,D1         ;SECTOR HAD DELETED DATA MARK.
+               BNE.S   TST_CMP_8
+               BRA.S   TST_CMP_EXIT         ;RETURN Z FLAG TRUE IF NO ERROR.
+TST_CMP_5
+               BTST    #CRC_ERR,D1          ;WAS REQUESTED SECTOR FOUND, BUT WITH BAD ID CRC?
+               BNE.S   TST_CMP_4            ;BRANCH IF YES -
+               MOVEQ   #NO_SECTOR,D0        ;ELSE REQUESTED SECTOR WAS NOT FOUND AT ALL.
+               BRA.S   TST_CMP_EXIT
+TST_CMP_4
+               MOVEQ   #BAD_SECTOR,D0
+               BRA.S   TST_CMP_EXIT
+TST_CMP_6
+               MOVEQ   #BAD_DATA,D0
+               BRA.S   TST_CMP_EXIT
+TST_CMP_7
+               MOVEQ   #DATA_LOST,D0
+               BRA.S   TST_CMP_EXIT
+TST_CMP_8
+               MOVEQ   #DATA_DELETED,D0
+               BRA.S   TST_CMP_EXIT
+TST_CMP_9
+               MOVEQ   #PROTECTD_DISK,D0
+TST_CMP_EXIT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; VERIFY THE SECTOR INDICATED BY NUMBER IN D0 BYTE-FOR-BYTE
+; AGAINST THE DATA IN CPU RAM POINTED TO BY A0 UPON ENTRY.
+; D2 INDICATES LENGTH OF DATA FIELD TO VERIFY, REST OF SECTOR IS IGNORED.
+;
+SECTOR_VER
+               CLR     D4                        ;D4 IS USED AS VERIFY-ERROR FLAG - CLEAR IT.
+               MOVE.B  D0,DISK_SEC               ;PASS SECTOR NUMBER TO FDC.
+               MOVE.B  #READ_SECTOR,DISK_CMD     ;ISSUE COMMAND TO FDC.
+;
+               BSR     DELAY_32USEC         ;ALLOW TIME FOR FDC STATUS TO BECOME VALID.
+;
+               BSR     AWAIT_DRQ            ;(88) ALLOW 250 MSEC TO FIRST DRQ.
+               BRA.S   SEC_VER_2            ;(10) JUMP INTO LOOP AT COMPARE-DATA FETCH POINT.
+;
+SEC_VER_1
+               MOVE.B  DISK_STAT,D1         ;(16) LOOP UNTIL FDC NOT BUSY, OR (D2) BYTES COMPARED.
+               BTST    #DRQ,D1              ;(10) IS DATA AVAILABLE FROM FDC?
+               BNE.S   SEC_VER_2            ;(12) YES - READ IT AND GET BACK PRONTO.
+               BTST    #FDC_BUSY,D1         ;(10) NO - IS FDC STILL BUSY?
+               BNE     SEC_VER_1            ;(10) IF YES, IMMEDIATELY REPEAT POLL FOR DRQ.
+               BRA.S   SEC_VER_3            ;     IF NO, GO CHECK COMPLETION STATUS.
+SEC_VER_2
+               MOVE.B  DISK_DATA,D0         ;(16) READ A BYTE FROM DISK.
+               CMP.B   (A0)+,D0             ;( 8) FETCH BYTE FROM RAM AND COMPARE THE VALUES.
+               BEQ.S   SEC_VER_12           ;(12) IF COMPARE OK, BACK INTO POLL LOOP ASAP.
+               ST      D4                   ;( 4) IF NOT, SET VERIFY-ERROR FLAG.
+SEC_VER_12
+               SUBQ    #1,D2                ;( 4) HAS ALL REQUESTED DATA BEEN VERIFIED?
+               BNE     SEC_VER_1            ;(10) NO - GO BACK INTO DATA VERIFY LOOP.
+;
+SEC_VER_10
+               MOVE.B  DISK_STAT,D1         ;(16) AS PER ABOVE LOOP, BUT DATA IS NOT COMPARED.
+               BTST    #DRQ,D1              ;(10)
+               BNE.S   SEC_VER_11           ;(12) DATA AVAILABLE - READ IT.
+               BTST    #FDC_BUSY,D1         ;(10)
+               BNE     SEC_VER_10           ;(10) NO DATA AVAILABLE - KEEP WATCHING.
+               BRA.S   SEC_VER_3            ;     COMMAND ENDED - READ COMPLETION STATUS.
+SEC_VER_11
+               MOVE.B  DISK_DATA,D0         ;(16) DUMMY VERIFY, DATA NOT TESTED.
+               BRA     SEC_VER_10           ;(10) KEEP ON KEEPIN' ON TILL FDC SAYS "I QUIT!"
+;
+SEC_VER_3
+               BSR.S   TEST_VERFY_STAT      ;GET DISK SYS CODE IN D0 FOR FDC STATUS NOW IN D1, D4.
+SEC_VER_EXIT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; SAME AS TEST_COMPL_STAT (ABOVE), BUT ALSO CHECKS VERIFY-ERROR FLAG (D4)
+; IF NO OTHER ERROR HAS BEEN DETECTED.
+;
+TEST_VERFY_STAT
+               BSR     TEST_COMPL_STAT      ;CHECK FOR FDC/DISK ERRORS FIRST.
+               BNE.S   TST_VER_EXIT         ;EXIT AT ONCE IF ANY OCCURRED.
+               TST     D4                   ;ELSE, READ VERIFY-ERROR FLAG -
+               BEQ.S   TST_VER_EXIT         ;EXIT IF NO VERIFY-ERRORS OCCURRED,
+               MOVEQ   #VERIFY_ERR,D0       ;ELSE RETURN APPRORIATE ERROR CODE.
+TST_VER_EXIT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; FORMAT A TRACK WITH ALL DATA FIELD BYTES = 00.
+; FORMAT IS 1024 BYTES/FULL SECTOR, 5 FULL SECS/TRACK (0-4),
+; PLUS 256-BYTE SECTOR (5) AT END OF EACH TRACK.
+; TRACK_WRITE RETURNS ERROR CODE IF DRIVE SPEED IS MORE THAN
+; 3% ABOVE OR BELOW NOMINAL SPEED (THESE CODES ARE DISTINCT
+; FROM THOSE RETURNED BY CHECK_DRIVE FOR SPEED ERRORS).
+;
+TRACK_WRITE
+               CLR     CURRENT_SEC          ;START EACH TRACK WITH SECTOR 0.
+               MOVEQ   #6,D4                ;SET SECTORS-TO-FORMAT COUNTER (SHORT SECTOR INCLUDED).
+               MOVE.B  #WRITE_TRACK,DISK_CMD     ;ISSUE COMMAND TO FDC.
+;
+               BSR     DELAY_32USEC         ;ALLOW TIME FOR FDC STATUS TO BECOME VALID.
+;
+               MOVEQ   #4EH,D0              ;WRITE INDEX GAP - 32 BYTES OF '4EH'.
+               MOVEQ   #1,D2
+               BSR     TRK_WR_8             ;FDC ASSERTS DRQ UPON RECEIVING TRACK WRITE COMMAND -
+                                            ;GIVE IT A BYTE, SATISFY IT - NEXT DRQ COMES WHEN INDEX
+                                            ;PULSE IS SEEN, THIS IS THE ONE TO TIME OUT ON .....
+               MOVEQ   #31,D2               ;WRITE COUNT FOR REMAINDER OF INDEX GAP.
+               BSR     AWAIT_DRQ            ;(88) ALLOW 250 MSEC TO SECOND DRQ (AT INDEX PULSE) -
+               BSR     TRK_WR_E             ;(18) AT DRQ, JUMP INTO WRITE LOOP AT DATA WRITE POINT.
+;
+                                            ;SECTOR BEGINS HERE.
+TRK_WR_1
+               CLR     D0                   ;( 4) WRITE ID MARK - FIRST, 12 BYTES OF '00H' ....
+               MOVEQ   #12,D2               ;( 4)
+               BSR     TRK_WR_8             ;(18)
+;
+               MOVEQ   #NEG_EXT+0F5H,D0     ;( 4) 3 BYTES OF 'A1H', MISSING CLOCK BETW BITS 4 & 5 -
+               MOVEQ   #3,D2                ;( 4) ON SECTOR OPERATIONS, THIS SYNCHRONIZES FDC DATA
+               BSR     TRK_WR_8             ;(18) SEPARATOR - '0F5H' DURING TRACK WRITE FORCES
+                                            ;     INITIALIZATION OF FDC CRC-COMPUTING LOGIC ....
+;
+               MOVEQ   #NEG_EXT+0FEH,D0     ;( 4) .... CODE '0FEH' IS END OF PREAMBLE TO ID MARK.
+               MOVEQ   #1,D2                ;( 4)
+               BSR     TRK_WR_8             ;(18)
+;
+               MOVE    CURRENT_TRACK,D0     ;(12) WRITE ADDRESS ID FIELD - FIRST, TRACK NUMBER ....
+               MOVEQ   #1,D2                ;( 4)
+               BSR     TRK_WR_8             ;(18)
+;
+               MOVE    CURRENT_SIDE,D0      ;(12) .... NEXT, SIDE NUMBER (ZERO, THAT) ....
+               MOVEQ   #1,D2                ;( 4)
+               BSR     TRK_WR_8             ;(18)
+;
+               MOVE    CURRENT_SEC,D0       ;(12) .... THEN SECTOR ADDRESS ....
+               MOVEQ   #1,D2                ;( 4)
+               BSR     TRK_WR_8             ;(18)
+;
+               MOVE    D4,D0                ;( 4) CHECK SECTORS-TO-FORMAT COUNTER - USE SEC LENGTH
+               CMP     #1,D4                ;( 8) CODE 1 (256 BYTES) FOR SECTOR 5,
+               BEQ.S   TRK_WR_H             ;(12) OR CODE 3 (1024 BYTES) FOR SECTORS 0-4.
+               MOVEQ   #3,D0                ;( 4)
+TRK_WR_H
+               MOVEQ   #1,D2                ;( 4)
+               BSR.S   TRK_WR_8             ;(18)
+;
+               MOVEQ   #NEG_EXT+0F7H,D0     ;( 4) '0F7H' COMMANDS FDC TO WRITE TWO CRC BYTES ...
+               MOVEQ   #1,D2                ;( 4)
+               BSR.S   TRK_WR_8             ;(18)
+;
+               MOVEQ   #NEG_EXT+0FEH,D0     ;( 4) WRITE ID GAP - 22 BYTES OF '0FEH'.
+               MOVEQ   #22,D2               ;( 4)
+               BSR.S   TRK_WR_8             ;(18)
+;
+               CLR     D0                   ;( 4) WRITE DATA MARK - FIRST, 12 BYTES OF '00H' ....
+               MOVEQ   #12,D2               ;( 4)
+               BSR.S   TRK_WR_8             ;(18)
+;
+               MOVEQ   #NEG_EXT+0F5H,D0     ;( 4) THREE 'A1H' WITH MISSING CLOCK - INIT CRC LOGIC -
+               MOVEQ   #3,D2                ;( 4)
+               BSR.S   TRK_WR_8             ;(18)
+;
+               MOVEQ   #NEG_EXT+NON_DELETED,D0   ;( 4) END OF DATA MARK - '0FBH' MEANS NON-DELETED
+               MOVEQ   #1,D2                ;( 4) DATA - ALL SECTORS ARE FORMATTED AS NON-DELETED.
+               BSR.S   TRK_WR_8             ;(18)
+;
+               MOVE.W  #SEC_SIZE,D2         ;( 8) ASSUME A 1024-BYTE SECTOR, THEN TEST ....
+               CMP     #5,CURRENT_SEC       ;(16) FORMAT FULL SECTOR OR SHORT SECTOR?
+               BNE.S   TRK_WR_2             ;(12) ASSUMPTION CORRECT, FORMAT A 1024-BYTE SECTOR.
+               MOVE.W  #SEC_5_SIZE,D2       ;( 8) ASSUMPTION INCORRECT, FORMAT A 256-BYTE SECTOR.
+TRK_WR_2
+               CLR     D0                   ;( 4) WRITE DATA FIELD - 256 OR 1024 BYTES OF '00H'.
+               BSR.S   TRK_WR_8             ;(18)
+;
+               MOVEQ   #NEG_EXT+0F7H,D0     ;( 4) WRITE (2) DATA CRC BYTES.
+               MOVEQ   #1,D2                ;( 4)
+               BSR.S   TRK_WR_8             ;(18)
+;
+               ADDQ    #1,CURRENT_SEC       ;(16) THIS SEEMED LIKE AS GOOD A TIME AS ANY ....
+;
+               MOVEQ   #4EH,D0              ;( 4) WRITE DATA GAP - 48 BYTES OF '04EH'.
+               MOVEQ   #48,D2               ;( 4)
+               BSR.S   TRK_WR_8             ;(18)
+;
+               SUBQ    #1,D4                ;( 4) SECTOR WRITTEN - ANY MORE TO WRITE?
+               BNE     TRK_WR_1             ;(12) RIGHT, GET ON WI' IT.
+                                            ;THESE LINES PART OF WORST CASE WRITE-LOOP CALL.
+;
+               MOVE.W  #315,D2              ;( 8) NO MORE - WRITE TRACK GAP WITH '04EH' UNTIL INDEX
+               BSR.S   TRK_WR_8             ;(18) (NORMAL) OR UNTIL 315 BYTES WRITTEN (ABNORMAL).
+TRK_WR_3
+               MOVEQ   #FORMAT_OVRUN,D0     ;RETURN HERE IS NOT EXPECTED, INDICATES FORMAT HAS GONE
+               BRA.S   TRK_WR_EXIT          ;INTO OVERTIME - RETURN ERROR CODE IN D0.
+                                            ;(NOTE: PROBABLY MEANS DISK WAS REMOVED FROM DRIVE.)
+;
+;
+                                            ;COME HERE IF FDC NOT BUSY.
+TRK_WR_4
+               LEA     4(A7),A7             ;YANK RETURN ADDRESS FROM STACK.
+               BTST    #WRT_PROT,D1         ;CHECK FOR ERRORS:
+               BNE.S   TRK_WR_5             ;BRANCH IF FORMATTING A WRITE-PROTECTED DISK.
+               BTST    #LOST_DATA,D1
+               BNE.S   TRK_WR_6             ;BRANCH IF CPU WAS DRAGGING ITS BUTT TOO MUCH.
+                                            ;NEITHER - YOU MAY ASK YOURSELF, HOW DID I GET HERE?
+               CMP.L   #TRK_WR_3,-4(SP)     ;WAS I WRITING TRACK GAP? CHECK TRK_WR_8 RETURN ADDR -
+               BNE.S   TRK_WR_7             ;NO - SOMETHING FOULED UP, TRACK WRITE IS NOT COMPLETE.
+               BRA.S   TRK_WR_EXIT          ;YES - NORMAL TERMINATION, RETURN Z FLAG TRUE.
+TRK_WR_5
+               MOVEQ   #PROTECTD_DISK,D0
+               BRA.S   TRK_WR_EXIT
+TRK_WR_6
+               MOVEQ   #DATA_LOST,D0        ;THIS WOULD IMPLY BAD SOFTWARE DESIGN.
+               BRA.S   TRK_WR_EXIT
+TRK_WR_7
+               MOVEQ   #FORMAT_INCMPLT,D0   ;THIS IS PROBABLY A DRIVE ROTATIONAL SPEED PROBLEM.
+               BRA.S   TRK_WR_EXIT
+;
+;
+                                            ;TRK_WR_8 WRITES CONSTANT D0 BYTE VALUE D2 TIMES.
+TRK_WR_8
+               MOVE.B  DISK_STAT,D1         ;(16)
+               BTST    #DRQ,D1              ;(10) IS FDC REQUESTING DATA?
+               BEQ.S   TRK_WR_9             ;(12) NO - SEE IF IT'S STILL BUSY.
+TRK_WR_E
+               MOVE.B  D0,DISK_DATA         ;(16) YES - GIVE IT UP NOW.
+               SUBQ    #1,D2                ;( 4) ENOUGH TIMES FOR THIS BYTE?
+               BNE     TRK_WR_8             ;(10) NO, WRITE IT SOME MORE TIMES.
+               RTS                          ;(16) YES, GO ON TO NEXT DATA VALUE.
+TRK_WR_9
+               BTST    #FDC_BUSY,D1         ;(10) DID COMMAND TERMINATE?
+               BNE     TRK_WR_8             ;(10) NO - FDC STILL BUSY - GET BACK TO POLL LOOP.
+               BRA     TRK_WR_4             ;YES - SET UP TERMINATION INTERVIEW.
+;
+TRK_WR_EXIT
+               RTS
+;
+TRK_WR_TAG
+               LEA.L   TRK_WR_TBL(PC),A1
+               MOVEQ   #50,D2
+               MOVE    D2,D1
+               LSR     #1,D1
+               SUBQ    #1,D1
+               RTS
+TRK_WR_TBL
+               HEX     BB96,8C94,D0BB,B0AC,DF9D,8D90,8A98,978B
+               HEX     DF8B,90DF,8690,8ADF,9D86,DFD1,D1D1,D1DF
+               HEX     B29E,8B8B,979A,88DF,B68C,9E9E,9C8C,9091
+               HEX     DFDF
+;
+;
+;WORST-CASE TIMING SCENARIO:  (68B09 LEFTOVERS)
+;
+;     A DATA BYTE IS WRITTEN TO FDC AT LAST POSSIBLE MOMENT TO AVERT A LOST DATA ERROR, IMPLYING
+;     A NEW DRQ IMMEDIATELY AFTER WRITE AND A MINIMUM TIME (32 USEC) BEFORE NEXT LOST DATA ERROR
+;     MAY OCCUR (THIS ALSO IMPLIES THAT FDC STATUS WAS NOT POLLED FOR DRQ AT ANY TIME DURING THE
+;     PRECEDING 32 USEC, WHICH IS IN FACT NOT POSSIBLE - MAYBE THIS SHOULD BE CALLED THE "WORSE-
+;     THAN-WORST-CASE" SCENARIO?).  FROM THIS POINT (I.E., STA DISK_DATA), 13 CPU CYCLES WILL
+;     ELAPSE WHILE THE CPU DECIDES TO RETURN FROM TRK_WR_8.  A MAXIMUM OF 23 CYCLES WILL GO
+;     BY BEFORE THE LOOP IS REENTERED, AND ANOTHER 15 CYCLES WILL GO BY BEFORE NEW DATA IS WRITTEN
+;     TO THE FDC.  THIS TOTAL IS 13 + 23 + 15 = 51 CYCLES OR <26 USEC, WHICH IS ON TIME WITH
+;     6 USEC TO SPARE.  THE AVERAGE STATUS POLL PERIOD IS MUCH SHORTER (~12 USEC), SO THE ABOVE
+;     WORST-CASE CONDITION SHOULD NOT EVER OCCUR.
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; FDC DATA REQUEST SOFTWARE TIMEOUT -
+; CALLED AT BEGINNING OF ALL LOW-LEVEL READ AND WRITE ROUTINES.
+; IMPLEMENTS 1.25-REVOLUTION TIMEOUT ON ID OR INDEX SEARCHES,
+; RESULTING IN A 70% TIME REDUCTION COMPARED TO THAT OF THE
+; FDC, AND PREVENTING TRACK_WRITE HANG-UP IN THE EVENT OF USER
+; INEPTITUDE (E.G. REMOVAL OF DISK IN MID-COMMAND)
+; OR OTHER CATASTROPHIC DISK SYSTEM FAILURE.
+; ARRIVES AT RETURN DEST WITHIN 88 CYCLES AFTER DRQ OCCURS.
+; USES D1, D3 - NORMALLY LEAVES D0 UNCHANGED, BUT WILL
+; RETURN ERROR CODE IN D0 IF TIMEOUT OCCURS - THE CODE IS
+; DRQ_TIMEOUT UNLESS A WRITE-PROTECT ERROR WAS THE CAUSE.
+;
+AWAIT_DRQ
+               MOVE.W  #AWT_DRQ_TIME,D3     ;HOW LONG TO WAIT.
+AWT_DRQ_1
+               MOVE.B  DISK_STAT,D1         ;(16)
+               BTST    #DRQ,D1              ;(10)
+               BNE.S   AWT_DRQ_EXIT         ;(12) (10 IF BRANCH TAKEN)
+               SUBQ    #1,D3                ;( 4)
+               BNE     AWT_DRQ_1            ;(10)
+;
+                                            ;TIMED OUT WITH NO DRQ IN SIGHT -
+               MOVE.B  #FORC_INTR,DISK_CMD  ;CLEAR FDC, HALT CURRENT COMMAND.
+               ADDQ    #4,A7                ;DISCARD SUCCESSFUL-COMPLETION ADDRESS FROM STACK.
+               BTST    #FDC_BUSY,D1         ;WAS FDC STILL BUSY AT TIMEOUT?
+               BEQ.S   AWT_DRQ_2            ;NO - ASSUME WRITE-PROTECT ERROR.
+               MOVEQ   #DRQ_TIMEOUT,D0      ;YES - RETURN DRQ_TIMEOUT ERROR CODE.
+               BRA.S   AWT_DRQ_EXIT
+AWT_DRQ_2
+               MOVEQ   #PROTECTD_DISK,D0
+AWT_DRQ_EXIT
+               RTS                          ;(16) RETURN TO DISKLOW ROUTINE (IF DRQ OCCURRED)
+                                            ;OR TO DISKCMDS ROUTINE WHICH CALLED IT (IF NO DRQ).
+;
+AWT_DRQ_TIME   EQU     38462                ;52 CY = 6.5 USEC/LOOP, LOOP FOR 250 MSEC MAX.
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA

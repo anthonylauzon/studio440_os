@@ -1,0 +1,1050 @@
+               INCLUDE HPFIXUPS
+               TITLE "RESET_440"
+***************************************************************************************************
+***************************************************************************************************
+***                                                                                             ***
+***            RESET_440 - MODEL 440 POWER-ON RESET PROCEDURE                                   ***
+***                                                                                             ***
+***************************************************************************************************
+***************************************************************************************************
+;
+NEG_EXT        EQU     0FFFFFF00H      ;USE IN MOVEQ INSTRUCTIONS WHERE ARG IS
+                                       ;80H OR LARGER - HP XASM DOES NOT HANDLE
+                                       ;SIGN-EXTEND CORRECTLY.  COSMETIC, KEEPS
+                                       ;ACTUAL BYTE VALUE CLEARER.
+;
+               INCLUDE EQUATES         ;HDW ADDR AND CONSTANT DEFS, ABS_SHORT DIRECTIVE.
+;
+               INCLUDE S_BLK_EQU       ;SOUND CONTROL BLOCK DEFINITIONS.
+;
+               INCLUDE DISKDEFS        ;DISK SYSTEM DEFINITIONS.
+;
+               include trapdefs        ; system function access definitions.
+;
+               include lcd_funs        ; lcd/screen_buffer system function defs.
+;
+               GLB     START_HERE
+               GLB     RESET_INTR_ENB
+               GLB     STOCK_GRAPHICS
+;
+               EXTERNAL  NOTHINGNESS        ;EXTERNAL ROM.
+               EXTERNAL  VCA_OFF
+;880202               EXTERNAL  INIT_LCD,DISP_SCREEN
+;880202               EXTERNAL  DISP_FIELD,DISP_BUFFER
+;880202               EXTERNAL  STORE_GRAPHICS
+               EXTERNAL  BACK_HANDLER
+               EXTERNAL  UNPLUG_ALL_EDITS
+               EXTERNAL  WRITE_ZERO_AND_PEAK
+               EXTERNAL  RESET_PUNCHES
+               EXTERNAL  ZERO_THIS_CHIP
+               EXTERNAL  CLEAR_SONG
+               EXTERNAL  DIAG_440
+               EXTERNAL  SEQ_MEM_INIT
+               EXTERNAL  DISKWARD_HO
+               .import WAIT_A_SECOND
+;
+               EXTERNAL  V_PRIO_VEC         ;VOICE BLOCK ELEMENTS.
+               EXTERNAL  V_PRIO_TIME
+               EXTERNAL  V_CHIP_ADDR
+               EXTERNAL  V_CHIP_CHAN
+               EXTERNAL  V_CTRL_ADDR
+               EXTERNAL  V_THIS_VOICE
+               EXTERNAL  V_ACTIVE_SUB
+               EXTERNAL  V_IDLE_SUB
+               EXTERNAL  V_VCA_VECTOR
+               EXTERNAL  V_VCF_VECTOR
+               EXTERNAL  V_BEND_VECTOR
+               EXTERNAL  V_SUB_0
+               EXTERNAL  V_SUB_1
+               EXTERNAL  V_BLOCK_SIZE
+;
+                                            ;RAM AT LARGE.
+               EXTERNAL  INIT_TEMPO_BPM
+               EXTERNAL  INIT_TEMPO_FPB,INIT_TEMPO_USEC
+               EXTERNAL  LOOP_RECORD
+               EXTERNAL  EDIT_BAR,EDIT_BEAT,NOW_BAR
+               EXTERNAL  COUNT_IN_METHOD
+               EXTERNAL  FAZE_16_S0
+               EXTERNAL  RAW_MET
+               EXTERNAL  CLICKS_THIS_DENOM
+               EXTERNAL  NOW_LAST_BAR,CUE_BAR
+               EXTERNAL  SOUND_SEQ_SWITCH
+               EXTERNAL  NEW_PHASE_LIST,NEW_PHASE_LEN
+               EXTERNAL  AUTORPT_MIDI_MOD
+               EXTERNAL  KIT_SOUNDS,KIT_LEVELS,KIT_PITCHES,KIT_PANS
+               EXTERNAL  PAD_SOUNDS
+               EXTERNAL  MISC_OUT_STAT
+               EXTERNAL  V_BLK_00
+               EXTERNAL  ROTATING_VOICE
+               EXTERNAL  S_BLK_31
+               EXTERNAL  CUR_FUN_INDEX
+               EXTERNAL  CUR_SUB_BLOCK
+               EXTERNAL  PAD_CTRL_STAT
+               EXTERNAL  IDLE_DYNAMIC
+               EXTERNAL  POT_VALUE
+               EXTERNAL  CONVERT_DEST
+               EXTERNAL  SWITCH_MASK
+               EXTERNAL  FREE_SAM_RAM
+               EXTERNAL  CR_SAM_SIZE,CR_BAR
+               EXTERNAL  CR_SAM_RATE
+               EXTERNAL  SAMPLE_RAM_END
+               EXTERNAL  FLD_INDEX_STEP
+;900621               EXTERNAL  CLEAR_EVENT_LIST
+               EXTERNAL  KIT_INDEX
+               EXTERNAL  EDIT_KIT_INDEX
+               EXTERNAL  TO_MIX_PER
+               EXTERNAL  VCF_VCA_FLAG
+               EXTERNAL  MIDI_ROUTINE_PENDING,MIDI_GARBAGE
+               EXTERNAL  CUR_TEMPO_FPB
+               EXTERNAL  TC_MODE,TC_DIVIDE,SMPTE_NOW_T_1,SMPTE_NOW_TYPE
+               EXTERNAL  CUR_TEMPO_USEC,CUR_TEMPO_BPM,CLOCK_OUT_MODE
+               EXTERNAL  SWING_PER,PHASE_LIST
+               EXTERNAL  CURSOR_LFT_VEC,CURSOR_RGT_VEC
+               EXTERNAL  PHASE_LEN,MET_COUNT_DOWN,TAP_SLEW_AMOUNT,METRO_TONE
+               EXTERNAL  NOW_NUMERATOR,CLICKS_PER_TAP,TAP_CLICKS_LEFT
+               EXTERNAL  NOW_DENOMINATOR
+               EXTERNAL  RAW_DENOMINATOR
+               EXTERNAL  CLICKS_THIS_BAR
+               EXTERNAL  TOTAL_BARS,NOW_BEAT
+               EXTERNAL  NEXT_EVENT_TIME
+               EXTERNAL  MIDI_MODE,NEW_MUTE_TRACK
+               EXTERNAL  CURRENT_SONG
+               EXTERNAL  MIDI_OUT_CHANNEL,AUTOCORRECT_TYPE
+               EXTERNAL  MET_COUNT
+               EXTERNAL  NOW_MET_COUNT
+               EXTERNAL  FTSW1_VELOCITY
+               EXTERNAL  FTSW2_VELOCITY
+               EXTERNAL  LAST_MIDI
+               EXTERNAL  TRIG_ON_THRESH
+               EXTERNAL  TRIG_OF_THRESH
+               EXTERNAL  TRIG_HOLD_OFF
+               EXTERNAL  TRIG_VELOCITY
+               EXTERNAL  TRIG_VEL_DLY
+               EXTERNAL  TRIGGER_TIMER,SONG_SEL_ENABLE
+               EXTERNAL  ED_BLOCK_TIMER
+               EXTERNAL  REAL_TIME,M_DEVICE_ID
+               EXTERNAL  SCREEN_BUFFER
+               EXTERNAL  DRIVE_SEL
+               EXTERNAL  DISK_OP_CODE
+               EXTERNAL  CUR_BANK_NAME
+               EXTERNAL  DIAGS_ENABLED
+               EXTERNAL  SEQ_PEEK_BAR
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;881025               PROG                         ;CODE IS STARTING TO BE, HERE.
+;                          WHAT THE HELL DID WE NEED THIS FOR?
+;
+; INITIALIZATION CODE:
+;
+START_HERE
+               MOVE    #2700H,SR            ;DISABLE INTERRUPTS - SELECT SUPERVISOR STATE.
+                                            ;NOTE - 440 EXECUTES IN SUPERVISOR STATE AT ALL TIMES.
+;
+		suba.l	a7,a7				; 921008-04:58pm -
+							; init stack pointer to zero.
+;
+;
+;
+; ZERO ALL VCA SAMPLE-HOLDS:
+;
+               MOVE.L  #VCA_0,A0            ;POINTER TO VOICE 0 VCA S/H CHANNEL.
+               CLR     D1                   ;OUTPUT DATA -
+               MOVEQ   #42,D0               ;FIRST DO VOICES 7-0.
+VCA_ZERO_LOOP
+               MOVE    D1,0(A0,D0)          ;ZERO THE CURRENT VCA S/H.
+               MOVEM   D2-D7/A1-A2,-(A7)    ;WASTE SOME TIME TO ALLOW S/H UPDATE SEQUENCE TO OCCUR,
+               MOVEM   (A7)+,D2-D7/A1-A2    ;BUT DON'T TOUCH REGISTERS WE'RE USING HERE
+                                            ;(JUST IN CASE RAM DOESN'T WORK, AND WE'RE TRYING TO
+                                            ;GET INTO THE DIAGNOSTICS).
+               SUBQ    #6,D0                ;DROP OFFSET DOWN TO NEXT VCA CHANNEL.
+               BPL     VCA_ZERO_LOOP
+;
+               MOVE    D1,VOLUME_OUT        ;NOW SQUELCH MASTER VOLUME VCA.
+;
+;
+;
+; TURN OFF LEDs IN MAIN LED PORT:
+;
+               MOVE    #0FFFFH,LED_OUTPUT
+;
+;
+;
+; TURN OFF LEDs IN PAD_CONTROL PORT -
+; ALSO TURN ON LCD BACKLIGHT, DISCHARGE ALL PAD AND AUDIO TRIGGER PEAK-HOLDS:
+;
+               MOVE    #0D000H,PAD_CONTROL
+;
+;
+;
+; INITIALIZE CLOCK GENERATOR (8254) -
+; GET CPU RAM REFRESH HAPPENING (ALSO SAMPLE CLOCK, MSMPTE CLOCK):
+;
+               MOVE.B  #00010100B,COUNTER_CTRL   ;SET UP COUNTER 0 TO PROVIDE CPU RAM REFRESH CLOCK
+               MOVE.B  #7,COUNTER_0              ;WITH 14 USEC PERIOD, 2 USEC PULSE WIDTH -
+                                                 ;MODE 2 (PULSE), DIVIDE 500KHz CLK0 INPUT BY 7.
+;
+               MOVE.B  #01010110B,COUNTER_CTRL   ;SET UP COUNTER 1 TO PROVIDE 6803 MSMPTE CLOCK
+               MOVE.B  #32,COUNTER_1             ;AT 8 TIMES THE DEFAULT STANDARD MIDI BAUD RATE -
+                                                 ;MODE 3 (SQUARE WAVE), DIVIDE 8MHz CLK1 BY 32.
+;
+               MOVE.B  #10010110B,COUNTER_CTRL   ;SET UP COUNTER 2 TO PROVIDE SAMPLING CLOCK
+               MOVE.B  #16,COUNTER_2             ;AT 16 TIMES THE DEFAULT 31.25KHz SAMPLE RATE -
+                                                 ;MODE 3 (SQUARE WAVE), DIVIDE 8MHz CLK2 BY 16.
+;
+;
+;
+; RESET AND ENABLE UARTS:
+;
+;
+               MOVE.B  #17H,UART_A_CONTROL  ;MASTER RESET.
+               MOVE.B  #95H,UART_A_CONTROL  ;SELECT DIVIDE-BY-16 (OF 500KHz TO 31.25K BAUD CLOCK),
+                                            ;DATA FORMAT = 8 BIT PLUS ONE STOP BIT (NO PARITY),
+                                            ;ENABLE RCV INTERRUPT, LEAVE XMT INTERRUPT DISABLED.
+;
+               MOVE.B  #17H,UART_B_CONTROL  ;MASTER RESET.
+               MOVE.B  #15H,UART_B_CONTROL  ;SELECT DIVIDE-BY-16 (OF 500KHz TO 31.25K BAUD CLOCK),
+                                            ;DATA FORMAT = 8 BIT PLUS ONE STOP BIT (NO PARITY),
+                                            ;LEAVE XMT INTERRUPT DISABLED (RCV INTERRUPT NOT USED).
+;
+;
+;
+;
+; INITIALIZE CUSTOM CHIPS (SAMPLE MEMORY) -
+;
+INIT_CHIPS
+               MOVE.L  #CHIP1,A0            ;SET POINTER TO FIRST CHIP.
+               MOVEQ   #3,D0                ;INITIALIZE FOUR CHIPS IN A LOOP.
+;
+               MOVE.B  #2,MISC(A0)          ;PUT ALL CHIPS INTO RESET STATE, SELECT CHANNEL 0.
+               MOVE.B  #2,MISC+40H(A0)
+               MOVE.B  #2,MISC+80H(A0)
+               MOVE.B  #2,MISC+0C0H(A0)
+INIT_CHIPS_10
+               MOVE.B  #44H,DELAY(A0)       ;MIN CHANNEL DELAY, NO REFRESH, READ (IF SINGLE-STEP).
+               MOVE.B  #00H,PITCHLO(A0)     ;SET PITCH REGISTER UP FOR 31 KHz NOMINAL PITCH.
+               MOVE.B  #0FH,PITCHHI(A0)     ;SET PITCH REGISTER HIGH BYTE.
+               MOVE.B  #3,MISC(A0)          ;NOW SELECT CHANNEL 1, KEEPING CHIP IN RESET STATE.
+               MOVE.B  #00H,PITCHLO(A0)     ;SET PITCH REGISTER LOW BYTE,
+               MOVE.B  #0FH,PITCHHI(A0)     ;SET PITCH REGISTER HIGH BYTE.
+               MOVE.B  #0,MISC(A0)          ;TAKE CHIP OUT OF RESET STATE, SELECT CHIP CHANNEL 0.
+               MOVE.B  #4,MISC(A0)          ;AS AN ANTI-BLEEDTHROUGH MEASURE, JAM PITCH IN BOTH
+               MOVE.B  #5,MISC(A0)          ;CHANNELS OF CHIP - STOPS PLAYBACK OF GARBAGE RAM DATA.
+               LEA     40H(A0),A0           ;POINT TO NEXT CHIP,
+               DBRA    D0,INIT_CHIPS_10     ;GO BACK AND SET IT UP (IF ALL FOUR NOT DONE).
+;
+               MOVE.L  #CHIP2,A0            ;TELL CHIP 2 THAT IT IS REFRESCHER-MEISTER - ALSO,
+               MOVE.B  #89H,DELAY(A0)
+                                            ;SET IT FOR WRITE OPERATION WHEN IN SINGLE-STEP MODE.
+                                            ;NOTE - REFRESCHER-MEISTER NEEDS LONGER CHANNEL DELAY
+                                            ;THAN OTHER CHIPS.  ALSO, REFRESH IS IN CHIP 2 TO ALLOW
+                                            ;IT TO CONTINUE UNINTERRUPTED WHEN TWO-CHIP DAISY-CHAIN
+                                            ;IS SELECTED FOR FAST DATA TRANSFERS (CHIPS 1-2 ONLY).
+;
+               LEA     -40H(A0),A0          ;KICK CHIP 1 IN THE BUTTI TO START DAISY-CHAIN UP.
+               MOVE.B  #0,HARDSYNC(A0)      ;KICK CHIP 1 IN THE BUTTI TO START DAISY-CHAIN UP.
+;
+;
+;
+;
+;
+; CLEAR SYSTEM RAM:
+;
+               MOVE.L  #RAM_BEGIN,A0        ;A0 --> START OF SYSTEM RAM BLOCK -
+               MOVE.L  #RAM_LONG_LEN,D7     ;RAM LENGTH EXPRESSED IN LONG WORDS -
+RAM_CLEAR_LOOP
+               CLR.L   (A0)+                ;CLEAR 4 BYTES AT A TIME.
+               SUBQ.L  #1,D7                ;DECREMENT WORD-CLEAR COUNT,
+               BNE     RAM_CLEAR_LOOP       ;LOOP UNTIL DONE.
+;
+;
+;
+;
+; SEE IF USER IS INVOKING BUILT-IN DIAGNOSTICS:
+;
+DIAG_TST       BTST    #2,SWITCH_INPUT+9    ;IS < SWITCH HELD ?
+               BEQ.S   NOT_NOW_HONEY        ;IF NOT CONTINUE INITIALIZATION
+               BTST    #3,SWITCH_INPUT+9    ;IS > SWITCH HELD ?
+               BEQ.S   NOT_NOW_HONEY        ;IF SO GO TO DIAGNOSTICS
+                ABS_LONG
+               JMP     DIAG_440             ;IF BOTH SWITCHES DOWN, GO TO DIAGNOSTIX.
+                ABS_SHORT
+NOT_NOW_HONEY
+;
+;
+;
+;
+; INITIALIZE VOICE CONTROL BLOCKS:
+;
+VOICE_SETUP
+               MOVE    #V_BLK_00,A0         ;POINT TO BEGINNING OF VOICE BLOCK ARRAY.
+               MOVE    A0,ROTATING_VOICE    ;INITIALIZE 8-VOICE ROTATION VECTOR TO FIRST BLOCK.
+               MOVE.L  #CHIP1,A1            ;SET UP POINTER TO FIRST VOICE'S CUSTOM CHIP.
+               MOVE.L  #VCF_0,A2            ;SET UP POINTER TO FIRST VOICE'S S/H CHANNELS.
+               MOVEQ   #7,D0                ;SET UP 8-VOICE COUNT.
+               MOVE    #V_SUB_0,D1          ;SET UP OFFSETS TO VOICE SUB BLOCKS 0 (D1) AND 1 (D2).
+               MOVE    #V_SUB_1,D2
+               CLR     D3                   ;SET UP VOICE NUMBER (ALSO USED FOR CHIP CHANNEL).
+               MOVE    #NOTHINGNESS,D4      ;NULL VECTOR FOR DISCONNECTING VECTORED ROUTINES.
+;
+VOICE_SETUP_LOOP
+                                            ;FIRST, SET UP PARAMETERS IN THE COMMON BLOCK:
+               MOVE    D3,V_THIS_VOICE(A0)  ;WRITE THIS VOICE'S VOICE NUMBER INTO ITS VOICE BLOCK.
+               MOVE    D3,V_CHIP_CHAN(A0)   ;WRITE CHIP CHANNEL NUMBER FOR THIS VOICE.
+               AND     #1,V_CHIP_CHAN(A0)   ;IT'S EITHER 0 OR 1.
+               MOVE.L  A1,V_CHIP_ADDR(A0)   ;SET UP POINTER TO THIS VOICE'S CUSTOM CHIP.
+               MOVE.L  A2,V_CTRL_ADDR(A0)   ;SET UP POINTER TO THIS VOICE'S S/H CHANNELS.
+               MOVEM.L A0-A2/D0-D4,-(A7)    ;PROTECT THESE GUYS,
+               JSR     ZERO_THIS_CHIP       ;SET THIS CHIP/CHANNEL A-PLAYING AT ZERO-LEVEL LOC.
+               MOVEM.L (A7)+,A0-A2/D0-D4    ;BRING 'EM ON OUT AGIN.
+               CLR     V_PRIO_TIME(A0)      ;(SINCE ZERO_THIS_CHIP HAD OTHER IDEAS ....)
+               MOVE    D4,V_PRIO_VEC(A0)    ;LOAD DUMMY PRIORITY VECTOR.
+;
+               LEA     0(A0,D1),A3          ;START WITH VOICE SUB-BLOCK 0 "ACTIVE",
+               MOVE    A3,V_ACTIVE_SUB(A0)
+               LEA     0(A0,D2),A3          ;AND VOICE SUB-BLOCK 1 IDLE.
+               MOVE    A3,V_IDLE_SUB(A0)
+;
+                                                      ;NEXT, SET UP PARAMETERS IN THE SUB-BLOCKS:
+               MOVE    #VCA_OFF,V_VCA_VECTOR(A0,D1)   ;SET VCA TURN-OFF VECTOR IN BOTH SUB-BLOCKS.
+               MOVE    #VCA_OFF,V_VCA_VECTOR(A0,D2)
+               MOVE    D4,V_VCF_VECTOR(A0,D1)         ;SET NULL VECTOR FOR VCF, BEND.
+               MOVE    D4,V_VCF_VECTOR(A0,D2)
+               MOVE    D4,V_BEND_VECTOR(A0,D1)
+               MOVE    D4,V_BEND_VECTOR(A0,D2)
+;
+               BTST    #0,D3                ;AFTER EACH TWO VOICES, POINT TO NEXT CHIP.
+               BEQ.S   VOC_SET_20
+               LEA     40H(A1),A1           ;CHIP-TO-CHIP ADDRESS OFFSET.
+VOC_SET_20
+               ADDQ    #1,D3                ;SET UP NEXT VOICE NUMBER / CHIP CHANNEL NUMBER.
+               ADDQ.L  #6,A2                ;COMPUTE NEXT VOICE'S S/H CHANNEL POINTER.
+               ADD     #V_BLOCK_SIZE,A0     ;INCREMENT TO NEXT VOICE BLOCK.
+               DBRA    D0,VOICE_SETUP_LOOP  ;DO ALL 8 VOICE CONTROL BLOCKS.
+;
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+                SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;         DDDDD     EEEEEEE  FFFFFFF     AA     U      U  L        TTTTTTT   SSSSSS
+;         D    D    E        F          A  A    U      U  L           T     S
+;         D     D   E        F         A    A   U      U  L           T     S
+;         D     D   EEEEEE   FFFF     AAAAAAAA  U      U  L           T      SSSSS
+;         D     D   E        F        A      A  U      U  L           T           S
+;         D    D    E        F        A      A   U    UU  L           T           S
+;         DDDDD     EEEEEEE  F        A      A    UUUU U  LLLLLLL     T      SSSSS
+;
+;
+; INITIALIZE OTHER SYSTEM VARIABLES:
+;
+                ABS_LONG
+               JSR     UNPLUG_ALL_EDITS     ;DISCONNECT ALL PARAMETER EDIT VECTORS.
+                ABS_SHORT
+               MOVE    #NOTHINGNESS,CURSOR_LFT_VEC+2  ;DON'T LEAVE SCROLL SWITCHES HANGING, EITHER.
+               MOVE    #NOTHINGNESS,CURSOR_RGT_VEC+2
+;
+               SUBQ    #1,CUR_FUN_INDEX     ;AVOID MATCH WITH "PREVIOUS" FUNCTION SWITCH ON FIRST
+                                            ;FUNCTION SWITCH HIT (MATCH WOULD SELECT 2ND SUBFUN).
+;
+               ADDQ    #1,FLD_INDEX_STEP    ;INTIALIZE FIELD-SCROLL DIRECTION TO SCROLL-RIGHT.
+;
+               MOVE    #0D000H,PAD_CTRL_STAT     ;MIRROR INITIAL STATUS OF PAD_CONTROL REGISTER.
+;
+               ST      IDLE_DYNAMIC         ;UNTIL FURTHER NOTICE, ALL VOICES ARE IDLE,
+                                            ;AND ALL VOICES ARE IN DYNAMIC-ALLOCATION POOL.
+;
+               MOVE    #POT_VALUE+1,CONVERT_DEST ;DUMMY POINTER FOR FIRST PASS THROUGH REALTIME.
+;
+               ADDQ    #1,VCF_VCA_FLAG      ;DEFAULT TO VCA PARAMETER EDIT.
+;
+               MOVE    #50,TO_MIX_PER       ;DEFAULT FOR SOUND MIX SCREEN.
+;
+               MOVE.L  #MIDI_GARBAGE,MIDI_ROUTINE_PENDING  ;WAKE UP WITH NO MIDI MESSAGE PENDING.
+;
+               MOVE.L  #20202020H,D0        ;DEFAULT DISK BANK NAMES TO "        ".
+               MOVE    #CUR_BANK_NAME,A0
+               MOVE.L  D0,(A0)+             ;THIS BE SOUNDS BANK NAME,
+               MOVE.L  D0,(A0)+
+               MOVE.L  D0,(A0)+             ;THIS BE SEQUENCES BANK NAME.
+               MOVE.L  D0,(A0)+
+;
+               ADDQ.B  #3,SMPTE_NOW_T_1          ;DEFAULT SMPTE TYPE IS 30 FPS ndf
+               MOVE.B  #30,SMPTE_NOW_TYPE        ; (INIT 2 WAYS)
+;
+               ADDQ.B  #00000011B,TC_MODE        ;INTERNAL CLOCK IN, CLICK OUT
+               ADDQ.B  #00000100B,TC_DIVIDE      ;96 PPQN IN & OUT
+               ADDQ    #7,CLOCK_OUT_MODE         ;24 PPQN CLICK OUT
+;
+               MOVE    #22727,CUR_TEMPO_USEC     ;110 BPM  (ENCODED IN BPM, usec/CLICK, AND FPB)
+               MOVE    #22727,INIT_TEMPO_USEC
+               MOVE    #1100,CUR_TEMPO_BPM
+               MOVE    #1100,INIT_TEMPO_BPM
+               MOVE    #163,CUR_TEMPO_FPB
+               MOVE    #163,INIT_TEMPO_FPB
+               ADDQ    #1,NOW_BEAT          ;INITIALIZE FOR START OF SEQUENCE.
+               ADDQ    #1,EDIT_BEAT
+               ADDQ    #1,NOW_BAR
+               ADDQ    #1,EDIT_BAR
+               ADDQ    #1,CUE_BAR
+               ADDQ.B  #1,LOOP_RECORD       ;LOOPING RECORD
+;
+               MOVE    #50,SWING_PER        ;DEFAULT SWING PERCENTAGE.
+;
+;30SEP               MOVE.L  #NOTHINGNESS,D0      ;RECORDING PHASE & PARSERS DEACTIVATED.
+;30SEP               MOVE.L  D0,NOTE_REC_PARSE
+;30SEP               MOVE.L  D0,OTRA_REC_PARSE
+;                      NOTE: INITIALIZED WHEN PLAYBACK IS STARTED.
+;
+               MOVE.L  #FAZE_16_S0,D0       ;DEFAULT TO STRAIGHT 16TH-NOTE AUTOCORRECT.
+               MOVE.L  D0,PHASE_LIST
+               MOVE.L  D0,NEW_PHASE_LIST
+               MOVE    #12,PHASE_LEN         ;(AUTOCORRECT = 16 = PHASE LENGTH OF 24 STEP).
+               MOVE    #12,NEW_PHASE_LEN
+               ADDQ    #4,AUTOCORRECT_TYPE
+               MOVE    #24,NOW_MET_COUNT    ;QUARTER NOTE METRONOME
+               MOVE    #24,MET_COUNT
+               ADDQ    #6,RAW_MET
+               ADDQ    #7,METRO_TONE        ;METRONOME SOUND.
+               ADDQ    #1,MET_COUNT_DOWN    ;SET UP METRONOME TO HAPPEN ON FIRST BEAT.
+               MOVE    #24,CLICKS_PER_TAP   ;SET UP CLICKS IN A COUNT-IN
+;
+               SUBQ    #1,NEW_MUTE_TRACK    ;NO NEW TRACKNUMS TO MUTE
+               ADDQ    #4,NOW_NUMERATOR     ;SET UP DEFAULT TIME SIG
+               ADDQ    #4,NOW_DENOMINATOR   ;    OF 4/4
+               ADDQ    #1,RAW_DENOMINATOR
+               MOVE    #96,CLICKS_THIS_BAR
+               MOVE    #24,CLICKS_THIS_DENOM
+               ADDQ    #4,TOTAL_BARS
+               ADDQ    #4,NOW_LAST_BAR
+               ADDQ    #1,NEXT_EVENT_TIME   ;WHEN SEQUENCER STARTED, FIRST CLICK STARTS FETCHING
+               ADDQ    #4,CR_BAR            ;INIT CREATION OF SEQUENCE TO 4 BARS
+;
+               ADDQ    #1,SOUND_SEQ_SWITCH  ;MIDI AIMED AT SEQUENCER
+               ADDQ    #1,MIDI_MODE         ;OMNI MODE
+               SUBQ    #1,MIDI_OUT_CHANNEL  ;NO MIDI XMISSION OF INTERNAL EVENTS UNLESS REQUESTED
+               SUBQ    #1,AUTORPT_MIDI_MOD  ;NORMAL VELOCITY FOR AUTOREPEAT
+               ADDQ    #1,SONG_SEL_ENABLE   ;OKAY TO RCV/XMIT SONG SELECT MESSAGES
+               ADDQ.B  #1,M_DEVICE_ID       ;DEFAULT OUR MIDI TIME CODE ID TO OUR SYSTEM EXCLUSIVE ID
+               MOVE    #3CH,LAST_MIDI       ;INITIALIZE LAST_MIDI (NOTE) TO C3 FOR SEQ ERASE FUNCTION.
+;
+                ABS_LONG
+               JSR     RESET_PUNCHES        ;RESET PUNCH IN/OUT POINTS
+                ABS_SHORT
+;
+               ADDQ    #4,TAP_SLEW_AMOUNT   ; 4 TAPS...
+               ADDQ    #1,COUNT_IN_METHOD   ;  ...IN A COUNT-IN
+               ADDQ    #5,TAP_CLICKS_LEFT   ;INIT COUNT-IN TO ABOVE 4 TAPS (PLUS 1, FOR FIRST HIT)
+;19JUN               MOVE    #1,CLICKS_PER_TAP_LEFT    ;FIRST CLICK ON A COUNT IN FORCES A MET HIT
+               MOVE    #24,CLICKS_PER_TAP   ;WAKE UP WITH TAPS = 1/4 NOTES (24 CLICKS/QUARTER)
+;
+               MOVE    #64,FTSW1_VELOCITY   ;FOOTSWTICH "PAD" DEFAULT VELOCITY - MID-SCALE.
+               MOVE    #64,FTSW2_VELOCITY
+;
+               MOVE    #64,TRIG_ON_THRESH   ;DEFAULTS FOR AUDIO-TRIGGER INPUT SCAN.
+               MOVE    #63,TRIG_OF_THRESH   ;"OFF" THRESHOLD JUST BELOW "ON" THRESHOLD.
+               MOVE    #20,TRIG_HOLD_OFF    ;20 MSEC POST-TRIGGER HOLD-OFF DELAY.
+               MOVE    #64,TRIG_VELOCITY    ;MID-SCALE EVENT VELOCITY (FIXED, NOT SENSED).
+               ADDQ    #4,TRIG_VEL_DLY      ;4 MSEC POST-"ON" VELOCITY SAMPLING PERIOD.
+               ADDQ    #8,TRIGGER_TIMER     ;GIVE TIMER A BOOST INTO NON-NEGATIVELAND.
+;
+;
+;
+;
+;
+; ENABLE INTERRUPTS:
+; (REALTIME INTERRUPT WILL KEEP VCAs JAMMED SHUT).
+;
+               OR.B    #60H,MISC_OUT_STAT   ;TURN OFF METRONOME CIRCUIT
+               MOVE.B  MISC_OUT_STAT,MISC_OUT
+               TST     CLR_24_PPQN          ;CLEAR LEVEL 2 (CLICK) INTERRUPTUS FLAGGULUS.
+               TST     CLR_1_MSEC           ;CLEAR REAL-TIME INTERRUPT FLIP-FLOP.
+               TST.B   TC_READ              ;CLEARE LEVELE 5 (TIMINGE CHIPPE) INTERRUPTE.
+RESET_INTR_ENB
+               MOVE    #2000H,SR            ;ENABLE INTERRUPTS - SET MASK LEVEL TO 0,
+                                            ;KEEP SUPERVISOR STATE.
+;
+;
+;
+; INITIALIZE LCD, DISPLAY "HELLO" MESSAGE:
+;
+;880202               ABS_LONG
+;880202;
+;880202               JSR     INIT_LCD             ;INITIALIZE LCD.
+;880202;
+;880202               MOVE.L  #STOCK_GRAPHICS,A1   ;INITIALIZE LCD CHARACTER RAM WITH STOCK GRAPHICS
+;880202               JSR     STORE_GRAPHICS       ;CHARACTERS (MUST REINITIALIZE FOR ANY SCREEN WHICH
+;880202                                            ;USES THEM, AS THEY MAY GET REWRITTEN).
+;880202               MOVE.L  #AND_NOW_SCREEN,A1   ;DISPLAY "AND NOW" SCREEN.
+;880202               JSR     DISP_SCREEN
+;880202;
+;880202               ABS_SHORT
+;
+;
+;
+               CALL    LCD_FUNS,LCD_INIT    ;INITIALIZE LCD.
+;
+;900426               MOVE.L  #STOCK_GRAPHICS,A1   ;INITIALIZE LCD CHARACTER RAM WITH STOCK GRAPHICS
+               lea.l   STOCK_GRAPHICS(pc),A1     ;INITIALIZE LCD CHARACTER RAM WITH STOCK GRAPHICS
+               CALL    LCD_FUNS,STO_GRPHCS  ;CHARACTERS (MUST REINITIALIZE FOR ANY SCREEN WHICH
+                                            ;USES THEM, AS THEY MAY GET REWRITTEN).
+;
+;900426               MOVE.L  #AND_NOW_SCREEN,A1   ;DISPLAY "AND NOW" SCREEN.
+;900426               CALL    LCD_FUNS,DSP_SCRN
+               lea.l   and_now_screen(pc),A1     ; display "and_now" screen -
+;900807               CALL    LCD_FUNS,WR_SCRN          ; copy encoded into buffer,
+;900807               bsr     decode_scrnbuf            ; decode in buffer,
+;900807               CALL    LCD_FUNS,DSP_BUF          ; display decoded buffer data.
+               CALL    LCD_FUNS,DSP_ENCD_SCRN    ; must be decoded for display.
+;
+;
+;
+;900621;
+;900621; RESET MTC (MIDI TIME CODE) EVENT LIST BY MAXING OUT
+;900621;
+;900621                ABS_LONG
+;900621               JSR     CLEAR_EVENT_LIST
+;900621                ABS_SHORT
+;
+;
+;
+; SET SOUND-CHIP HARDWARE FOR 4-CHIP DAISY-CHAIN:
+;
+               OR.B    #80H,MISC_OUT_STAT        ;SET UP NEW STATUS (FOUR-CHIP DAISY-CHAIN),
+               MOVE.B  MISC_OUT_STAT,MISC_OUT    ;PUT IT OUT THERE.
+;
+;
+;
+; SOUND ARRAY SETUP -
+; ALL SOUNDS DEFAULT TO DELETED STATUS, 31KHz SAMPLE RATE -
+; OTHER PARAMETERS DO NOT NECESSARILY GET VALID INITIALIZATION ....
+;
+               MOVEQ   #31,D0               ;COUNT TO 32 ....
+               MOVE    #S_BLK_31,A0         ;POINTER TO LAST SOUND BLOCK - WE GO BACKWARDS.
+SOUNDSET_10
+               ADDQ.B  #1,S_RATE(A0)        ;CALL THIS 31KHz.
+               MOVE.L  #64656C65H,S_NAME(A0)     ;SOUND NAME IS "deleted ".
+               MOVE.L  #74656420H,S_NAME+4(A0)
+               SUBQ.B  #1,S_MIDI_CHAN(A0)   ;TURN MODE 4 MAPPED CHANNEL TO OFF
+               MOVE    #S_SUB_0,D1
+               ADDQ.L  #1,S_FINISH(A0)
+               ADDQ.L  #1,S_END(A0,D1)
+               ADDQ.L  #1,S_LOOP_END(A0,D1)
+
+               MOVE    #S_SUB_1,D1
+               ADDQ.L  #1,S_FINISH(A0)
+               ADDQ.L  #1,S_END(A0,D1)
+               ADDQ.L  #1,S_LOOP_END(A0,D1)
+;
+;
+               SUB     #S_BLOCK_SIZE,A0     ;STEP DOWN TO NEXT SOUND BLOCK,
+               DBRA    D0,SOUNDSET_10       ;LOOP UNTIL ALL DONE.
+;
+               MOVE    #200H,FREE_SAM_RAM   ;THEN - SAY 512K SAMPLE RAM AVAILABLE,
+               MOVE    #40H,CR_SAM_SIZE     ;DEFAULT SAMPLE CREATION SIZE TO 64K.
+               ADDQ    #1,CR_SAM_RATE       ;DEFAULT SAMPLE CREATION RATE TO 31KHz.
+               MOVE    #200H,SAMPLE_RAM_END ;1K BLOCK ADDRESS OF END OF SAMPLE RAM + 1.
+                                            ;ASSUMES 512K WORDS INSTALLED - EXPANSION OPTIONS?
+;
+;
+;
+; INITIALIZE KIT/BANK AND PAD ARRAYS -
+; PRESET BANKS GET SOUNDS 1A-32A, USER KITS GET SOUNDS 1B-32B.
+; NOTE: USER KITS 1-4 ARE KIT_INDEX 0-3, PRESET BANKS 1-4 ARE KIT_INDEX 4-7.
+; PAN CENTERED (=15), FULL VOLUME, NOMINAL 31KHz PITCH FOR ALL.
+;
+               MOVE    #KIT_SOUNDS,A0
+               CLR     D0                   ;PRESET BANK SOUND NUMBER (1A).
+               MOVEQ   #1,D1                ;USER KIT SOUND NUMBER (1B).
+               MOVEQ   #31,D2               ;32 CELLS PER GROUP.
+KIT_SOUNDS_LOOP
+               MOVE.B  D0,32(A0)            ;WRITE PRESET BANK SOUND NUMBER, STEP TO NEXT CELL.
+               MOVE.B  D1,(A0)+             ;WRITE USER KIT SOUND NUMBER.
+               ADDQ    #2,D0                ;UPDATE A AND B SOUND NUMBERS.
+               ADDQ    #2,D1
+               DBRA    D2,KIT_SOUNDS_LOOP   ;LOOP UNTIL ALL 32 PRESET AND USER CELLS WRITTEN.
+;
+                                            ;INITIALIZE VOL/PITCH/PAN IN ONE LOOP:
+               MOVE    #KIT_PITCHES,A0
+               MOVEQ   #19,D0               ;NOMINAL PITCH AT 31KHz.
+               MOVE    #KIT_LEVELS,A1
+               MOVEQ   #31,D1               ;FULL VOLUME FOR ALL!
+               MOVE    #KIT_PANS,A2
+               MOVEQ   #15,D2               ;CENTER PAN.
+               MOVEQ   #63,D3               ;DO PRESET BANKS AND USER KITS IN ONE SWELL FOOP.
+KIT_STUF_LOOP
+               MOVE.B  D0,(A0)+
+               MOVE.B  D1,(A1)+
+               MOVE.B  D2,(A2)+
+               DBRA    D3,KIT_STUF_LOOP
+;
+               MOVE    #KIT_SOUNDS,A0       ;COPY ALL KIT ARRAYS INTO ALL PAD ARRAYS.
+               MOVE    #PAD_SOUNDS,A1
+               MOVEQ   #63,D0               ;COPY VIA LONG-WORD MOVES, 4 * 64 BYTES.
+PAD_INIT_LOOP
+               MOVE.L  (A0)+,(A1)+
+               DBRA    D0,PAD_INIT_LOOP
+;
+               ADDQ    #4,KIT_INDEX         ;NOW - DEFAULT TO PRESET BANK 1,
+               ADDQ    #4,EDIT_KIT_INDEX    ;LEDS WILL TAKE CARE OF THEMSELVES.
+;
+;
+;
+;
+; INITIALIZE SEQUENCE RAM:
+;
+               JSR     SEQ_MEM_INIT         ;REF: SEQSUBS.
+;
+;
+;
+; INITIALIZE SONG RAM:
+;
+               MOVEQ  #11,D0
+INIT_SONGS
+               MOVE   D0,CURRENT_SONG
+               MOVE.L D0,-(A7)
+                ABS_LONG
+               JSR    CLEAR_SONG
+                ABS_SHORT
+               MOVE.L (A7)+,D0
+               DBRA   D0,INIT_SONGS
+;
+;
+;
+;
+;
+; SET UP FORCED-ZERO AND FORCED-PEAK LOCATIONS IN SAMPLE MEMORY:
+;
+               JSR     WRITE_ZERO_AND_PEAK
+;
+;
+;
+; DELAY COUPLA SECONDS BEFORE DROPPING IN AUDIO RELAY -
+; MAKE COMPLETELY SURE EVERYTHING HAS SETTLED, OUTPUT-WISE:
+;
+               MOVE.L  #300000,D0           ;WAIT - MAKE SURE WE DON'T JUMP THE GUN
+RELAY_DELAY_LOOP                            ;ON AUDIO RELAY TURN-ON.
+               SUBQ.L  #1,D0                ;SHOULD BE COUPLA SECONDS HERE -
+               BNE     RELAY_DELAY_LOOP     ;REMEMBER, INTERRUPTS ARE NOW RUNNING.
+;
+;
+;
+; RESET SCSI BUS, LOOK FOR SIGNS OF LIFE AT EACH SCSI ADDRESS -
+; IF ANY RESPONSE, RECALIBRATE THE DEVICE (ASSUMED DATAFRAME XX).
+; SET DRIVE_SEL TO LOWEST-ADDRESSED DEVICE FOUND, OR TO -1 FOR FLOPPY.
+;
+               MOVE    #ALT_MASK,DISK_OP_CODE
+               MOVE    #SCSI_RESET,D1
+               MOVE    #2700H,SR            ;NO INTERRUPTS, PLEASE.
+                ABS_LONG
+               JSR     DISKWARD_HO
+                ABS_SHORT
+               MOVE    #2000H,SR            ;INTERRUPTS RESUME -
+               TST     D0                   ;DID SCSI CONFIGURATION GO THROUGH ALLRIGHT?
+               BNE.S   MISC_SETUP           ;BRANCH IF NOT, LEAVE ERROR MESSAGE IN DISPLAY.
+;
+;
+;
+;
+;
+;
+
+;
+;
+; NOW DAZZLE DEM USER:
+;
+                                            ;BIT O' CHEAP FLASH:
+               CLR     D7                   ;D7 COUNTS SCREEN POSITIONS.
+OUTER_FLASH
+               MOVE    REAL_TIME,D6         ;INNER LOOP TIMER - OUTER LOOP TOTAL APPROX 1 SEC.
+INNER_FLASH
+               MOVE    D7,A0                ;SCREEN POSITION INDEX.
+               ADD     #SCREEN_BUFFER,A0
+               MOVE.B  REAL_TIME+1,D5       ;"RANDOM" CHARACTER -
+               MOVE.B  D5,(A0)              ;DO TOP AND BOTTOM LINES IN PARALLEL.
+               MOVE.B  D5,16(A0)
+               MOVE    D7,D1                ;COPY TO LCD - TOP LINE,
+               LSL     #8,D1
+               ADDQ    #1,D1
+               CALL    LCD_FUNS,DSP_FLD
+               ADD     #1000H,D1            ;AND .... BOTTOM LINE.
+               CALL    LCD_FUNS,DSP_FLD
+;
+               MOVE    D6,D5                ;REMEMBER WHEN WE GOT HERE,
+               ADD     #60,D5               ;PROJECT WHEN WE WANNA LEAVE,
+               CMP     REAL_TIME,D5         ;SEE IF IT'S TIME YET -
+               BCC     INNER_FLASH          ;NOT TIME - STAY WITH THIS SCREEN COLUMN.
+;
+;900426               MOVE.L  #THEME_SCREEN,A1     ;TIME - ADD TWO FINAL CHARACTERS TO BUFFER,
+               lea.l   theme_screen(pc),A1  ;TIME - ADD TWO FINAL CHARACTERS TO BUFFER,
+               MOVE.B  0(A1,D7),(A0)        ;IN THE COLUMN WE'VE BEEN DIDDLING,
+               MOVE.B  16(A1,D7),16(A0)
+               eori.b  #0a5h,(a0)           ; decode encoded characters,
+               eori.b  #0a5h,16(a0)
+               CALL    LCD_FUNS,DSP_BUF
+               ADDQ    #1,D7                ;MOVE TO NEXT COLUMN -
+               CMP     #16,D7               ;AHH - IS THERE A NEXT COLUMN?
+               BLT     OUTER_FLASH          ;LOOP AGAIN IF YES, ELSE GET BACK TO WORK.
+;
+               move.l  a1,CUR_SUB_BLOCK     ; use theme_screen as bogus subfun,
+                                            ; just in case something (?) happens
+                                            ; before user hits a func switch.
+;
+;
+;
+;
+;
+;
+;
+;
+; SET UP MISCELLANEOUS CONTROL SIGNALS -
+; ENABLE MSMPTE CLOCK, AUDIO OUTPUT RELAY:
+; (NOTE: FROM POWER-UP UNTIL THIS POINT, ALL MISC_OUT BITS = 0).
+;
+MISC_SETUP
+               OR.B    #18H,MISC_OUT_STAT        ;SET UP NEW STATUS,
+               MOVE.B  MISC_OUT_STAT,MISC_OUT    ;PUT IT OUT THERE.
+;
+;
+;
+; ENABLE ALL FRONT-PANEL SWITCHES:
+;
+               SUBQ.L  #1,SWITCH_MASK       ;(IE, MOVE.L #0FFFFFFFFH ....)
+               SUBQ.L  #1,SWITCH_MASK+4
+;
+;
+; DEFUSE ANY PENDING CHANGES ON PERFORMANCE PARAMETER POTS
+; (BEING AS HOW THEY ARE SCANNED BY REALTIME INTERRUPT,
+; WHICH HAS BEEN RUNNING FOR SOME TIME NOW ....)
+;
+               MOVE    REAL_TIME,ED_BLOCK_TIMER
+               BSET    #0,ED_BLOCK_TIMER+1       ;TIMER NEEDS NON-ZERO VALUE TO BE ACTIVE.
+;
+;
+;
+; DEFAULT FOR TEST VERSIONS ONLY -
+; POWER UP WITH INTERNAL SOFTWARE DIAGNOSTICS ENABLED:
+;
+;880202               ADDQ.B  #1,DIAGS_ENABLED
+;              FOR RELEASE VERSION 2.10, DEFAULT SOFTWARE DIAGS OFF.
+;
+               ADDQ    #1,SEQ_PEEK_BAR      ;ALSO, TARGET BAR NUMBER FOR SEQROSCOPE MUST NOT BE 0.
+;
+;
+;
+;
+;
+;
+;
+;
+;900426; END OF INITIALIZATION CODE -
+;900426; DISPLAY THEME SCREEN, FALL INTO BACKGROUND LOOP.
+;900426;
+;900426               MOVE.L  #THEME_SCREEN,A1     ;DISPLAY "AND NOW" SCREEN.
+;900426               MOVE.L  A1,CUR_SUB_BLOCK     ;SET UP GARBAGE SUBFUNCTION BLOCK POINTER,
+;900426                                            ;JUST IN CASE SOMETHING HAPPENS BEFORE ANYBODY
+;900426                                            ;HITS A FUNCTION SWITCH.
+;900426               CALL    LCD_FUNS,DSP_SCRN
+;                                      ... moved to end of OUTER_FLASH above ...
+;
+;
+;
+;
+; the following has been removed for production release ....
+;
+;921008-03:49pm; Display screen to uniquely identify user to which ROMs were issued.
+;921008-03:49pm; Screen data is stored in an obscure format to prevent simple poke changes.
+;921008-03:49pm;
+;921008-03:49pm;
+;921008-03:49pm;
+;921008-03:49pm;
+;921008-03:49pm               .along
+;921008-03:49pm               jsr     WAIT_A_SECOND        ; actually slightly longer,
+;921008-03:49pm                                            ; since interrupts are running -
+;921008-03:49pm                                            ; keep theme_screen around a bit.
+;921008-03:49pm               .aword
+;921008-03:49pm;
+;921008-03:49pm               lea.l   user_id_screen(pc),a1     ; point to obscure id data,
+;921008-03:49pm;900807               CALL    LCD_FUNS,WR_SCRN          ; copy it to screen buf.
+;921008-03:49pm;900807               bsr.s   decode_scrnbuf       ; de-obscure it in place,
+;921008-03:49pm;900807               CALL    LCD_FUNS,DSP_BUF     ; copy buffer to LCD.
+;921008-03:49pm               CALL    LCD_FUNS,DSP_ENCD_SCRN    ; decode it and display it.
+;
+;
+;
+;
+; Initialization is complete -
+; fall into background loop.
+;
+;
+               JMP     BACK_HANDLER
+;
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;900807;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;900807;
+;900807;
+;900807; Routine used to decode encoded screens used during power-up procedure.
+;900807; Screens are decoded in place after being copied to SCREEN_BUFFER.
+;900807; Destroys d0/a1.
+;900807;
+;900807;
+;900807decode_scrnbuf
+;900807               movea.w #SCREEN_BUFFER,a1    ; de-obscure it in place,
+;900807               moveq   #31,d0               ; 32 characters worth.
+;900807decscr_20
+;900807               eori.b  #0a5h,(a1)+          ; no big deal, really.
+;900807               dbra    d0,decscr_20
+;900807               rts
+;900807;
+;900807;
+;900807;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;
+; BIT PATTERNS FOR STOCK GRAPHIC CHARACTER DISPLAYS:
+;
+; Note: to buy back some ROM space, the bit pattern set has been cut back
+; from eight characters to two - the ones used in the sound pan display,
+; which were the only ones actually in use - thus shaving off 48 bytes.
+; In order to avoid the need to modify the STORE_GRAPHICS routine
+; (LCD_FUNS,STO_GRPHCS), which expects eight character bit patterns,
+; the bit patterns have been moved to precede the other message screens
+; used in this module - STORE_GRAPHICS will read the 48 bytes which follow
+; the two bit patterns given here, which will thus be random ASCII string data.
+; This is done primarily to prevent STORE_GRAPHICS from reading data past
+; the end of this module, since we can't be sure what will follow,
+; thus can't know whether such an out-of-bounds read would cause problems.
+;
+;
+STOCK_GRAPHICS
+               DC.B    00000B          ;FOR PAN DISPLAY - DON'T MOVE OR CHANGE
+               DC.B    10000B          ;WITHOUT ALSO EDITING PAN DISPLAY FUNCTION.
+               DC.B    10000B
+               DC.B    11111B
+               DC.B    10000B
+               DC.B    10000B
+               DC.B    00000B
+               DC.B    00000B
+;
+               DC.B    00000B          ;FOR PAN DISPLAY - DON'T MOVE OR CHANGE
+               DC.B    00001B          ;WITHOUT ALSO EDITING PAN DISPLAY FUNCTION.
+               DC.B    00001B
+               DC.B    11111B
+               DC.B    00001B
+               DC.B    00001B
+               DC.B    00000B
+               DC.B    00000B
+;
+;900426               DC.B    00000B
+;900426               DC.B    00000B
+;900426               DC.B    00000B
+;900426               DC.B    01010B
+;900426               DC.B    10101B
+;900426               DC.B    01010B
+;900426               DC.B    10101B
+;900426               DC.B    01010B
+;
+;23NOV               DC.B    01100B
+;23NOV               DC.B    00100B
+;23NOV               DC.B    11111B
+;23NOV               DC.B    10101B
+;23NOV               DC.B    10101B
+;23NOV               DC.B    00100B
+;23NOV               DC.B    01110B
+;23NOV               DC.B    11111B
+;
+;900426               DC.B    00100B
+;900426               DC.B    01110B
+;900426               DC.B    01110B
+;900426               DC.B    01010B
+;900426               DC.B    10101B
+;900426               DC.B    01010B
+;900426               DC.B    10101B
+;900426               DC.B    01010B
+;
+;900426               DC.B    01110B
+;900426               DC.B    11111B
+;900426               DC.B    10101B
+;900426               DC.B    11111B
+;900426               DC.B    10001B
+;900426               DC.B    11111B
+;900426               DC.B    11111B
+;900426               DC.B    10101B
+;
+;900426               DC.B    00001B
+;900426               DC.B    00011B
+;900426               DC.B    11111B
+;900426               DC.B    11111B
+;900426               DC.B    11111B
+;900426               DC.B    00011B
+;900426               DC.B    00001B
+;900426               DC.B    00000B
+;
+;900426               DC.B    00001B
+;900426               DC.B    00100B
+;900426               DC.B    10000B
+;900426               DC.B    00111B
+;900426               DC.B    10000B
+;900426               DC.B    00100B
+;900426               DC.B    00001B
+;900426               DC.B    00000B
+;
+;900426               DC.B    00100B
+;900426               DC.B    01110B
+;900426               DC.B    01110B
+;900426               DC.B    01110B
+;900426               DC.B    01110B
+;900426               DC.B    11111B
+;900426               DC.B    11011B
+;900426               DC.B    10001B
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;
+; Assorted encoded screens used during power-up procedure -
+; encoding is intended to prevent peek/poke location and
+; modification of these messages.
+; Note: before moving or cutting back these strings,
+; please read the above comments concerning
+; the LCD graphics character bit patterns.
+;
+;
+;900426AND_NOW_SCREEN
+;900426               ASC     "440 Version 2.21"
+;900426               ASC     "  24-April-90   "
+;900426;
+;900426;
+;900426THEME_SCREEN
+;900426               ASC     "Studio 440 PLUS!"
+;900426               ASC     "from PointSource"
+;900426               HEX     0000                 ;THE "0000" ACTS AS A "NO_FIELDS" TAG
+;900426                                            ;FOR POWER-UP NON-SUBFUNCTION.
+;
+;
+;
+;
+and_now_screen
+               dc.l    "440 "^0a5a5a5a5h
+               dc.l    "Vers"^0a5a5a5a5h
+               dc.l    "ion "^0a5a5a5a5h
+               dc.l    "2.30"^0a5a5a5a5h
+               dc.l    "   0"^0a5a5a5a5h
+               dc.l    "8-Oc"^0a5a5a5a5h
+               dc.l    "t-92"^0a5a5a5a5h
+               dc.l    "    "^0a5a5a5a5h
+;
+;
+theme_screen
+               dc.l    "Stud"^0a5a5a5a5h
+               dc.l    "io 4"^0a5a5a5a5h
+               dc.l    "40 P"^0a5a5a5a5h
+               dc.l    "LUS!"^0a5a5a5a5h
+               dc.l    "from"^0a5a5a5a5h
+               dc.l    " Poi"^0a5a5a5a5h
+               dc.l    "ntSo"^0a5a5a5a5h
+               dc.l    "urce"^0a5a5a5a5h
+
+               dc.w    0000                 ; acts as a "NO_FIELDS" tag
+                                            ; for power-up non-subfunction.
+;
+;
+;
+;
+;
+;
+; the following has been removed for production release ....
+;
+;921008-03:49pm;              dc.b    " Beta issue to: "    .... this is the template ....
+;921008-03:49pm;              dc.b    "   Jay Logan    "    .... for the following .......
+;921008-03:49pm;              dc.b    "   Scott Peer   "    .... for the following .......
+;921008-03:49pm;              dc.b    "   Ken Reyes    "    .... for the following .......
+;921008-03:49pm;              dc.b    "   Luc Allen    "    .... for the following .......
+;921008-03:49pm;              dc.b    " Keep yer hands "    .... this is the template ....
+;921008-03:49pm;              dc.b    "  off my shit!  "    .... for the following .......
+;921008-03:49pm;              dc.b    " This software  "    .... this is the template ....
+;921008-03:49pm;              dc.b    "illegally copied"    .... for the following .......
+;921008-03:49pm;              dc.b    "Serious software"    .... this is the template ....
+;921008-03:49pm;              dc.b    "fuck-up occurred"    .... for the following .......
+;921008-03:49pm;              dc.b    " Test version - "    .... this is the template ....
+;921008-03:49pm;              dc.b    " not for resale "    .... for the following .......
+;921008-03:49pm;
+;921008-03:49pmuser_id_screen
+;921008-03:49pm               dc.l    " Bet"^0a5a5a5a5h
+;921008-03:49pm               dc.l    "a is"^0a5a5a5a5h
+;921008-03:49pm               dc.l    "sue "^0a5a5a5a5h
+;921008-03:49pm               dc.l    "to: "^0a5a5a5a5h
+;921008-03:49pm               dc.l    "   L"^0a5a5a5a5h
+;921008-03:49pm               dc.l    "uc A"^0a5a5a5a5h
+;921008-03:49pm               dc.l    "llen"^0a5a5a5a5h
+;921008-03:49pm               dc.l    "    "^0a5a5a5a5h
+;
+;
+;25NOV               HEX     0707,0720
+;25NOV               ASC     "**BUY***"
+;25NOV               HEX     2007,0707
+;25NOV               HEX     0303,0320
+;25NOV               ASC     "AMERICAN"
+;25NOV               HEX     2003,0303,0000       ;THE "0000" ACTS AS A "NO_FIELDS" TAG
+;25NOV                                            ;FOR POWER-UP NON-SUBFUNCTION.
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+

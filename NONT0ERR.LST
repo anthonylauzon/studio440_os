@@ -1,0 +1,46 @@
+LINKER.EXE: error: 'CHEESE_STEAK_SUB': unresolved symbol
+LINKER.EXE: error: 'DUMP_GUIDO': unresolved symbol
+LINKER.EXE: error: 'LCD_FUN_TBL': unresolved symbol
+LINKER.EXE: error: 'SCAN_SWITCHES': unresolved symbol
+LINKER.EXE: error: 'DISP_FIELD': unresolved symbol
+LINKER.EXE: error: 'DISP_PARAM_FIELD': unresolved symbol
+LINKER.EXE: error: 'INSTALL_EDIT_FIELD': unresolved symbol
+LINKER.EXE: error: 'GO_TO_NEXT_FIELD': unresolved symbol
+LINKER.EXE: error: 'UPDATE_CURSOR': unresolved symbol
+LINKER.EXE: error: 'DISP_BUFFER': unresolved symbol
+LINKER.EXE: error: 'DISP_BUFFER': reloc value 0xfffeed3a in region 'ROM:rom:MAIN' locn 0x112c6 is too large
+LINKER.EXE: error: 'DISP_BUFFER': reloc value 0xfffeef4c in region 'ROM:rom:MAIN' locn 0x110b4 is too large
+LINKER.EXE: error: 'DISP_BUFFER': reloc value 0xffff02ae in region 'ROM:rom:MAIN' locn 0xfd52 is too large
+LINKER.EXE: error: 'DLY_20_MSEC': unresolved symbol
+LINKER.EXE: error: 'WORD_BIN_TO_BCD': unresolved symbol
+LINKER.EXE: error: 'DISKWARD_HO': unresolved symbol
+LINKER.EXE: error: 'DISP_HEX': unresolved symbol
+LINKER.EXE: error: 'DISP_HEX': reloc value 0xfffe6598 in region 'ROM:rom:MAIN' locn 0x19a68 is too large
+LINKER.EXE: error: 'DISP_SCREEN': unresolved symbol
+LINKER.EXE: error: 'DISP_SCREEN': reloc value 0xfffef55e in region 'ROM:rom:MAIN' locn 0x10aa2 is too large
+LINKER.EXE: error: 'DISP_SCREEN': reloc value 0xfffefdc6 in region 'ROM:rom:MAIN' locn 0x1023a is too large
+LINKER.EXE: error: 'DISP_SCREEN': reloc value 0xffff007e in region 'ROM:rom:MAIN' locn 0xff82 is too large
+LINKER.EXE: error: 'WRITE_SCREEN': unresolved symbol
+LINKER.EXE: error: 'REAL_TIMER': unresolved symbol
+LINKER.EXE: error: 'UNPLUG_ALL_EDITS': unresolved symbol
+LINKER.EXE: error: 'WRITE_BCD_DIGITS': unresolved symbol
+LINKER.EXE: error: 'WRITE_HEX_VALUE': unresolved symbol
+LINKER.EXE: error: 'WRITE_VALUE': unresolved symbol
+LINKER.EXE: error: 'WRITE_PARAM_VALUE': unresolved symbol
+LINKER.EXE: error: 'WRITE_PARAMETER': unresolved symbol
+LINKER.EXE: error: 'STORE_PARAMETER': unresolved symbol
+LINKER.EXE: error: 'DECR_PARAMETER': unresolved symbol
+LINKER.EXE: error: 'INCR_PARAMETER': unresolved symbol
+LINKER.EXE: error: 'GUIDO': unresolved symbol
+LINKER.EXE: error: 'DEL_TARG_SCRN': unresolved symbol
+LINKER.EXE: error: 'WAIT_TWO_SECS': unresolved symbol
+LINKER.EXE: error: 'INSTALL_SUBFUNCTION': unresolved symbol
+LINKER.EXE: error: 'WRITE_PARAM_STRING': unresolved symbol
+LINKER.EXE: error: 'WRITE_STRING': unresolved symbol
+LINKER.EXE: error: 'WRITE_STRING': reloc value 0xfffeed3e in region 'ROM:rom:MAIN' locn 0x112c2 is too large
+LINKER.EXE: error: 'WRITE_STRING': reloc value 0xfffeef50 in region 'ROM:rom:MAIN' locn 0x110b0 is too large
+LINKER.EXE: error: 'WRITE_STRING': reloc value 0xffff02b2 in region 'ROM:rom:MAIN' locn 0xfd4e is too large
+LINKER.EXE: error: 'WRITE_A0_STRING': unresolved symbol
+LINKER.EXE: error: 'GUIDO_WRITES': unresolved symbol
+LINKER.EXE: error: 'STORE_GRAPHICS': unresolved symbol
+LINKER.EXE: error: 'WRITE_ALL_FIELDS': unresolved symbol

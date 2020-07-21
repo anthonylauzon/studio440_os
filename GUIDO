@@ -1,0 +1,420 @@
+               INCLUDE HPFIXUPS
+               TITLE "GUIDO - SWITCHBOY'S PAL"
+***************************************************************************************************
+***************************************************************************************************
+***                                                                                             ***
+***            GUIDO - HE HANDLES DECIMAL KEYPAD AND OTHER EDIT SWITCHES                        ***
+***                                                                                             ***
+***************************************************************************************************
+***************************************************************************************************
+;
+NEG_EXT        EQU     0FFFFFF00H      ;USE IN MOVEQ INSTRUCTIONS WHERE ARG IS
+                                       ;80H OR LARGER - HP XASM DOES NOT HANDLE
+                                       ;SIGN-EXTEND CORRECTLY.  COSMETIC, KEEPS
+                                       ;ACTUAL BYTE VALUE CLEARER.
+;
+                ABS_SHORT
+;
+               GLB     GUIDO,GUIDO_WRITES,DUMP_GUIDO
+;
+               EXTERNAL  BACK_HANDLER
+               EXTERNAL  SET_AUTOSCROLL
+               EXTERNAL  INSERT_DECIMAL_PT,WRITE_BCD_DIGITS
+               EXTERNAL  WRITE_SIGN_CHAR,DISP_PARAM_FIELD
+               EXTERNAL  STORE_PARAMETER
+;
+               EXTERNAL  ENTER_VEC
+               EXTERNAL  CURSOR_LFT_VEC
+               EXTERNAL  CURSOR_RGT_VEC
+               EXTERNAL  INCREMENT_VEC
+               EXTERNAL  DECREMENT_VEC
+               EXTERNAL  KEYPAD_ENABLE
+               EXTERNAL  SIGN_ENABLE
+               EXTERNAL  CUR_FLD_BLOCK
+               EXTERNAL  ROUSING_GUIDO
+               EXTERNAL  GUIDO_IS_AWAKE
+               EXTERNAL  BCD_DIGITS
+               EXTERNAL  GUIDO_COUNT
+               EXTERNAL  DECIMAL_POINT
+               EXTERNAL  SIGN_CHAR
+               EXTERNAL  PARAM_SIZE
+               EXTERNAL  PARAM_LO_LIM
+               EXTERNAL  PARAM_HI_LIM
+               EXTERNAL  PARAM_BUFFER
+               EXTERNAL  SUBFUN_INSTALL
+               EXTERNAL  LED_FAST_FLASH
+               EXTERNAL  LED_SLOW_FLASH
+               EXTERNAL  LED_EXTINGUISH
+               EXTERNAL  DISPLAY_OFFSET
+               EXTERNAL  SWITCH_HIT
+               EXTERNAL  CURSOR_ENABLE
+               EXTERNAL  PRE_GUIDO_LED
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; RESPOND TO ANY OF THE FOLLOWING KEYS:
+; DECIMAL KEYPAD (0-9), CURSOR-RIGHT, CURSOR-LEFT, INC, DEC, +/-, ENTER.
+; SWITCH NUMBER (24-39) IS PASSED IN D1.
+; ASSUME EVERYTHING IS TOTALLY DESTROYED (MAY WELL BE TRUE).
+;
+GUIDO
+               CMP     #34,D1               ;DECIMAL KEYPAD KEY?
+               BCS     GUIDO_BABY           ;BRANCH IF YES.
+               BEQ.S   DO_DECREMENT
+               CMP     #35,D1
+               BEQ.S   DO_INCREMENT
+               CMP     #36,D1
+               BEQ.S   DO_CURSOR_RIGHT
+               CMP     #37,D1
+               BEQ.S   DO_CURSOR_LEFT
+               CMP     #38,D1
+               BEQ.S   GUIDO_BABY           ;(THIS BE THE +/- SWITCH CODE).
+;
+                                            ;IF NOT ONE OF ABOVE, ASSUME "ENTER" SWITCH.
+;
+;
+DO_ENTER
+               TST.B   GUIDO_IS_AWAKE       ;HOLD IT - IS DECIMAL KEYPAD ENTRY HAP'NIN?
+               BEQ.S   DO_ENTER_20          ;NAW, JUST VECTOR THE HELL OUTA HERE.
+               BSR     KICK_GUIDO           ;YEAH - KICK GUIDO OUT, ENTER HIS NEW NUMBER -
+               BRA.S   DO_WHAT_EXIT         ;NOW LEAVE - DON'T TOUCH THAT "ENTER" VECTOR!!!
+DO_ENTER_20
+               MOVE.L  ENTER_VEC,A0
+               BRA.S   DO_WHATEVER
+;
+;
+DO_CURSOR_LEFT
+               TST.B   GUIDO_IS_AWAKE       ;ATTEMPTING TO WALK OUT IN MIDDLE OF DEC. KEYPAD ENTRY?
+               BEQ.S   DO_CL_20             ;BRANCH IF NOT, GO BE THE VECTOR-ERECTOR -
+               BSR     DUMP_GUIDO           ;ELSE, DO SAME, BUT FIRST GIVE GUIDO THE AXE.
+               ST      SUBFUN_INSTALL       ;MAKE SURE THE FIELD WE JUST LEFT GETS REDISPLAYED.
+DO_CL_20
+               MOVE.L  CURSOR_LFT_VEC,A0
+               BRA.S   DO_WHATEVER
+;
+;
+DO_CURSOR_RIGHT
+               TST.B   GUIDO_IS_AWAKE       ;ATTEMPTING TO WALK OUT IN MIDDLE OF DEC. KEYPAD ENTRY?
+               BEQ.S   DO_CR_20             ;BRANCH IF NOT, GO BE THE VECTOR-ERECTOR -
+               BSR     DUMP_GUIDO           ;ELSE, DO SAME, BUT FIRST GIVE GUIDO THE AXE.
+               ST      SUBFUN_INSTALL       ;MAKE SURE THE FIELD WE JUST LEFT GETS REDISPLAYED.
+DO_CR_20
+               MOVE.L  CURSOR_RGT_VEC,A0
+               BRA.S   DO_WHATEVER
+;
+;
+DO_INCREMENT
+               TST.B   GUIDO_IS_AWAKE       ;ATTEMPTING TO WALK OUT IN MIDDLE OF DEC. KEYPAD ENTRY?
+               BEQ.S   DO_INCR_20           ;BRANCH IF NOT, GO BE THE VECTOR-ERECTOR -
+               BSR     DUMP_GUIDO           ;ELSE, DO SAME, BUT FIRST GIVE GUIDO THE AXE.
+DO_INCR_20
+                ABS_LONG
+               JSR     SET_AUTOSCROLL       ;SET AUTOSCROLL INTO MOTION IF NOT ALREADY GOING.
+                ABS_SHORT
+               MOVE.L  INCREMENT_VEC,A0
+               BRA.S   DO_WHATEVER
+;
+;
+DO_DECREMENT
+               TST.B   GUIDO_IS_AWAKE       ;ATTEMPTING TO WALK OUT IN MIDDLE OF DEC. KEYPAD ENTRY?
+               BEQ.S   DO_DECR_20           ;BRANCH IF NOT, GO BE THE VECTOR-ERECTOR -
+               BSR     DUMP_GUIDO           ;ELSE, DO SAME, BUT FIRST GIVE GUIDO THE AXE.
+DO_DECR_20
+                ABS_LONG
+               JSR     SET_AUTOSCROLL       ;SET AUTOSCROLL INTO MOTION IF NOT ALREADY GOING.
+                ABS_SHORT
+               MOVE.L  DECREMENT_VEC,A0
+;
+;
+DO_WHATEVER
+               JSR     (A0)                 ;VECTOR TO THE APPROPRIATE ROUTINE,
+DO_WHAT_EXIT
+                ABS_LONG
+               JMP     BACK_HANDLER         ;THEN GET THE FUCK OUT.
+                ABS_SHORT
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; DECIMAL KEYPAD HANDLER - (GUIDO, BABY!) - INCLUDING +/- KEY.
+; D1 CONTAINS SWITCH NUMBER AS PASSED DOWN BY "HIS GUIDOSHIP ON HIGH".
+; DESTROYS EVERTHING WITHIN REACH.
+;
+GUIDO_BABY
+               TST.B   ROUSING_GUIDO        ;ARE WE TRYING TO WAKE UP GUIDO?
+               BEQ.S   GUIDO_08             ;BRANCH IF NOT,
+               ST      KEYPAD_ENABLE        ;ELSE FORCE KEYPAD ENABLE (REINSTALL MIGHTA KILLED IT).
+GUIDO_08
+               TST.B   KEYPAD_ENABLE        ;IS DECIMAL KEYPAD ENABLED?
+               BEQ     GUIDO_EXIT           ;BRANCH IF NOT - ES EL MUCHO IGNORO.
+               CMP     #38,D1               ;IS THIS THE +/- KEY?
+               BNE.S   GUIDO_10             ;BRANCH AHEAD IF NOT,
+               TST.B   SIGN_ENABLE          ;ELSE SEE IF WE SHOULD BE DEALING WITH HIM -
+               BEQ     GUIDO_EXIT           ;EXIT IF NOT (POST NO SIGNS).
+               MOVEQ   #'-',D0              ;ELSE PUT ASCII '-' IN D0 TO REPRESENT IT,
+               BRA.S   GUIDO_20             ;SKIP THE DECIMAL-KEY TRANSLATION STUFF.
+;
+GUIDO_10
+               MOVE    D1,D0                ;GOT A DECIMAL SWITCH HERE, WHICH NOBODY CAN DENY -
+               SUB     #24,D0               ;CONVERT TO BYTE OFFSET FOR ASCII DIGIT TABLE,
+               MOVE.B  ASC_DIGITS(PC,D0),D0 ;FETCH THE ASCII CHARACTER FOR THE DIGIT WHAT IT IS.
+               BRA.S   GUIDO_20             ;THEN, BE BRANCHING O'ER THE TABLE.
+;
+ASC_DIGITS
+               ASC     "7894561203"         ;STRANGE, BUT TRUE.
+;
+GUIDO_20
+               MOVE    D1,D2                ;MIGHT STILL NEED THAT SWITCH NUMBER ....
+               MOVE.L  CUR_FLD_BLOCK,A1     ;FETCH POINTER TO CURRENT FIELD BLOCK,
+               MOVE    (A1),D1              ;FETCH FIELD POSITION/LENGTH SPEC.
+               TST.B   GUIDO_IS_AWAKE       ;GUIDO IS ENABLED - IS HE ALREADY AT LARGE?
+               BNE.S   GUIDO_40             ;BRANCH IF YES, DO WHATCHA DO DEN.
+               TST.B   ROUSING_GUIDO        ;NOT AWAKE - ARE WE ALREADY IN PROCESS OF WAKING HIM?
+               BNE.S   GUIDO_30             ;BRANCH IF WE ARE - SNOOOZE NO MORE, MISTER GWEEED ....
+               ST      ROUSING_GUIDO        ;ELSE, SET THE SNOOZE ALARM -
+               ST      SUBFUN_INSTALL       ;WHILST WE REBUILD THE SCREEN (IN CASE MIN/MAX_STRINGS
+                                            ;HAVE CRUMMED IT UP) -
+               SF      PRE_GUIDO_LED        ;AND MAKE A NOTE OF FLASHING ACTION (OR LACK THEROF)
+               BTST    #3,LED_SLOW_FLASH    ;ON THE "ENTER" LED - WE'LL PUT IT BACK JUST THE SAME
+               BEQ.S   GUIDO_22             ;WHEN WE DUMP_GUIDO.
+               BSET    #0,PRE_GUIDO_LED
+GUIDO_22
+               BTST    #3,LED_FAST_FLASH
+               BEQ.S   GUIDO_24
+               BSET    #1,PRE_GUIDO_LED
+GUIDO_24
+               ADDQ    #1,D2                ;RESUBMIT SWITCH HIT FOR REPROCESSING WHEN GUIDO'S UP.
+               MOVE    D2,SWITCH_HIT
+               BRA.S   GUIDO_EXIT
+;
+GUIDO_30
+               BSR.S   WAKE_UP_GUIDO        ;TIME TO WAKE UP, GUIDO!
+;
+GUIDO_40
+               CMP.B   #'?',BCD_DIGITS+7    ;WIPE OUT ANY LINGERING '?' IN DISPLAY.
+               BNE.S   GUIDO_44
+               MOVE.B  #' ',BCD_DIGITS+7
+GUIDO_44
+               CMP.B   #'-',D0              ;WAS THIS THE +/- KEY?
+               BNE.S   GUIDO_60             ;BRANCH IF NOT, HANDLE DECIMAL DIGIT.
+               CMP.B   SIGN_CHAR,D0         ;ELSE - IS SIGN CHARACTER ALREADY '-'?
+               BNE.S   GUIDO_50             ;BRANCH IF NOT (IT'S '+' OR ' '), IT WILL BE NOW.
+               MOVEQ   #'+',D0              ;IF IT WAS '-', IT SHALL NOW BE '+'.
+GUIDO_50
+               MOVE.B  D0,SIGN_CHAR         ;STORE NEW SIGN CHARACTER,
+               BRA.S   GUIDO_70             ;GO UPDATE DISPLAY.
+;
+GUIDO_60
+                                            ;HANDLE A DECIMAL DIGIT KEY:
+               MOVE.L  BCD_DIGITS,D2        ;SHUFFLE IT IN AT THE RIGHT END OF BCD_DIGITS STRING,
+               LSL.L   #8,D2
+               MOVE.B  BCD_DIGITS+4,D2
+               MOVE.L  D2,BCD_DIGITS
+               MOVE.L  BCD_DIGITS+4,D2
+               LSL.L   #8,D2
+               MOVE.B  D0,D2
+               MOVE.L  D2,BCD_DIGITS+4
+               SUBQ    #1,GUIDO_COUNT       ;NOTCH OFF ANOTHER EMPTY PLACE NOW FILLED -
+               BNE.S   GUIDO_70             ;IF NOT FULL, GO UPDATE DISPLAY.
+               BSR     KICK_GUIDO           ;ELSE, (ATTEMPT TO) ENTER THE VALUE,
+               BRA.S   GUIDO_EXIT           ;THEN SKOOT - NEW VALUE (OR OLD VALUE, IF NEW VALUE WAS
+                                            ;NO GOOD) IS DISPLAYED VIA FIELD REDISPLAY.
+;
+GUIDO_70
+               BSR.S   GUIDO_WRITES         ;WRITE DIGITS, ETC. ENTERED SO FAR, INTO BUFFER FIELD.
+                ABS_LONG
+               JSR     DISP_PARAM_FIELD     ;DISPLAY THE STRING, PUT CURSOR AT RIGHT END OF FIELD -
+                                            ;A1 SHOULD STILL BE POINTING TO CURRENT FIELD BLOCK.
+                ABS_SHORT
+;
+                                            ;ER .... THAT'S ALL ....
+;
+GUIDO_EXIT
+                ABS_LONG
+               JMP     BACK_HANDLER
+                ABS_SHORT
+;
+;
+; WAKE UP OUR BOY GUIDO -
+; CLEAR OUT BCD_DIGITS STRING, SET GUIDO_COUNT (NUMBER OF DIGITS NEEDED
+; TO COMPLETE AN ENTRY WITHOUT USING ENTER KEY - I.E., NUMBER OF DIGIT
+; SPACES AVAILABLE IN FIELD) USING FIELD LENGTH SPEC, SIGN_ENABLE AND
+; DECIMAL_POINT STATUS.  DEFAULT SIGN_CHAR TO ' '.
+; MAKE "ENTER" LED FLASH, IN A RATHER EPILEPTIC-FIT-INDUCING MANNER.
+; D1 CONTAINS FIELD POSITION/LENGTH SPEC UPON ENTRY - IT'S PRESERVED.
+;
+WAKE_UP_GUIDO
+               SF      ROUSING_GUIDO             ;STOP FOOLING AROUND,
+               ST      GUIDO_IS_AWAKE            ;WAKE HIM UP ....
+               SF      CURSOR_ENABLE             ;NO LCD CURSOR FOR THE DURATION.
+               MOVE.L  #20202020H,BCD_DIGITS     ;BLANK OUT THE BCD DIGITS STRING.
+               MOVE.L  #20202020H,BCD_DIGITS+4
+               MOVE.B  #' ',SIGN_CHAR            ;DEFAULT TO NO SIGN CHARACTER.
+;
+;08DEC               MOVE.L  #KICK_GUIDO,ENTER_VEC     ;SET ENTER SWITCH TO ENTER GUIDO'S NUMBERS.
+;08DEC               MOVE.L  #DUMP_GUIDO,D2            ;SET OTHER VECTORED SWITCHES TO BAIL OUT ON HIM -
+;08DEC               MOVE.L  D2,INCREMENT_VEC          ;EXCEPT CURSOR SCROLL, WHICH KNOW TO KICK_GUIDO.
+;08DEC               MOVE.L  D2,DECREMENT_VEC
+;08DEC               MOVE.L  D2,POT_CHANGE_VEC         ;WHAT THE HELL - THE POT TOO.
+;
+               BSET    #3,LED_FAST_FLASH         ;SET ENTER SWITCH LED INTO MIXED FAST/SLOW-FLASH.
+               BSET    #3,LED_SLOW_FLASH
+               MOVE    D1,GUIDO_COUNT            ;USE FIELD LENGTH TO SET MAXIMUM NUMBER OF DIGITS
+               AND     #0FH,GUIDO_COUNT          ;WHICH GUIDO WILL TOLERATE BEFORE GOING OFF -
+               TST.B   SIGN_ENABLE               ;KNOCK IT DOWN BY ONE FOR SIGN CHARACTER IF ANY.
+               BEQ.S   WAKE_UP_30
+               SUBQ    #1,GUIDO_COUNT
+WAKE_UP_30
+               TST     DECIMAL_POINT             ;KNOCK IT DOWN BY ONE FOR DECIMAL POINT, TOO.
+               BEQ.S   WAKE_UP_EXIT
+               SUBQ    #1,GUIDO_COUNT
+WAKE_UP_EXIT
+               RTS
+;
+;
+;
+; WRITE DIGITS, ETC. ENTERED SO FAR INTO SCREEN_BUFFER FIELD:
+; D1 CONTAINS FIELD POSITION/LENGTH SPEC UPON ENTRY - IT'S PRESERVED.
+;
+GUIDO_WRITES
+               MOVE.L  BCD_DIGITS,-(A7)     ;SAVE THE DIGITS-ONLY FORM OF THE STRING.
+               MOVE.L  BCD_DIGITS+4,-(A7)
+               MOVE    DECIMAL_POINT,D3     ;INSERT DECIMAL POINT IF ANY.
+                ABS_LONG
+               JSR     INSERT_DECIMAL_PT
+               JSR     WRITE_BCD_DIGITS     ;WRITE STRING INTO SCREEN_BUFFER PER D1 FIELD SPEC.
+                ABS_SHORT
+               MOVE.L  (A7)+,BCD_DIGITS+4   ;RESTORE BCD_DIGITS STRING, WE'RE DONE WITH IT.
+               MOVE.L  (A7)+,BCD_DIGITS
+               TST.B   SIGN_ENABLE          ;IS SIGN ENTRY/DISPLAY ENABLED?
+               BEQ.S   GUIDO_WR_EXIT        ;BRANCH IF NOT,
+                ABS_LONG
+               JSR     WRITE_SIGN_CHAR      ;ELSE PUT OUT WHATEVER IS IN SIGN_CHAR.
+                ABS_SHORT
+GUIDO_WR_EXIT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; CONVERT ASCII-DECIMAL CONTENTS OF BCD_DIGITS TO BINARY -
+; IF NOTHING IN FIELD: DUMP GUIDO, GO BACK TO NORMAL SUBFUNCTION SCREEN.
+; ELSE: COMPARE VALUE AGAINST PARAMETER LIMITS -
+; IF IN RANGE: DUMP GUIDO, STORE PARAMETER, BACK TO SUBFUNCTION SCREEN.
+; ELSE: CLEAR DIGITS OUT OF FIELD, INSERT A "?", KEEP GUIDO AWAKE.
+;
+KICK_GUIDO
+               CLR.L   D0
+               MOVE    #BCD_DIGITS,A0       ;WALK ON THRU THE DESSY-MULES ....
+               MOVEQ   #7,D3                ;BE UNTO EIGHT CHARACTERS IN BCD STRING.
+KIK_GUID_10
+               CLR.L   D1
+               MOVE.B  (A0)+,D1
+               CMP.B   #' ',D1              ;IN WHICH WE ASSUME ONLY DIGIT 0-9, ' ' AND '?' CHARS -
+               BEQ.S   KIK_GUID_18          ;BRANCH IF SPACE, IGNORE.
+               CMP.B   #'?',D1              ;LIKEWISE, '?' IS NO MORE SIGNIFICANT THAN ' ' HERE.
+               BNE.S   KIK_GUID_20          ;BRANCH IF NOT A '?' - ASSUME DIGIT.
+KIK_GUID_18
+               DBRA    D3,KIK_GUID_10       ;A SPACE IS AS UNTO NOUGHT -
+;
+               ST      SUBFUN_INSTALL       ;INDEED, IF NOUGHT BUT SPACES, THEN LET US AWAY -
+               BRA     DUMP_GUIDO           ;THERE SHALL NO NEW VALUE BE FOR PARAMETER STOR'D ....
+                                            ;(WE GET HERE ONLY IF ENTER SWITCH IS HIT WHEN NOTHING
+                                            ;HAS BEEN ENTERED INTO FIELD SINCE A PREVIOUS ENTRY WAS
+                                            ;REJECTED, SO .... HEY).
+;
+KIK_GUID_20
+               SUB.B   #'0',D1              ;GOT A DIGIT - CONVERT ASCII TO BCD.
+               MOVE.L  D0,D2                ;SCALE PARTIAL RESULT BY 10 FOR NEW DECIMAL PLACE -
+               SWAP    D2                   ;HERE COMES THE HIGH-ORDER PART,
+               MULU    #10,D2
+               SWAP    D2
+               CLR     D2
+               MULU    #10,D0               ;AND THIS WOULD BE THE LOW-ORDER PART, THEN ....
+               ADD.L   D2,D0                ;WE PUT 'EM TOGETHER,
+               ADD.L   D1,D0                ;THEN THROW IN THE NEW UNITS VALUE, AND HEY PRESTO.
+               DBRA    D3,KIK_GUID_10       ;THAT ALL? THAT NOT ALL?
+;
+;
+               TST.B   SIGN_ENABLE          ;BINARY CONVERSION DONE - NEED WE CONSIDER SIGN?
+               BEQ.S   KIK_GUID_30          ;BRANCH IF NOT, WE OK BOSS.
+               CMP.B   #'-',SIGN_CHAR       ;IF SO - ARE WE NEGATIVE?
+               BNE.S   KIK_GUID_30          ;BRANCH IF NOT, WE STILL OK BOSS.
+               NEG.L   D0                   ;ELSE WE MUST TO NEGATE THE CONVERSION RESULT.
+KIK_GUID_30
+               BTST    #1,PARAM_SIZE        ;DETERMINE PARAMETER SIZE FOR OFFSET AND LIMITS-CHECK.
+               BNE.S   KIK_GUID_40          ;BRANCH FOR LONG-WORD PARAMETER.
+;
+               ADD     DISPLAY_OFFSET,D0    ;REMOVE BYTE/WORD DISPLAY OFFSET FROM ENTERED VALUE.
+               CMP     PARAM_LO_LIM,D0      ;CHECK BYTE/WORD PARAM AGAINST LIMITS.
+               BLT.S   KIK_GUID_60          ;REJECT IF BELOW LOWER LIMIT.
+               CMP     PARAM_HI_LIM,D0
+               BGT.S   KIK_GUID_60          ;REJECT IF ABOVE UPPER LIMIT.
+               MOVE    D0,PARAM_BUFFER      ;VALUE OK, STASH IT AS WORD IN PARAM_BUFFER.
+               BRA.S   KIK_GUID_50          ;BRANCH TO STORE LEGAL VALUE.
+KIK_GUID_40
+               ADD.L   DISPLAY_OFFSET,D0    ;REMOVE LONG-WORD DISPLAY OFFSET FROM ENTERED VALUE.
+               CMP.L   PARAM_LO_LIM,D0      ;CHECK LONG-WORD PARAM AGAINST LIMITS.
+               BLT.S   KIK_GUID_60          ;REJECT IF BELOW LOWER LIMIT.
+               CMP.L   PARAM_HI_LIM,D0
+               BGT.S   KIK_GUID_60          ;REJECT IF ABOVE UPPER LIMIT.
+               MOVE.L  D0,PARAM_BUFFER      ;VALUE OK, STASH IT AS LONG-WORD IN PARAM_BUFFER.
+KIK_GUID_50
+               BSR.S   DUMP_GUIDO           ;WE'RE DONE WITH GUIDO NOW, SO PUNCH HIS LIGHTS OUT.
+                                            ;NOTE - WE DO THIS BEFORE CALLING STORE_PARAMETER FOR
+                                            ;THE BENEFIT OF THOSE SCREENS IN WHICH A SETTING EDIT
+                                            ;CAUSES THE ENTER LED TO BEGIN FLASHING.
+                ABS_LONG
+               JSR     STORE_PARAMETER      ;STORE NEW PARAMETER VALUE.
+                ABS_SHORT
+;
+;08DEC;
+;08DEC               SF      REDISP_FIELD         ;THIS FLAG MAAY HAVE BEEN SET BY STORE_PARAMETER, BUUUT
+;08DEC               BRA.S   KIK_GUID_EXIT        ;WE DON'T WANT IT - MUST USE SUBFUN_INSTALL IN ORDER TO
+;08DEC                                            ;RESTORE ALL EDIT VECTORS AS WELL AS UPDATING DISPLAY.
+;08DEC;
+               BRA.S   KIK_GUID_EXIT        ;FORGET THAT NOISE - LIFE IS FINE.  OUT WE GO!
+;
+;
+KIK_GUID_60
+                                            ;ENTERED VALUE IS OUT OF RANGE, BEING REJECTED:
+               MOVE.L  CUR_FLD_BLOCK,A1     ;FETCH POINTER TO CURRENT FIELD BLOCK,
+               MOVE    (A1),D1              ;FETCH FIELD POSITION/LENGTH SPEC.
+               BSR     WAKE_UP_GUIDO        ;SEND HIM BACK TO BABY-HOOD (CLEAR BCD_DIGITS OUT),
+               MOVE.B  #'?',BCD_DIGITS+7    ;WHAT THE HELL - MAKE USER FEEL INADEQUATE ....
+               BSR     GUIDO_WRITES         ;PUT BLANKS AND "?" INTO SCREEN_BUFFER FIELD,
+;
+;08DEC                ABS_LONG
+;08DEC               JSR     DISP_PARAM_FIELD     ;DISPLAY THE STRING, PUT CURSOR AT RIGHT END OF FIELD -
+;08DEC                                            ;A1 SHOULD STILL BE POINTING TO CURRENT FIELD BLOCK.
+;08DEC                ABS_SHORT
+;              ES_EL_GUIDO_BLINKO WILL GET THIS OUT TO THE LCD ....
+;
+KIK_GUID_EXIT
+               RTS                          ;GIT BACK, LO-RETTA.
+;
+;
+;
+; BAIL OUT ON GUIDO, FOR WHATEVER REASON -
+; PUT HIM TO BED, CLEAN UP HIS MESS.
+;
+DUMP_GUIDO
+               SF      GUIDO_IS_AWAKE       ;THAT'S RIGHT - HE'S NOT, ANYMORE.
+               ST      CURSOR_ENABLE        ;MISTER BLINKING-CURSOR MAKES HIS REAPPEARANCE.
+               MOVEQ   #3,D0                ;RESTORE "ENTER" LED FLASH BITS TO WHAT THEY WERE
+                                            ;BEFORE WE WOKE GUIDO UP:
+               BCLR    D0,LED_SLOW_FLASH    ;FIRST, CLEAR 'EM ....
+               BCLR    D0,LED_FAST_FLASH
+               BTST    #0,PRE_GUIDO_LED     ;HAVE A LOOK AT THE SLOW BIT, AS IT WAS CAPTURED THEN -
+               BEQ.S   DUMP_10
+               BSET    D0,LED_SLOW_FLASH
+DUMP_10
+               BTST    #1,PRE_GUIDO_LED     ;SNEAK A PEAK AT THE FAST BIT, AS WE REMEMBER IT.
+               BEQ.S   DUMP_EXIT
+               BSET    D0,LED_FAST_FLASH
+DUMP_EXIT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA

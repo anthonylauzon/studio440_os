@@ -1,0 +1,54 @@
+
+
+Fixes required to HP 68000 source files for Uniware AS68000 compatibility:
+
+
+
+     "68000" directive must be deleted
+
+
+     Option to suppress listing of INCLUDE files:
+
+           INCLUDE files must contain conditional such as
+
+               .OPTION LIST=LIST_INCLUDES
+
+           at start of file, and end with
+
+               .OPTION LIST="ON"
+
+           The switch LIST_INCLUDES must be set elsewhere in source file,
+           for example in a standard header INCLUDE file.
+
+
+     TITLE - must change to TTL   or   .OPTION TITLE =
+
+
+     ABS_SHORT - must change to .AWORD
+
+
+     ABS_LONG - must change to .ALONG
+
+
+     SKIP - must change to PAGE   or   .EJECT
+
+
+     GLB - must change to .EXPORT   or   XDEF   or   .GLOBAL
+
+           Note - .GLOBAL will .IMPORT any symbols not defined in current
+           source file, thus is not as unambiguous as the other options
+           and should probably be avoided.
+
+
+     EXTERNAL - must change to .EXTERN   or   XDEF   or   .IMPORT
+
+
+     HEX - requires a macro expansion
+
+
+     [ and ] - must change to ( and )
+
+
+     Locally-defined long addresses appear not to cause automatic override
+     of 16-bit addressing -- look into it later.
+

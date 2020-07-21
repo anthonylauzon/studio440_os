@@ -1,0 +1,240 @@
+
+
+
+
+
+                                  27512 TEMPLATE
+
+              ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿ ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+              ³                          ÀÄÙ                         ³
+    A16   1  Éµ                                                      Æ»  28  VCC
+             Èµ                                                      Æ¼
+              ³                                                      ³
+              ³                                                      ³
+    A13   2  Éµ                                                      Æ»  27  A15
+             Èµ                                                      Æ¼
+              ³                                                      ³
+              ³                                                      ³
+    A8    3  Éµ                                                      Æ»  26  A14
+             Èµ                                                      Æ¼
+              ³                                                      ³
+              ³                                                      ³
+    A7    4  Éµ                                                      Æ»  25  A9
+             Èµ                                                      Æ¼
+              ³                                                      ³
+              ³                                                      ³
+    A6    5  Éµ                                                      Æ»  24  A10
+             Èµ                                                      Æ¼
+              ³                                                      ³
+              ³                                                      ³
+    A5    6  Éµ                                                      Æ»  23  A12
+             Èµ                                                      Æ¼
+              ³                                                      ³
+              ³                                                      ³
+    A4    7  Éµ                                                      Æ»  22  OE-
+             Èµ                                                      Æ¼
+              ³                                                      ³
+              ³                                                      ³
+    A3    8  Éµ                                                      Æ»  21  A11
+             Èµ                                                      Æ¼
+              ³                                                      ³
+              ³                                                      ³
+    A2    9  Éµ                                                      Æ»  20  CE-
+             Èµ                                                      Æ¼
+              ³                                                      ³
+              ³                                                      ³
+    A1   10  Éµ                                                      Æ»  19  D7
+             Èµ                                                      Æ¼
+              ³                                                      ³
+              ³                                                      ³
+    D0   11  Éµ                                                      Æ»  18  D6
+             Èµ                                                      Æ¼
+              ³                                                      ³
+              ³                                                      ³
+    D1   12  Éµ                                                      Æ»  17  D5
+             Èµ                                                      Æ¼
+              ³                                                      ³
+              ³                                                      ³
+    D2   13  Éµ                                                      Æ»  16  D4
+             Èµ                                                      Æ¼
+              ³                                                      ³
+              ³                                                      ³
+    GND  14  Éµ                                                      Æ»  15  D3
+             Èµ                                                      Æ¼
+              ³           27512 - ADDR PIN NUMBERS PER 68000         ³
+              ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+
+
+
+
+
+
+
+                    20R/X4 TEMPLATE
+
+              ÚÄÄÄÄÄÄÄÄÄÄÄ¿ ÚÄÄÄÄÄÄÄÄÄÄÄ¿
+              ³           ÀÄÙ           ³
+             Éµ  1  CLK         VCC  24 Æ»
+             Èµ                         Æ¼
+              ³                         ³
+              ³                         ³
+             Éµ  2  IN          IN*  23 Æ»
+             Èµ                         Æ¼
+              ³                         ³
+              ³                         ³
+             Éµ  3  IN          I/O  22 Æ»
+             Èµ                         Æ¼
+              ³                         ³
+              ³                         ³
+             Éµ  4  IN          I/O  21 Æ»
+             Èµ                         Æ¼
+              ³                         ³
+              ³                         ³
+             Éµ  5  IN          REG  20 Æ»
+             Èµ                         Æ¼
+              ³                         ³
+              ³                         ³
+             Éµ  6  IN          REG  19 Æ»
+             Èµ                         Æ¼
+              ³                         ³
+              ³                         ³
+             Éµ  7  IN          REG  18 Æ»
+             Èµ                         Æ¼
+              ³                         ³
+              ³                         ³
+             Éµ  8  IN          REG  17 Æ»
+             Èµ                         Æ¼
+              ³                         ³
+              ³                         ³
+             Éµ  9  IN          I/O  16 Æ»
+             Èµ                         Æ¼
+              ³                         ³
+              ³                         ³
+             Éµ 10  IN          I/O  15 Æ»
+             Èµ                         Æ¼
+              ³                         ³
+              ³                         ³
+             Éµ 11  IN          IN*  14 Æ»
+             Èµ                         Æ¼
+              ³                         ³
+              ³                         ³
+             Éµ 12  GND         OE-  13 Æ»
+             Èµ                         Æ¼
+              ³         20R/X4          ³
+              ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+
+
+
+
+
+
+
+               20R/X4 TEMPLATE - INVERTED
+
+              ÚÄÄÄÄÄÄÄÄÄÄÄ¿ ÚÄÄÄÄÄÄÄÄÄÄÄ¿
+              ³           ÀÄÙ           ³
+             Éµ 24  VCC         CLK   1 Æ»
+             Èµ                         Æ¼
+              ³                         ³
+              ³                         ³
+             Éµ 23  IN*         IN    2 Æ»
+             Èµ                         Æ¼
+              ³                         ³
+              ³                         ³
+             Éµ 22  I/O         IN    3 Æ»
+             Èµ                         Æ¼
+              ³                         ³
+              ³                         ³
+             Éµ 21  I/O         IN    4 Æ»
+             Èµ                         Æ¼
+              ³                         ³
+              ³                         ³
+             Éµ 20  REG         IN    5 Æ»
+             Èµ                         Æ¼
+              ³                         ³
+              ³                         ³
+             Éµ 19  REG    I    IN    6 Æ»
+             Èµ            N            Æ¼
+              ³            V            ³
+              ³            E            ³
+             Éµ 18  REG    R    IN    7 Æ»
+             Èµ            T            Æ¼
+              ³            E            ³
+              ³            D            ³
+             Éµ 17  REG         IN    8 Æ»
+             Èµ                         Æ¼
+              ³                         ³
+              ³                         ³
+             Éµ 16  I/O         IN    9 Æ»
+             Èµ                         Æ¼
+              ³                         ³
+              ³                         ³
+             Éµ 15  I/O         IN   10 Æ»
+             Èµ                         Æ¼
+              ³                         ³
+              ³                         ³
+             Éµ 14  IN*         IN   11 Æ»
+             Èµ                         Æ¼
+              ³                         ³
+              ³                         ³
+             Éµ 13  OE-         GND  12 Æ»
+             Èµ                         Æ¼
+              ³         20R/X4          ³
+              ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+
+
+
+
+
+
+
+440pro00
+
+decodes a16-a5 = 1...1 as enable.
+thus, responds to addresses 1ffe0-1ffff (odd only, since ls
+driven).
+enable is used for both output enable and clock.
+simple 4-stage shift register with a1 as input.
+production version will use final shift reg output to drive d0 -
+test version has preceding stages driving d3-d1 for visibility.
+
+structure copy pro as a function call which returns go or no-go.
+this can be inserted wherever appropriate - eg, only in-line with
+protected software features, provided timing constraints are met
+- or can be a simple one time only test.
+
+basic strategy:  derive a random 16-bit number somehow.  use
+successive rotates of this number, or it with ffe1h, combine with
+00010000h, read from resulting address, roxr the resulting byte
+ie, move ls bit into x flag, roxr the resulting bit into a 16-bit
+temp register.  the first four reads are garbage, serve only to
+prime the shift register.  once the loop has been iterated 16
+times or more, ror.w #3,tempreg should cause temp reg to match
+seed number if sync is correct (the copy pro shift register
+produces a four-bit shift, but the effective shift is decreased
+by one because the data input is fed from bit 1 of the seed
+value, rather than bit 0).  alternatively, eight iterations
+should be adequate to fully probe shift reg for existence - use
+masking of operands to narrow the comparison to defined bits.
+
+for added obscurity - read from a wide range of addresses, use
+only those which are in the known copy pro range.  note that the
+whole copy pro circuit can be relocated to any other 32-byte
+section by simply changing the qualifying address pattern encoded
+into the pal.  however, disassembly of the copy pro routine once
+it is located will always reveal the method - only the hardware
+itself is an obstacle at that point, so don't go too far with
+obscurity.  assume that no one will attempt this, and hope for
+the best.
+
+how about this?  user's first keystroke causes real_time to be
+logged, for random effect.  on the first detection of real_time
+rollover following this event, test is done using logged value.
+
+
+
+
+
+
+
+

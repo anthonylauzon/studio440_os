@@ -1,0 +1,703 @@
+               INCLUDE HPFIXUPS
+               TITLE "TUNING TABLES"
+***************************************************************************************************
+***************************************************************************************************
+***                                                                                             ***
+***            TUNE_TABL - MODEL 440 CUSTOM CHIP TUNING TABLES                                  ***
+***                                                                                             ***
+***************************************************************************************************
+***************************************************************************************************
+;
+               GLB     TUNING_TABLE
+               GLB     MAX_TUNE_INDEX,MIN_TUNE_INDEX,ROOT_TUNE
+;
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;              WHAT WE GOT HERE IS THE TUNING CLOCK DIVIDE TABLE FOR THE CUSTOM CHIPS.  A DIVIDE
+;              VALUE IS SELECTED BY THE FOLLOWING FORMULA:
+;
+;                      (PITCH VALUE*15) + FINE TUNE + MASTER TUNE + BEND PEAK = OFFSET
+;                        (00 -> 31)       (-7 -> +7)   (-7 -> +7)   (00 -> ??)
+;
+;              THERE ARE 15 STEPS BETWEEN SEMITONES (RESOLUTION = 6.75 CENTS).  IN THE CASE OF
+;              SAMPLE RATE = 16 KHZ, AN ADDITIONAL OFFSET OF 12*15 MUST BE ADDED TO GET TO THE
+;              CORRECT VALUES (41 KHz AND 32 KHz USES THE SAME TABLE).
+;
+;              THE TUNE DIVIDE CLOCK RUNS AT 8 MHz, AND IS DIVIDED BY (16*(-T_TBL_VAL)) TO DERIVE
+;              THE PLAYBACK PITCH.
+;
+;              FUN, EH?
+;---------------------------------------------------------------------------------
+;      CLOCK DIVIDE VALUE                        TRANSPOSITION AMOUNT
+;                           SAMPLE RATE:  41 KHz        32 KHz         16 KHz
+;---------------------------------------------------------------------------------
+TUNING_TABLE
+        DC.W      0-128                ;+07 SEMIS     +12 SEMIS      *********
+        DC.W      0-128
+        DC.W      0-129
+        DC.W      0-129
+        DC.W      0-130
+        DC.W      0-130
+        DC.W      0-131
+        DC.W      0-131
+        DC.W      0-132
+        DC.W      0-132
+        DC.W      0-133
+        DC.W      0-133
+        DC.W      0-134
+        DC.W      0-134
+        DC.W      0-135
+        DC.W      0-136               ;+06 SEMIS     +11 SEMIS      *********
+        DC.W      0-136
+        DC.W      0-137
+        DC.W      0-137
+        DC.W      0-138
+        DC.W      0-138
+        DC.W      0-139
+        DC.W      0-139
+        DC.W      0-140
+        DC.W      0-140
+        DC.W      0-141
+        DC.W      0-141
+        DC.W      0-142
+        DC.W      0-142
+        DC.W      0-143
+        DC.W      0-144               ;+05 SEMIS     +10 SEMIS      *********
+        DC.W      0-144
+        DC.W      0-145
+        DC.W      0-145
+        DC.W      0-146
+        DC.W      0-146
+        DC.W      0-147
+        DC.W      0-148
+        DC.W      0-148
+        DC.W      0-149
+        DC.W      0-149
+        DC.W      0-150
+        DC.W      0-150
+        DC.W      0-151
+        DC.W      0-152
+        DC.W      0-152               ;+04 SEMIS     +09 SEMIS      *********
+        DC.W      0-153
+        DC.W      0-153
+        DC.W      0-154
+        DC.W      0-155
+        DC.W      0-155
+        DC.W      0-156
+        DC.W      0-156
+        DC.W      0-157
+        DC.W      0-158
+        DC.W      0-158
+        DC.W      0-159
+        DC.W      0-159
+        DC.W      0-160
+        DC.W      0-161
+        DC.W      0-161               ;+03 SEMIS     +08 SEMIS      *********
+        DC.W      0-162
+        DC.W      0-163
+        DC.W      0-163
+        DC.W      0-164
+        DC.W      0-164
+        DC.W      0-165
+        DC.W      0-166
+        DC.W      0-166
+        DC.W      0-167
+        DC.W      0-168
+        DC.W      0-168
+        DC.W      0-169
+        DC.W      0-169
+        DC.W      0-170
+        DC.W      0-171               ;+02 SEMIS     +07 SEMIS      *********
+        DC.W      0-172
+        DC.W      0-172
+        DC.W      0-173
+        DC.W      0-174
+        DC.W      0-174
+        DC.W      0-175
+        DC.W      0-176
+        DC.W      0-176
+        DC.W      0-177
+        DC.W      0-178
+        DC.W      0-178
+        DC.W      0-179
+        DC.W      0-180
+        DC.W      0-180
+        DC.W      0-181               ;+01 SEMIS     +06 SEMIS      *********
+        DC.W      0-182
+        DC.W      0-182
+        DC.W      0-183
+        DC.W      0-184
+        DC.W      0-185
+        DC.W      0-185
+        DC.W      0-186
+        DC.W      0-187
+        DC.W      0-187
+        DC.W      0-188
+        DC.W      0-189
+        DC.W      0-190
+        DC.W      0-190
+        DC.W      0-191
+        DC.W      0-192               ;ROOT KEY      +05 SEMIS      *********
+        DC.W      0-193
+        DC.W      0-193
+        DC.W      0-194
+        DC.W      0-195
+        DC.W      0-196
+        DC.W      0-196
+        DC.W      0-197
+        DC.W      0-198
+        DC.W      0-199
+        DC.W      0-199
+        DC.W      0-200
+        DC.W      0-201
+        DC.W      0-202
+        DC.W      0-202
+        DC.W      0-203               ;-01 SEMIS     +04 SEMIS      *********
+        DC.W      0-204
+        DC.W      0-205
+        DC.W      0-206
+        DC.W      0-206
+        DC.W      0-207
+        DC.W      0-208
+        DC.W      0-209
+        DC.W      0-210
+        DC.W      0-210
+        DC.W      0-211
+        DC.W      0-212
+        DC.W      0-213
+        DC.W      0-214
+        DC.W      0-214
+        DC.W      0-215               ;-02 SEMIS     +03 SEMIS      *********
+        DC.W      0-216
+        DC.W      0-217
+        DC.W      0-218
+        DC.W      0-219
+        DC.W      0-219
+        DC.W      0-220
+        DC.W      0-221
+        DC.W      0-222
+        DC.W      0-223
+        DC.W      0-224
+        DC.W      0-225
+        DC.W      0-225
+        DC.W      0-226
+        DC.W      0-227
+        DC.W      0-228               ;-03 SEMIS     +02 SEMIS      *********
+        DC.W      0-229
+        DC.W      0-230
+        DC.W      0-231
+        DC.W      0-232
+        DC.W      0-233
+        DC.W      0-233
+        DC.W      0-234
+        DC.W      0-235
+        DC.W      0-236
+        DC.W      0-237
+        DC.W      0-238
+        DC.W      0-239
+        DC.W      0-240
+        DC.W      0-241
+        DC.W      0-242               ;-04 SEMIS     +01 SEMIS      *********
+        DC.W      0-243
+        DC.W      0-244
+        DC.W      0-244
+        DC.W      0-245
+        DC.W      0-246
+        DC.W      0-247
+        DC.W      0-248
+        DC.W      0-249
+        DC.W      0-250
+        DC.W      0-251
+        DC.W      0-252
+        DC.W      0-253
+        DC.W      0-254
+        DC.W      0-255
+ROOT_TUNE
+        DC.W      0-256               ;-05 SEMIS     ROOT KEY       +12 SEMIS
+        DC.W      0-256    ;**NOTE** THE PROPER VALUE, -257, FUCKS UP SOME CUSTOM CHIPS - USE THIS
+        DC.W      0-258
+        DC.W      0-259
+        DC.W      0-260
+        DC.W      0-261
+        DC.W      0-262
+        DC.W      0-263
+        DC.W      0-264
+        DC.W      0-265
+        DC.W      0-266
+        DC.W      0-267
+        DC.W      0-268
+        DC.W      0-269
+        DC.W      0-270
+        DC.W      0-271               ;-06 SEMIS     -01 SEMIS      +11 SEMIS
+        DC.W      0-272
+        DC.W      0-273
+        DC.W      0-274
+        DC.W      0-275
+        DC.W      0-277
+        DC.W      0-278
+        DC.W      0-279
+        DC.W      0-280
+        DC.W      0-281
+        DC.W      0-282
+        DC.W      0-283
+        DC.W      0-284
+        DC.W      0-285
+        DC.W      0-286
+        DC.W      0-287               ;-07 SEMIS     -02 SEMIS      +10 SEMIS
+        DC.W      0-288
+        DC.W      0-290
+        DC.W      0-291
+        DC.W      0-292
+        DC.W      0-293
+        DC.W      0-294
+        DC.W      0-295
+        DC.W      0-296
+        DC.W      0-297
+        DC.W      0-299
+        DC.W      0-300
+        DC.W      0-301
+        DC.W      0-302
+        DC.W      0-303
+        DC.W      0-304               ;-08 SEMIS     -03 SEMIS      +09 SEMIS
+        DC.W      0-306
+        DC.W      0-307
+        DC.W      0-308
+        DC.W      0-309
+        DC.W      0-310
+        DC.W      0-312
+        DC.W      0-313
+        DC.W      0-314
+        DC.W      0-315
+        DC.W      0-316
+        DC.W      0-318
+        DC.W      0-319
+        DC.W      0-320
+        DC.W      0-321
+        DC.W      0-323               ;-09 SEMIS     -04 SEMIS      +08 SEMIS
+        DC.W      0-324
+        DC.W      0-325
+        DC.W      0-326
+        DC.W      0-328
+        DC.W      0-329
+        DC.W      0-330
+        DC.W      0-331
+        DC.W      0-333
+        DC.W      0-334
+        DC.W      0-335
+        DC.W      0-336
+        DC.W      0-338
+        DC.W      0-339
+        DC.W      0-340
+        DC.W      0-342               ;-10 SEMIS     -05 SEMIS      +07 SEMIS
+        DC.W      0-343
+        DC.W      0-344
+        DC.W      0-346
+        DC.W      0-347
+        DC.W      0-348
+        DC.W      0-350
+        DC.W      0-351
+        DC.W      0-352
+        DC.W      0-354
+        DC.W      0-355
+        DC.W      0-356
+        DC.W      0-358
+        DC.W      0-359
+        DC.W      0-360
+        DC.W      0-362               ;-11 SEMIS     -06 SEMIS      +06 SEMIS
+        DC.W      0-363
+        DC.W      0-365
+        DC.W      0-366
+        DC.W      0-368
+        DC.W      0-369
+        DC.W      0-371
+        DC.W      0-372
+        DC.W      0-373
+        DC.W      0-375
+        DC.W      0-376
+        DC.W      0-378
+        DC.W      0-379
+        DC.W      0-380
+        DC.W      0-382
+        DC.W      0-384               ;-12 SEMIS     -07 SEMIS      +05 SEMIS
+        DC.W      0-385
+        DC.W      0-387
+        DC.W      0-388
+        DC.W      0-390
+        DC.W      0-391
+        DC.W      0-393
+        DC.W      0-394
+        DC.W      0-396
+        DC.W      0-397
+        DC.W      0-399
+        DC.W      0-400
+        DC.W      0-402
+        DC.W      0-403
+        DC.W      0-405
+        DC.W      0-406               ;-13 SEMIS     -08 SEMIS      +04 SEMIS
+        DC.W      0-408
+        DC.W      0-410
+        DC.W      0-411
+        DC.W      0-413
+        DC.W      0-414
+        DC.W      0-416
+        DC.W      0-417
+        DC.W      0-419
+        DC.W      0-421
+        DC.W      0-422
+        DC.W      0-424
+        DC.W      0-425
+        DC.W      0-427
+        DC.W      0-429
+        DC.W      0-431               ;-14 SEMIS     -09 SEMIS      +03 SEMIS
+        DC.W      0-432
+        DC.W      0-434
+        DC.W      0-436
+        DC.W      0-437
+        DC.W      0-439
+        DC.W      0-441
+        DC.W      0-442
+        DC.W      0-444
+        DC.W      0-446
+        DC.W      0-447
+        DC.W      0-449
+        DC.W      0-451
+        DC.W      0-452
+        DC.W      0-454
+        DC.W      0-456               ;+15 SEMIS     -10 SEMIS      +02 SEMIS
+        DC.W      0-458
+        DC.W      0-460
+        DC.W      0-461
+        DC.W      0-463
+        DC.W      0-465
+        DC.W      0-467
+        DC.W      0-469
+        DC.W      0-470
+        DC.W      0-472
+        DC.W      0-474
+        DC.W      0-476
+        DC.W      0-478
+        DC.W      0-479
+        DC.W      0-481
+        DC.W      0-483               ;-16 SEMIS     -11 SEMIS      +01 SEMIS
+        DC.W      0-485
+        DC.W      0-487
+        DC.W      0-489
+        DC.W      0-491
+        DC.W      0-493
+        DC.W      0-495
+        DC.W      0-496
+        DC.W      0-498
+        DC.W      0-500
+        DC.W      0-502
+        DC.W      0-504
+        DC.W      0-506
+        DC.W      0-508
+        DC.W      0-510
+        DC.W      0-512               ;-17 SEMIS     -12 SEMIS      ROOT KEY
+        DC.W      0-514
+        DC.W      0-516
+        DC.W      0-518
+        DC.W      0-520
+        DC.W      0-522
+        DC.W      0-524
+        DC.W      0-526
+        DC.W      0-528
+        DC.W      0-530
+        DC.W      0-532
+        DC.W      0-534
+        DC.W      0-536
+        DC.W      0-538
+        DC.W      0-540
+        DC.W      0-542               ;-18 SEMIS     -13 SEMIS      -01 SEMIS
+        DC.W      0-545
+        DC.W      0-547
+        DC.W      0-549
+        DC.W      0-551
+        DC.W      0-553
+        DC.W      0-555
+        DC.W      0-557
+        DC.W      0-559
+        DC.W      0-562
+        DC.W      0-564
+        DC.W      0-566
+        DC.W      0-568
+        DC.W      0-570
+        DC.W      0-572
+        DC.W      0-575               ;-19 SEMIS     -14 SEMIS      -02 SEMIS
+        DC.W      0-577
+        DC.W      0-579
+        DC.W      0-581
+        DC.W      0-584
+        DC.W      0-586
+        DC.W      0-588
+        DC.W      0-590
+        DC.W      0-593
+        DC.W      0-595
+        DC.W      0-597
+        DC.W      0-599
+        DC.W      0-602
+        DC.W      0-604
+        DC.W      0-606
+        DC.W      0-609               ;-20 SEMIS     -15 SEMIS      -03 SEMIS
+        DC.W      0-611
+        DC.W      0-614
+        DC.W      0-616
+        DC.W      0-618
+        DC.W      0-621
+        DC.W      0-623
+        DC.W      0-626
+        DC.W      0-628
+        DC.W      0-630
+        DC.W      0-633
+        DC.W      0-635
+        DC.W      0-637
+        DC.W      0-640
+        DC.W      0-642
+        DC.W      0-645               ;-21 SEMIS     -16 SEMIS      -04 SEMIS
+        DC.W      0-648
+        DC.W      0-650
+        DC.W      0-653
+        DC.W      0-655
+        DC.W      0-658
+        DC.W      0-660
+        DC.W      0-663
+        DC.W      0-665
+        DC.W      0-668
+        DC.W      0-670
+        DC.W      0-673
+        DC.W      0-675
+        DC.W      0-678
+        DC.W      0-680
+        DC.W      0-683               ;-22 SEMIS     -17 SEMIS      -05 SEMIS
+        DC.W      0-686
+        DC.W      0-689
+        DC.W      0-691
+        DC.W      0-694
+        DC.W      0-697
+        DC.W      0-699
+        DC.W      0-702
+        DC.W      0-705
+        DC.W      0-707
+        DC.W      0-710
+        DC.W      0-713
+        DC.W      0-715
+        DC.W      0-718
+        DC.W      0-721
+        DC.W      0-724               ;-23 SEMIS     -18 SEMIS      -06 SEMIS
+        DC.W      0-727
+        DC.W      0-730
+        DC.W      0-733
+        DC.W      0-735
+        DC.W      0-738
+        DC.W      0-741
+        DC.W      0-744
+        DC.W      0-747
+        DC.W      0-750
+        DC.W      0-752
+        DC.W      0-755
+        DC.W      0-758
+        DC.W      0-761
+        DC.W      0-764
+        DC.W      0-767               ;-24 SEMIS     -19 SEMIS      -07 SEMIS
+        DC.W      0-770
+        DC.W      0-773
+        DC.W      0-776
+        DC.W      0-779
+        DC.W      0-782
+        DC.W      0-785
+        DC.W      0-788
+        DC.W      0-791
+        DC.W      0-794
+        DC.W      0-797
+        DC.W      0-800
+        DC.W      0-803
+        DC.W      0-806
+        DC.W      0-809
+        DC.W      0-813               ;*********     *********      -08 SEMIS
+        DC.W      0-816
+        DC.W      0-819
+        DC.W      0-822
+        DC.W      0-825
+        DC.W      0-829
+        DC.W      0-832
+        DC.W      0-835
+        DC.W      0-838
+        DC.W      0-841
+        DC.W      0-844
+        DC.W      0-848
+        DC.W      0-851
+        DC.W      0-854
+        DC.W      0-857
+        DC.W      0-861               ;*********     *********      -09 SEMIS
+        DC.W      0-864
+        DC.W      0-868
+        DC.W      0-871
+        DC.W      0-875
+        DC.W      0-878
+        DC.W      0-881
+        DC.W      0-885
+        DC.W      0-888
+        DC.W      0-891
+        DC.W      0-895
+        DC.W      0-898
+        DC.W      0-901
+        DC.W      0-905
+        DC.W      0-908
+        DC.W      0-912               ;*********     *********      -10 SEMIS
+        DC.W      0-916
+        DC.W      0-919
+        DC.W      0-923
+        DC.W      0-927
+        DC.W      0-930
+        DC.W      0-934
+        DC.W      0-937
+        DC.W      0-941
+        DC.W      0-944
+        DC.W      0-948
+        DC.W      0-951
+        DC.W      0-955
+        DC.W      0-959
+        DC.W      0-962
+        DC.W      0-967               ;*********     *********      -11 SEMIS
+        DC.W      0-970
+        DC.W      0-974
+        DC.W      0-978
+        DC.W      0-982
+        DC.W      0-985
+        DC.W      0-989
+        DC.W      0-993
+        DC.W      0-997
+        DC.W      0-1001
+        DC.W      0-1004
+        DC.W      0-1008
+        DC.W      0-1012
+        DC.W      0-1016
+        DC.W      0-1019
+        DC.W      0-1024              ;*********     *********      -12 SEMIS
+        DC.W      0-1028
+        DC.W      0-1032
+        DC.W      0-1036
+        DC.W      0-1040
+        DC.W      0-1044
+        DC.W      0-1048
+        DC.W      0-1052
+        DC.W      0-1056
+        DC.W      0-1060
+        DC.W      0-1064
+        DC.W      0-1068
+        DC.W      0-1072
+        DC.W      0-1076
+        DC.W      0-1080
+        DC.W      0-1085              ;*********     *********      -13 SEMIS
+        DC.W      0-1089
+        DC.W      0-1093
+        DC.W      0-1098
+        DC.W      0-1102
+        DC.W      0-1106
+        DC.W      0-1110
+        DC.W      0-1115
+        DC.W      0-1119
+        DC.W      0-1123
+        DC.W      0-1127
+        DC.W      0-1132
+        DC.W      0-1136
+        DC.W      0-1140
+        DC.W      0-1144
+        DC.W      0-1149              ;*********     *********      -14 SEMIS
+        DC.W      0-1154
+        DC.W      0-1158
+        DC.W      0-1163
+        DC.W      0-1167
+        DC.W      0-1172
+        DC.W      0-1176
+        DC.W      0-1181
+        DC.W      0-1185
+        DC.W      0-1190
+        DC.W      0-1194
+        DC.W      0-1199
+        DC.W      0-1203
+        DC.W      0-1208
+        DC.W      0-1212
+        DC.W      0-1218              ;*********     *********      -15 SEMIS
+        DC.W      0-1223
+        DC.W      0-1227
+        DC.W      0-1232
+        DC.W      0-1237
+        DC.W      0-1242
+        DC.W      0-1246
+        DC.W      0-1251
+        DC.W      0-1256
+        DC.W      0-1261
+        DC.W      0-1265
+        DC.W      0-1270
+        DC.W      0-1275
+        DC.W      0-1280
+        DC.W      0-1284
+        DC.W      0-1290              ;*********     *********      -16 SEMIS
+        DC.W      0-1295
+        DC.W      0-1300
+        DC.W      0-1305
+        DC.W      0-1310
+        DC.W      0-1315
+        DC.W      0-1320
+        DC.W      0-1325
+        DC.W      0-1330
+        DC.W      0-1336
+        DC.W      0-1341
+        DC.W      0-1346
+        DC.W      0-1351
+        DC.W      0-1356
+        DC.W      0-1361
+        DC.W      0-1367              ;*********     *********      -17 SEMIS
+        DC.W      0-1372
+        DC.W      0-1378
+        DC.W      0-1383
+        DC.W      0-1388
+        DC.W      0-1394
+        DC.W      0-1399
+        DC.W      0-1404
+        DC.W      0-1410
+        DC.W      0-1415
+        DC.W      0-1420
+        DC.W      0-1426
+        DC.W      0-1431
+        DC.W      0-1436
+        DC.W      0-1442
+        DC.W      0-1448              ;*********     *********      -18 SEMIS
+        DC.W      0-1454
+        DC.W      0-1459
+        DC.W      0-1465
+        DC.W      0-1471
+        DC.W      0-1476
+        DC.W      0-1482
+        DC.W      0-1488
+        DC.W      0-1493
+        DC.W      0-1499
+        DC.W      0-1505
+        DC.W      0-1510
+        DC.W      0-1516
+        DC.W      0-1522
+        DC.W      0-1527
+        DC.W      0-1534              ;*********     *********      -19 SEMIS
+        DC.W      0-1540
+        DC.W      0-1546
+        DC.W      0-1552
+        DC.W      0-1558
+        DC.W      0-1564
+        DC.W      0-1570
+        DC.W      0-1576
+        DC.W      0-1582
+        DC.W      0-1588
+        DC.W      0-1594
+        DC.W      0-1600
+        DC.W      0-1606
+        DC.W      0-1612
+        DC.W      0-1618
+TUNE_TABLE_END
+;
+;
+MAX_TUNE_INDEX EQU     TUNE_TABLE_END-2-ROOT_TUNE
+;
+MIN_TUNE_INDEX EQU     TUNING_TABLE-ROOT_TUNE
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA

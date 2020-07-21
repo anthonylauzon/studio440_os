@@ -1,0 +1,1641 @@
+***************************************************************************************************
+***************************************************************************************************
+***                                                                                             ***
+***            SEQ_MIDI - SEQUENCER MIDI STUFF, IN 'N' OUT                                      ***
+***                                                                                             ***
+***************************************************************************************************
+***************************************************************************************************
+;
+;
+               .AWORD
+;
+;
+               INCLUDE EQUATES         ;HDW ADDR AND CONSTANT DEFS, ABS_SHORT DIRECTIVE.
+;
+               INCLUDE TRAPDEFS        ;SYSTEM FUNCTION ACCESS DEFINITIONS.
+;
+               INCLUDE LCD_FUNS        ;LCD/SCREEN_BUFFER SYSTEM FUNCTION DEFS.
+;
+               INCLUDE S_BLK_EQU       ;SOUND BLOCK EQUATES/OFFSETS
+;
+               INCLUDE SEQDEFS         ; sequencer-related definitions.
+;
+;
+               .EXPORT TYPE_1_XMIT
+               .EXPORT TYPE_2_XMIT
+               .EXPORT TYPE_3_XMIT
+               .EXPORT TYPE_4_XMIT
+               .EXPORT TYPE_5_XMIT
+               .EXPORT TYPE_6_XMIT
+               .EXPORT XMIT_2_PA
+               .EXPORT XMIT_2_PB
+               .EXPORT XMIT_LIVE
+               .EXPORT XMIT_SEQ
+               .EXPORT XMIT_1_PA_SEQ
+               .EXPORT XMIT_1_PB_SEQ
+               .EXPORT SEND_ADVANCED_PTR
+               .EXPORT SEND_IMMED_PTR
+               .EXPORT SEND_MIDI_START
+               .EXPORT SEND_MIDI_STOP
+               .EXPORT SEND_MIDI_CLOCK
+               .EXPORT SEND_MIDI_CONTINUE
+               .EXPORT XMIT_VOLUME
+               .EXPORT GENERIC_STUFFER
+               .EXPORT SEQ_NOTE_OFF
+               .EXPORT SEQ_NOTE_ON
+               .EXPORT S_2_BYTE
+               .EXPORT S_3_BYTE
+               .EXPORT ECHO_2
+               .EXPORT ECHO_3
+               .EXPORT BLIND_ECHO_2
+               .EXPORT BLIND_ECHO_3
+               .EXPORT POLY_OFF_SEQ_PAD
+               .EXPORT POLY_ON_SEQ_PAD
+               .EXPORT MAPPED_OFF_SEQ_PAD
+               .EXPORT MAPPED_ON_SEQ_PAD
+               .EXPORT SEQ_PRESS
+               .EXPORT SEQ_MOD
+;
+                                            ; external ROM addresses.
+               .IMPORT SEND_6803_CLOCK
+               .IMPORT WRITE_TO_TC
+               .IMPORT SEND_6803_CONTINUE
+               .IMPORT LOG_OUT_PITCH_NEW_PAD
+               .IMPORT LOG_IN_NEW_PAD
+               .IMPORT LOAD_A_SEQ
+               .IMPORT LOG_IN_NEW_MIDI
+               .IMPORT LOG_OUT_NEW_MIDI
+               .IMPORT SEQ_MEM_CHECK
+               .IMPORT LOAD_B_LIVE
+               .IMPORT QUICK_LOG_IN
+               .IMPORT WAIT_TWO_SECS
+               .IMPORT LOAD_B_SEQ
+               .IMPORT GET_S_BLK_PTR
+               .IMPORT QUICK_LOG_OUT
+               .IMPORT SEND_6803_STOP
+               .IMPORT LOAD_A_LIVE
+               .IMPORT REAL_TIMER
+               .IMPORT SEQ1_DSTR_READ
+               .IMPORT GET_BYTE
+;
+                                            ; RAM addresses.
+               .IMPORT NOW_TRACK
+               .IMPORT BG_TEMP_1_B
+               .IMPORT BG_TEMP_5_B
+               .IMPORT NOW_UART
+               .IMPORT BG_TEMP_9_B
+               .IMPORT CURRENT_VOLUME
+               .IMPORT CUR_TEMPO_USEC
+               .IMPORT BG_TEMP_10_B
+               .IMPORT RECORDING
+               .IMPORT XMIT_TEMP_1
+               .IMPORT XMIT_TEMP_2
+               .IMPORT XMIT_TEMP_3
+               .IMPORT AUTORPT_FLAG
+               .IMPORT BG_TEMP_2_B
+               .IMPORT LAST_PRESSURE
+               .IMPORT SEQ_WR_PTR
+               .IMPORT XPORT_STATE
+               .IMPORT LAST_MOD_WHL
+               .IMPORT KIT_INDEX
+               .IMPORT WASTELAND_PTR
+               .IMPORT REAL_TIME
+               .IMPORT MIDI_DEFAULT_VEL
+               .IMPORT MIDI_DATA_1
+               .IMPORT MIDI_DATA_2
+               .IMPORT OVERALL_CLICK
+               .IMPORT PAD_ON_WRITE
+               .IMPORT NON_NOTE_WRITE
+               .IMPORT MIDI_ON_WRITE
+               .IMPORT NOTE_OFF_WRITE
+               .IMPORT BG_TEMP_3_B
+               .IMPORT MIDI_MT_UART
+               .IMPORT SUBFUN_INSTALL
+               .IMPORT MIDI_ECHO_FLAG
+               .IMPORT ASSIGN_BLOCK
+               .IMPORT TRACKS_MUTED
+               .IMPORT MIDI_MODE
+               .IMPORT BG_TEMP_4_B
+               .IMPORT CONTINUE_TIMER
+               .IMPORT MIDI_OUT_CHANNEL
+               .IMPORT LAST_MIDI
+               .IMPORT SEQ_XMIT_EVENT
+               .IMPORT CUR_R_MAP
+               .IMPORT LAST_STAT_BYTE
+               .IMPORT CUR_L_MAP
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             MASTER VOLUME POT MOVED - XMIT!
+;
+XMIT_VOLUME
+               MOVE    MIDI_OUT_CHANNEL,D1  ;LOAD UP MIDI OUTPUT CHANNEL
+               BMI.S   EXIT_XMIT_VOL        ;    IF OFF, BLOW TOWN
+;
+               MOVE.B  CURRENT_VOLUME+1,XMIT_TEMP_1   ;LOAD UP VOLUME
+               MOVE.B  #7,XMIT_TEMP_2       ;MAIN VOLUME CONTROLLER NUMBER
+               MOVEQ   #0B0H,D0             ;CONTROLLER STAT BYTE
+               OR      D1,D0                ; MASK ON CHANNEL
+;
+               BTST    #4,D1                ;WHICH UART?
+               BEQ     XMIT_2_PA            ;
+               BRA     XMIT_2_PB
+;
+EXIT_XMIT_VOL
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             RECEIVE MIDI EVENTS.  IF SEQUENCER RECORDING, PACK THEM INTO APROPOS FORMAT, AND
+;              PASS ON.
+;
+;             NOTE ON/OFFS REQUIRE SPECIAL PARSING.  BEYOND THAT (AND SYSTEM, HANDLED ELSEWHERE),
+;              JUST A MATTER OF 2 OR 3 BYTE MESSAGES TO PACK.
+;
+;;;;;;;;;;
+SEQ_NOTE_OFF
+               BSR     GET_BYTE             ;GET KEYNUM
+               MOVE.B  D0,MIDI_DATA_1       ; SAVE
+               BSR     GET_BYTE             ;GET VELOCITY
+               MOVE.B  D0,MIDI_DATA_2       ; SAVE
+BOG_SEQ_OFF
+               TST.B   RECORDING            ;ONLY IF ACTUALLY RECORDING, SHOULD WE BOTHER
+               BEQ.S   ECHO_OFF
+;
+               TST.B   AUTORPT_FLAG         ;IF AUTOREPEATING
+               BNE.S   NON_ECHO_OFF         ;    THEN DO NOT WRITE
+;
+               MOVEQ   #4,D6                ;SAY WEEZ ARE A NOTE OFF TYPE EVENT
+               BSR     GENERIC_STUFFER      ; PUT IT IN SEQUENCER FORMAT - NAMELY: BUFFER)
+                                            ; 1000 aaaa b ccc 0100
+                                            ; 0 ddddddd 0 eeeeeee
+                                            ; aaaa = CHANNEL    b = A/B UART   ccc = TRACK
+                                            ; ddddddd = KEYNUM  eeeeeee = VELOCITY
+;
+               .ALONG
+               JSR     LOG_OUT_NEW_MIDI     ;DID WE EVER SEE THE 'ON' FOR THIS NOTE?
+               .AWORD
+;10DEC               BEQ.S   ECHO_OFF                  IF NOT, DO NOT WRITE
+;
+;15JAN               MOVE.L  NOTE_REC_PARSE,A2    ;SEND OFF TO CORRECT PLACE (THIS LOADED BY PHASE PROCESSOR)
+               MOVE    NOTE_OFF_WRITE,A2
+               SWAP    D7
+               JSR     (A2)                 ;UPPER WORD
+               SWAP    D7
+               JSR     (A2)                 ;LOWER WORD
+;
+;*****SEQ_FULL CHECK, ACT IF NEEDED
+               BSR     SEQ_MEM_CHECK
+;
+               MOVE.L  A6,SEQ_WR_PTR        ;RESAVE MEMORY POINTERS FOR WRITE ROUTINES
+               MOVE    A3,WASTELAND_PTR
+;
+ECHO_OFF
+               BSR     ECHO_3               ;DO ECHO CHECK
+NON_ECHO_OFF
+               BSR     QUICK_LOG_OUT        ; LOG OUT OF HOLDING_BUFF
+;WE'RE DONE - NOW CHECK LAST STAT TO SEE IF WE RUNNING STATUS TO A NOTE ON OR
+; A NOTE OFF.
+               BTST    #4,LAST_STAT_BYTE    ;NOTE ON IS A 90 - NOTE OFF IS AN 80.
+               BNE.S   SEQ_NOTE_ON
+               BRA     SEQ_NOTE_OFF
+;
+;
+;;;;;;;;;;
+SEQ_NOTE_ON
+               BSR     GET_BYTE             ;GET KEYNUM
+               MOVE.B  D0,MIDI_DATA_1       ; SAVE
+               MOVE.B  D0,LAST_MIDI+1       ;  (ALSO SAVE FOR SEQ EDITING UTILITIES)
+               BSR     GET_BYTE             ;GET VELOCITY
+               TST     D0                   ; IF = 0, A NOTE OFF- OTHER PLANS
+               BEQ.S   CHROME_7
+               TST     MIDI_DEFAULT_VEL     ; ARE WE SUPPOSED TO SUBSTITUTE WITH A DEFAULT?
+               BEQ.S   CHROME_7             ;    IF NOT, KEEP WHAT WE GOT
+               MOVE    MIDI_DEFAULT_VEL,D0  ;         ELSE, SUBSTITUTE
+CHROME_7
+               MOVE.B  D0,MIDI_DATA_2       ; SAVE
+               BEQ     BOG_SEQ_OFF          ;    VELOCITY = 0 = OFF - TREAT ACCORDINGLY!!!!!!
+;
+               TST.B   RECORDING            ;ONLY IF ACTUALLY RECORDING, SHOULD WE BOTHER
+               BEQ.S   ECHO_ON
+;
+               TST.B   AUTORPT_FLAG         ;IF AUTOREPEATING
+               BNE.S   NON_ECHO_ON          ;    THEN DO NOT WRITE
+;
+               TST.B   MIDI_DATA_2          ;IF VELOCITY = 0
+               BEQ.S   SHEEP_WOLF_NOTE      ;    THEN REALLY A NOTE OFF - HANDLE
+                                            ;         ELSE, A NOTE ON
+               MOVEQ   #3,D6                ;SAY WEEZ ARE A NOTE ON TYPE EVENT
+               BRA.S   ELEMENTAL_0
+SHEEP_WOLF_NOTE
+               MOVEQ   #4,D6                ;(NOTE OFF TYPE ID)
+ELEMENTAL_0
+               BSR     GENERIC_STUFFER      ; PUT IT IN SEQUENCER FORMAT - NAMELY: BUFFER)
+                                            ; 1001 aaaa b ccc 0011 (or 0100, IF A NOTE OFF)
+                                            ; 0 ddddddd 0 eeeeeee
+                                            ; aaaa = CHANNEL    b = A/B UART   ccc = TRACK
+                                            ; ddddddd = KEYNUM  eeeeeee = VELOCITY (= 00, IF A NOTE OFF)
+;
+               .ALONG
+               JSR     LOG_IN_NEW_MIDI      ;THROW INTO NOTES_CURRENTLY_ON LIST
+               .AWORD
+               BEQ.S   ECHO_ON              ;    IF NO ROOM, DO NOT WRITE
+;
+               MOVE    MIDI_ON_WRITE,A2     ;SEND OFF TO CORRECT PLACE (THIS LOADED BY PHASE PROCESSOR)
+               SWAP    D7
+               JSR     (A2)                 ;UPPER WORD
+               SWAP    D7
+               JSR     (A2)                 ;LOWER WORD
+;
+;*****SEQ_FULL CHECK, ACT IF NEEDED
+               BSR     SEQ_MEM_CHECK
+;
+               MOVE.L  A6,SEQ_WR_PTR        ;RESAVE MEMORY POINTERS FOR WRITE ROUTINES
+               MOVE    A3,WASTELAND_PTR
+;
+ECHO_ON
+               BSR     ECHO_3               ;ECHO, IF NEEDED
+NON_ECHO_ON
+               BSR     QUICK_LOG_IN         ; LOG IN TO HOLDING_BUFF
+               BRA     SEQ_NOTE_ON          ; RUNNING STATUS ANOTHER ONE
+;
+;
+;;;;;;;;;;
+S_3_BYTE       ;3 BYTE MESSAGE TO PACK & PASS
+               BSR     GET_BYTE             ;GET KEYNUM
+               MOVE.B  D0,MIDI_DATA_1       ; SAVE
+               BSR     GET_BYTE             ;GET VELOCITY
+               MOVE.B  D0,MIDI_DATA_2       ; SAVE
+;
+               TST.B   RECORDING            ;ONLY IF ACTUALLY RECORDING, SHOULD WE BOTHER
+               BEQ.S   S_3_OFF
+;
+               MOVEQ   #5,D6                ;SAY WEEZ ARE A GENERIC MIDI TYPE EVENT
+               BSR     GENERIC_STUFFER      ; PUT IT IN SEQUENCER FORMAT - NAMELY: BUFFER)
+                                            ; aaaa bbbb c ddd 0101
+                                            ; 0 eeeeeee 0 fffffff
+                                            ; aaaa = STATUS NIB b = CHANNEL    c = UART A/B
+                                            ; eeeeeee = DATA BYTE #1      fffffff = DATA BYTE #2
+;
+               MOVE    NON_NOTE_WRITE,A2    ;SEND OFF TO CORRECT PLACE (THIS LOADED BY PHASE PROCESSOR)
+               SWAP    D7
+               JSR     (A2)                 ;UPPER WORD
+               SWAP    D7
+               JSR     (A2)                 ;LOWER WORD
+;
+;*****SEQ_FULL CHECK, ACT IF NEEDED
+               BSR     SEQ_MEM_CHECK
+;
+               MOVE.L  A6,SEQ_WR_PTR        ;RESAVE MEMORY POINTERS FOR WRITE ROUTINES
+               MOVE    A3,WASTELAND_PTR
+;
+S_3_OFF
+               BSR     ECHO_3               ;ECHO, IF NEEDED
+               BRA     S_3_BYTE             ; RUNNING STATUS ANOTHER ONE
+;
+;
+;;;;;;;;;;
+SEQ_MOD        ;IF MOD WHEEL, SAVE VALUE.  ALSO, NORMAL GATHER & PACK.
+               BSR     GET_BYTE             ;GET DATA BYTE 1
+               MOVE.B  D0,MIDI_DATA_1       ; SAVE
+               BSR     GET_BYTE             ;GET DATA BYTE 2
+               MOVE.B  D0,MIDI_DATA_2       ; SAVE
+;
+               CMP.B   #1,MIDI_DATA_1       ;MOD WHEEL?
+               BNE.S   RAIN_M_1             ;    IF NOT, AS NORMAL
+               MOVE    D0,LAST_MOD_WHL      ;         ELSE, SAVE
+RAIN_M_1
+               CMP.B   #123,MIDI_DATA_1     ;ARE WE LOOKING AN ALL-NOTES-OFF IN THE EYE?
+               BEQ     SEQ_MOD              ;BRANCH IF YES, PRETEND WE DIDN'T HEAR IT - DON'T EVEN
+                                            ;ECHO IT (KISS OFF, ROLAND-ASSHOLE-SYNTH/KEYBOARD!)
+;
+               TST.B   RECORDING            ;ONLY IF ACTUALLY RECORDING, SHOULD WE BOTHER
+               BEQ.S   SEQ_M_OFF
+;
+               MOVEQ   #5,D6                ;SAY WEEZ ARE A GENERIC MIDI TYPE EVENT
+               BSR     GENERIC_STUFFER      ; PUT IT IN SEQUENCER FORMAT - NAMELY: BUFFER)
+                                            ; aaaa bbbb c ddd 0101
+                                            ; 0 eeeeeee 0 fffffff
+                                            ; aaaa = STATUS NIB b = CHANNEL    c = UART A/B
+                                            ; eeeeeee = DATA BYTE #1      fffffff = DATA BYTE #2
+;
+               MOVE    NON_NOTE_WRITE,A2    ;SEND OFF TO CORRECT PLACE (THIS LOADED BY PHASE PROCESSOR)
+               SWAP    D7
+               JSR     (A2)                 ;UPPER WORD
+               SWAP    D7
+               JSR     (A2)                 ;LOWER WORD
+;
+;*****SEQ_FULL CHECK, ACT IF NEEDED
+               BSR     SEQ_MEM_CHECK
+;
+               MOVE.L  A6,SEQ_WR_PTR        ;RESAVE MEMORY POINTERS FOR WRITE ROUTINES
+               MOVE    A3,WASTELAND_PTR
+;
+SEQ_M_OFF
+               BSR     ECHO_3               ;ECHO, IF NEEDED
+               BRA     SEQ_MOD              ; RUNNING STATUS ANOTHER ONE
+;
+;
+;;;;;;;;;;
+S_2_BYTE       ;2 BYTE MESSAGE TO PACK & PASS
+               BSR     GET_BYTE             ;GET VELOCITY
+               MOVE.B  D0,MIDI_DATA_2       ; SAVE
+               MOVE.B  D0,MIDI_DATA_1
+;
+               TST.B   RECORDING            ;ONLY IF ACTUALLY RECORDING, SHOULD WE BOTHER
+               BEQ.S   S_2_OFF
+;
+               MOVEQ   #5,D6                ;SAY WEEZ ARE A NOTE OFF TYPE EVENT
+               BSR     GENERIC_STUFFER      ; PUT IT IN SEQUENCER FORMAT - NAMELY: BUFFER)
+                                            ; aaaa bbbb c ddd 0101
+                                            ; 0 eeeeeee 0 fffffff
+                                            ; aaaa = STATUS NIB b = CHANNEL    c = UART A/B
+                                            ; eeeeeee = DATA BYTE #1      fffffff = DATA BYTE #2
+               BSET    #7,D7                ;FLAG THAT 2nd DATA BYTE IS EXTRANEOUS
+               MOVE    NON_NOTE_WRITE,A2    ;SEND OFF TO CORRECT PLACE (THIS LOADED BY PHASE PROCESSOR)
+               SWAP    D7
+               JSR     (A2)                 ;WRITE HIGH WORD
+               SWAP    D7
+               JSR     (A2)                 ;WRITE LOW WORD
+;
+;*****SEQ_FULL CHECK, ACT IF NEEDED
+               BSR     SEQ_MEM_CHECK
+;
+               MOVE.L  A6,SEQ_WR_PTR        ;RESAVE MEMORY POINTERS FOR WRITE ROUTINES
+               MOVE    A3,WASTELAND_PTR
+;
+S_2_OFF
+               BSR     ECHO_2               ;ECHO, IF NEEDED
+               BRA     S_2_BYTE             ; RUNNING STATUS ANOTHER ONE
+;
+;
+;;;;;;;;;;
+SEQ_PRESS      ;PRESSURE - SAVE VALUE, PACK & SAVE.
+               BSR     GET_BYTE             ;GET VELOCITY
+               MOVE.B  D0,MIDI_DATA_2       ; SAVE
+               MOVE.B  D0,MIDI_DATA_1
+               MOVE    D0,LAST_PRESSURE
+;
+               TST.B   RECORDING            ;ONLY IF ACTUALLY RECORDING, SHOULD WE BOTHER
+               BEQ.S   SEQ_P_OFF
+;
+               MOVEQ   #5,D6                ;SAY WEEZ ARE A NOTE OFF TYPE EVENT
+               BSR     GENERIC_STUFFER      ; PUT IT IN SEQUENCER FORMAT - NAMELY: BUFFER)
+                                            ; aaaa bbbb c ddd 0101
+                                            ; 0 eeeeeee 0 fffffff
+                                            ; aaaa = STATUS NIB b = CHANNEL    c = UART A/B
+                                            ; eeeeeee = DATA BYTE #1      fffffff = DATA BYTE #2
+               BSET    #7,D7                ;FLAG THAT 2nd DATA BYTE IS EXTRANEOUS
+               MOVE    NON_NOTE_WRITE,A2    ;SEND OFF TO CORRECT PLACE (THIS LOADED BY PHASE PROCESSOR)
+               SWAP    D7
+               JSR     (A2)                 ;WRITE HIGH WORD
+               SWAP    D7
+               JSR     (A2)                 ;WRITE LOW WORD
+;
+;*****SEQ_FULL CHECK, ACT IF NEEDED
+               BSR     SEQ_MEM_CHECK
+;
+               MOVE.L  A6,SEQ_WR_PTR        ;RESAVE MEMORY POINTERS FOR WRITE ROUTINES
+               MOVE    A3,WASTELAND_PTR
+;
+SEQ_P_OFF
+               BSR     ECHO_2               ;ECHO, IF NEEDED
+               BRA     SEQ_PRESS            ; RUNNING STATUS ANOTHER ONE
+;
+;
+;;;;;;;;;;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;;;;;;;;;;
+GENERIC_STUFFER        ; ENTER W/ MESSAGE TYPE IN D6.  TAKE LAST_STAT_BYTE, NOW_UART, NOW_TRACK,
+; MIDI_DATA_1, AND MIDI_DATA_2 AND LOAD A LONG WORD IN SEQUENCE PACK FORMAT IN D7.L.
+; ALSO - SET UP POINTERS FOR SEQ_WRITE (A6) AND WASTE_WRITE (A3) ROUTINES.
+               MOVE.L  SEQ_WR_PTR,A6        ;SET UP SLOT POINTERS FOR WRITE ROUTINES
+               MOVE    WASTELAND_PTR,A3
+;
+               MOVE.B  LAST_STAT_BYTE,D7    ;TAKE LAST STATUS BYTE - FIRST BYTE
+               LSL     #4,D7                ; PARTIALLY ROTATE INTO PLACE
+               OR      NOW_TRACK,D7         ;TACK ON TRACKNUM
+               LSL     #4,D7                ; ROTATE UP THE REST OF THE WAY
+               TST.B   NOW_UART             ;FLAG WHICH UART TO TAG TO
+               BEQ.S   SENSA_1
+               BSET    #7,D7
+SENSA_1
+               OR      D6,D7                ;MASK ON TYPE
+               SWAP    D7                   ; ONE WORD FINISHED!
+;
+               MOVE    MIDI_DATA_1,D7       ;TACK ON DATA BYTES
+               RTS                     ;ES FINE'!
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             SEQUENCER XMIT ROUTINES.  IF TYPES 1 OR 2 XMIT (PAD FAKE), ENTERS WITH SEQUENCER-FORMAT
+;              DATA IN BG_TEMP_1->6.  IN OTHER CASES, ENTERS WITH SEQUENCER WORD IN D7.L.  SYSTEM
+;              EXCLUSIVE IS A DIFF CASE - FIRST WORD PASSED IN D7, WE ARE RESPONSIBLE FOR AQUISITON
+;              AFTER THAT POINT.
+;
+;             WE DO SWEAR TO LEAVE ALONE REGISTERS A2->A6 (VECTORS AND ADDRESSES OF WHERE TO READ
+;              OR WRITE SEQUENCE DATA).  OTHER THAN THAT, WE'RE THE LAST ONE IN THE CHAIN TO DEAL
+;              WITH THESE EVENTS, AND TRASH STUFF AS WE WILL TO SAVE EXECUTION TIME.
+;
+;             HERE'S WHAT EACH EVENT LOOKS LIKE:
+;
+;             TYPE 1 - PAD ON
+;              aaa bbbbb c ddd 0001    aaa = PADNUM, bbbbb = SOUNDNUM, c = ALT PARAM, ddd = TRACKNUM
+;              0 eeeee fffff ggggg     eeeee = PITCH, fffff = PAN, ggggg = VELOCITY
+;              00000000000 hhhhh       hhhhh = LEVEL
+;
+;             TYPE 2 - PAD OFF
+;              aaa bbbbb c ddd 0010    aaa = PADNUM, bbbbb = SOUNDNUM, c = ALT PARAM, ddd = TRACKNUM
+;              0 eeeee fffff 00000     eeeee = PITCH, fffff = PAN
+;
+;             TYPE 3 - MIDI NOTE ON
+;              1001 aaaa b ccc 0011    aaaa = CHANNEL, b = UART, ccc = TRACKNUM
+;              0 ddddddd 0 eeeeeee     ddddddd = KEYNUM, eeeeeee = VELOCITY
+;
+;             TYPE 4a - MIDI NOTE OFF
+;              1001 aaaa b ccc 0100    aaaa = CHANNEL, b = UART, ccc = TRACKNUM
+;              0 ddddddd 00000000      ddddddd = KEYNUM
+;
+;             TYPE 4b - MIDI NOTE OFF
+;              1000 aaaa b ccc 0100    aaaa = CHANNEL, b = UART, ccc = TRACKNUM
+;              0 ddddddd 0 eeeeeee     ddddddd = KEYNUM, eeeeeee = VELOCITY
+;
+;             TYPE 5a - OTHER MIDI
+;              aaaa bbbb c ddd 0101    aaaa = STAT BYTE, bbbb = CHANNEL, c = UART, ddd = TRACKNUM
+;              0 eeeeeee 0 fffffff     eeeeeee = DATA BYTE #1, fffffff = DATA BYTE # 2
+;
+;             TYPE 5b - MIDI SYSTEM
+;              1111 aaaa b ccc 0101    aaaa = CHANNEL, b = UART, ccc = TRACKNUM
+;              0 ddddddd 0 eeeeeee     ddddddd = DATA BYTE #1, eeeeeee = DATA BYTE # 2
+;
+;             TYPE 6 - MIDI SYSTEM EXCLUSIVE
+;              11110000 a bbb 0110     a = UART, bbb = TRACKNUM
+;             (0 ccccccc 0 ddddddd)    ccccccc, ddddddd = DATA BYTES x as many as needed
+;              0 cdcdcdc 11110111
+;
+;;;;;;;;;;
+TYPE_2_XMIT    ;PAD NOTE OFF - JUST LIKE THE ON, 'CEPT NO WORD FOR LEVEL - SUPPLY A FAKE LEVEL
+; OF '0' (IS AN OFF, ANYWAY).
+               CLR     BG_TEMP_5_B          ;'TIS WHERE A PAD ON'S LEVEL IS - CLEAR.
+               AND.B   #0E0H,BG_TEMP_4_B    ; CLEAR OUT VELOCITY - IS AN OFF.
+               CMP     #3,MIDI_MODE         ;    IF NOT IN MAPPED MODE
+               BEQ.S   TYPE_1_XMIT          ;         THEN NO XMISSION OF PAD OFFS.
+               RTS
+;
+;;;;;;;;;;
+TYPE_1_XMIT    ; PAD ON EVENT.  GOAL IN LIFE IS TO ARRANGE BG_TEMP's IN D0 & D1 SO AS TO LOOK
+; LIKE A LIVE EVENT TO XMIT.
+;
+;  FORM WE'RE SEEKING TO EMULATE:
+;
+;             D0.L = (x) (padnum) (x) (soundnum)
+;                 (hi byte)
+;             D1.L = (velocity) (pitch) (pan) (level)
+;
+               MOVEQ   #0,D0                ;CLEAR OUT TARGET REGGIES
+               MOVEQ   #0,D1
+;
+               MOVE.B  BG_TEMP_1_B,D0       ;PADNUM AND SOUNDNUM - 00 00 00 aaabbbbb
+               LSR     #5,D0                ;ROTATE TO JUST PADNUM - 00 00 00 00000aaa
+               SWAP    D0                   ; 00 00000aaa 00 00
+;
+               MOVE.B  BG_TEMP_1_B,D0       ;GO AFTER SOUNDUM AGAIN - 00 00000aaa 00 aaabbbbb
+               AND.B   #1FH,D0              ;CLEAN OUT DUPE PADNUM - 00 00000aaa 000bbbbb
+               LSL.B   #1,D0                ;CREATE ROOM FOR ALT PARAM - 00 00000aaa 00 00bbbbb0
+               TST.B   BG_TEMP_2_B          ; (TESTING 'c')
+               BPL.S   AON_01
+               BSET    #0,D0                ;IF ALT PARAM, SET LOWER BIT
+AON_01                                      ; RESULT - D0.L AS PER ABOVE.
+               MOVE.B  BG_TEMP_4_B,D1       ;VELOCITY ET AL - 00 00 00 xxxhhhhh
+               AND     #1FH,D1              ;CLEAN TO 00 00 00 000hhhhh
+               LSL     #2,D1                ; BUMP UP TO 7 BIT VELOCITY
+               LSL     #8,D1                ; 00 00 0hhhhh00 00
+;
+               MOVE.B  BG_TEMP_3_B,D1       ;GOING AFTER PITCH - 00 00 000hhhhh 0eeeeeff
+               LSR.B   #2,D1                ; 00 00 000hhhhh 000eeeee
+               SWAP    D1                   ; 000hhhhh 000eeeee 00 00
+;
+               MOVE    BG_TEMP_3_B,D1       ;GOING AFTER PAN & LEVEL - 000hhhhh 00eeeee 0eeeeefffffggggg
+               LSL     #3,D1                ; 000hhhhh 000eeeee eeefffff ggggg000
+               LSR.B   #3,D1                ; 000hhhhh 000eeeee eeefffff 000ggggg
+               AND     #1F1FH,D1            ; CLEAN UP - 000hhhhh 000eeeee  000fffff 000ggggg
+;
+               ST      BG_TEMP_10_B         ;SAY NO TO MTC XMIT
+               BRA     XMIT_SEQ             ;    XMIT ACCORDING TO MIDI MODE, AND RETURN FROM THERE
+;
+;
+;
+TYPE_3_XMIT    ; MIDI NOTE ON
+TYPE_4_XMIT    ; MIDI NOTE OFF
+               SWAP    D7                   ;LOOK AT UPPER WORD - HAS UART BIT FLAG
+               BSR     UART_OUT_CHECK       ; SET FLAG OF WHICH UART TO BROADCAST THIS OVER
+;
+               LSR     #8,D7                ;ROTATE OFF GARBAGE - GET TO STAT BYTE
+               MOVE.B  D7,XMIT_TEMP_3
+;
+               SWAP    D7                   ;GET TO LOWER WORD - HAS KEYNUM, VELOCITY
+;
+               MOVE.B  D7,XMIT_TEMP_1       ;VELOCITY BYTE
+               LSR     #8,D7
+               MOVE.B  D7,XMIT_TEMP_2       ;KEYNUM BYTE
+;
+               TST.B   BG_TEMP_1_B          ;UART A OR B?
+               BEQ.S   FLOAT_OUT_ON_A
+FLOAT_OUT_ON_B
+               BSR     XMIT_3_B_SEQ
+               BRA.S   PHILLY_1
+FLOAT_OUT_ON_A
+               BSR     XMIT_3_A_SEQ
+PHILLY_1
+               RTS
+;
+;
+;;;;;;;;;;
+TYPE_5_XMIT    ; OTHER MIDI MESSAGE TO XMIT
+               SWAP    D7                   ;LOOK AT UPPER WORD - HAS STAT BYTE, UART BIT
+               BSR     UART_OUT_CHECK       ; SET FLAG OF WHICH UART TO BROADCAST THIS OVER
+;
+               LSR     #8,D7                ;ROTATE OFF GARBAGE - GET TO STAT BYTE
+               MOVE.B  D7,XMIT_TEMP_3
+;
+               SWAP    D7                   ;NOW, LOOK AT LOWER WORD - HAS DATA BYTES
+;
+               MOVE.B  D7,XMIT_TEMP_1       ;DATA BYTE 2 - HIGH BIT SET IF JUST ONE DATA BYTE TO BE READ
+               BMI.S   TWO_BYTE_XMIT        ;    IF JUST ONE DATA BYTE, THIS ONE FLAGGED
+                                            ;         ELSE, 2 - CONTINUE
+               LSR     #8,D7
+               MOVE.B  D7,XMIT_TEMP_2       ;DATA BYTE 1
+;
+               TST.B   BG_TEMP_1_B          ;UART A OR B?
+               BEQ.S   BLOAT_OUT_ON_A
+BLOAT_OUT_ON_B
+               BSR     XMIT_3_B_SEQ
+               BRA.S   PHILLY_2
+BLOAT_OUT_ON_A
+               BSR     XMIT_3_A_SEQ
+PHILLY_2
+               RTS
+;
+;
+TWO_BYTE_XMIT  ;AS SAID ABOVE, ONLY 2 BYTES TO XMIT - MOVE INTO POSITION, AND 'PRESERVER - DO!'
+               LSR     #8,D7                ;PROPER DATA BYTE IN UPPER BYTE
+               MOVE.B  D7,XMIT_TEMP_1
+               MOVE.B  XMIT_TEMP_3,D0       ;MOVE STATUS BYTE INTO POSTION
+;
+               TST.B   BG_TEMP_1_B          ;SEE WHICH UART TO USE
+               BEQ.S   BLOOD_TYPE_A
+BLOOD_TYPE_B
+               BSR     XMIT_1_PB_SEQ
+               BRA.S   INVESTIGATE
+BLOOD_TYPE_A
+               BSR     XMIT_1_PA_SEQ
+INVESTIGATE
+               RTS
+;
+;
+;;;;;;;;;;
+TYPE_6_XMIT            ; SYSTEM EXCLUSIVE MESSAGE TO XMIT - PASSED FIRST WORD IN D7.  ALSO HAS
+; TRACKNUM BYTE - NEED TO RUN A TRACK_MUTED TEST.  IF TRACK INDEED MUTED, NEED TO READ & WRITE,
+; BUT DO NOT XMIT.
+               JSR     (A2)                 ;FIRST OFF - WRITE
+;890314               CLR     SYSEX_XMIT_CNT       ;CLEAR COUNT OF BYTE PAIRS SENT DURING THIS MESSAGE.
+;
+               BTST    #7,D7                ;RIGHT UP FRONT - WHICH UART?
+               BNE     SYSEX_B
+;
+SYSEX_A
+               MOVE    D7,D0                ;MAKE COPY TO WORK ON
+               AND     #0070H,D0            ; MASK TO JUST TRACKNUM
+               LSR     #4,D0                ;  ROTATE DOWN TO STRAIGHT NOMBRE
+               BTST    D0,TRACKS_MUTED      ;   SEE IF THAT PARTICULAR TRACK SI SET TO BE MUTED
+               BNE     SYSEX_A_MUTED        ;    IF YES, READ & WRITE, BUT DO NOT XMIT
+                                            ;         ELSE, CONTINUE
+               MOVEQ   #0F0H,D0             ;WELL, KNOW WHAT THE FIRST BYTE WILL BE...
+               BSR     LOAD_A_SEQ           ; XMIT
+;
+AMPLIFIER_A
+               BSR     SEQ1_DSTR_READ       ;GET NEXT WORD FROM SEQUENCER
+               JSR     (A2)                 ; WRITE
+;
+;*****DO SEQ_FULL CHECK, ACT IF NEEDED
+               BSR     SEQ_MEM_CHECK
+;
+               MOVE.B  D7,XMIT_TEMP_1       ;LOAD UP 2nd BYTE TO XMIT
+               BMI.S   FINE_2_SYSEX_A       ; ANY STATUS BYTE MEANS EOX
+               LSR     #8,D7                ;GET AT 1st DATA BYTE
+               MOVE.B  D7,D0
+               BMI.S   FINE_SYSEX_A         ;    AGAIN - EOX?
+;
+               BSR     XMIT_1_PA_SEQ        ;PUT THESE TWO BYTES INTO SEQ XMIT BUFFER.
+;890314               BSR.S   SYSEX_BRAKEMAN       ;DELAY AS APPROPRIATE -
+;890314               BEQ     AMPLIFIER_A          ;BRANCH RIGHT BACK UP IF NO DELAY INCURRED THIS TIME,
+;890314               BSR     TRIP_A_SEQ_XMIT      ;ELSE TAKE ACTION TO ENSURE DATA IS DRIBBLING OUT,
+;890314                                            ;NOT JUST PILING UP (PENDING SEQ BUF REALTIME TIMEOUT).
+               BRA     AMPLIFIER_A          ;NOW - GO AGAIN 'TILL DONE.
+;
+FINE_2_SYSEX_A         ; DATA BYTE & AN EOX TO FINISH UP
+               MOVE    D7,D0
+               LSR     #8,D0                ;ROTATE DOWN THAT DATA BYTE
+               BSR     LOAD_A_SEQ
+FINE_SYSEX_A           ; FINISH UP WITH AN EOX
+               MOVEQ   #0F7H,D0
+               BSR     LOAD_A_SEQ
+               RTS
+;
+;
+SYSEX_A_MUTED
+               BSR     SEQ1_DSTR_READ       ;GET NEXT WORD FROM SEQUENCER
+               JSR     (A2)                 ; WRITE
+;
+;*****DO SEQ_FULL TEST, ACT IF NEEDED
+               BSR     SEQ_MEM_CHECK
+;
+               TST     D7                   ;LOOK AT SYSEX DATA - TEST UPPER BYTE
+               BMI.S   MUTED_FINE_A         ; UPPER BIT SET MEANS EOX - DONE
+               BTST    #7,D7                ;  LOOK AT LOWER DATA BYTE
+               BEQ.S   SYSEX_A_MUTED        ;   IF UPPER BIT CLEAR, DATA - KEEP GOING
+                                            ;    ELSE, EOX - DONE
+MUTED_FINE_A           ; SAW AN EOX IN LATEST WORD FETCHED - DONE HERE
+               RTS
+;
+;
+;
+;;;;;;;;;;
+SYSEX_B
+               MOVE    D7,D0                ;MAKE COPY TO WORK ON
+               AND     #0070H,D0            ; MASK TO JUST TRACKNUM
+               LSR     #4,D0                ;  ROTATE DOWN TO STRAIGHT NOMBRE
+               BTST    D0,TRACKS_MUTED      ;   SEE IF THAT PARTICULAR TRACK SI SET TO BE MUTED
+               BNE     SYSEX_B_MUTED        ;    IF YES, READ & WRITE, BUT DO NOT XMIT
+                                            ;         ELSE, CONTINUE
+               MOVEQ   #0F0H,D0     ;WELL, KNOW WHAT THE FIRST BYTE WILL BE...
+               BSR     LOAD_B_SEQ           ; XMIT
+;
+AMPLIFIER_B
+               BSR     SEQ1_DSTR_READ       ;GET NEXT WORD FROM SEQUENCER
+               JSR     (A2)                 ; WRITE
+;
+;*****DO SEQ_FULL CHECK, ACT IF NEEDED
+               BSR     SEQ_MEM_CHECK
+;
+               MOVE.B  D7,XMIT_TEMP_1       ;LOAD UP 2nd BYTE TO XMIT
+               BMI.S   FINE_2_SYSEX_B       ; ANY STATUS BYTE MEANS EOX
+               LSR     #8,D7                ;GET AT 1st DATA BYTE
+               MOVE.B  D7,D0
+               BMI.S   FINE_SYSEX_B         ;    AGAIN - EOX?
+;
+               BSR     XMIT_1_PB_SEQ        ;PUT THESE TWO BYTES INTO SEQ XMIT BUFFER.
+;890314               BSR     SYSEX_BRAKEMAN       ;DELAY AS APPROPRIATE -
+;890314               BEQ     AMPLIFIER_B          ;BRANCH RIGHT BACK UP IF NO DELAY INCURRED THIS TIME,
+;890314               BSR     TRIP_B_SEQ_XMIT      ;ELSE TAKE ACTION TO ENSURE DATA IS DRIBBLING OUT,
+;890314                                            ;NOT JUST PILING UP (PENDING SEQ BUF REALTIME TIMEOUT).
+               BRA     AMPLIFIER_B          ;NOW -  GO AGAIN 'TILL DONE.
+;
+FINE_2_SYSEX_B         ; DATA BYTE & AN EOX TO FINISH UP
+               MOVE    D7,D0
+               LSR     #8,D0                ;ROTATE DOWN THAT DATA BYTE
+               BSR     LOAD_B_SEQ
+FINE_SYSEX_B           ; FINISH UP WITH AN EOX
+               MOVEQ   #0F7H,D0
+               BSR     LOAD_B_SEQ
+               RTS
+;
+;
+SYSEX_B_MUTED
+               BSR     SEQ1_DSTR_READ       ;GET NEXT WORD FROM SEQUENCER
+               JSR     (A2)                 ; WRITE
+;
+;*****DO SEQ_FULL TEST, ACT IF NEEDED
+               BSR     SEQ_MEM_CHECK
+;
+               TST     D7                   ;LOOK AT SYSEX DATA - TEST UPPER BYTE
+               BMI.S   MUTED_FINE_B         ; UPPER BIT SET MEANS EOX - DONE
+               BTST    #7,D7                ;  LOOK AT LOWER DATA BYTE
+               BEQ.S   SYSEX_B_MUTED        ;   IF UPPER BIT CLEAR, DATA - KEEP GOING
+                                            ;    ELSE, EOX - DONE
+MUTED_FINE_B           ; SAW AN EOX IN LATEST WORD FETCHED - DONE HERE
+               RTS
+;
+;
+;
+;;;;;;;;;;
+UART_OUT_CHECK         ; SEE WHICH UART WE SRE SUPPOSED TO XMIT THIS OVER - SET UP BG_TEMP_1_B AS A FLAG
+               CLR.B   BG_TEMP_1_B
+               BTST    #7,D7                ;UART FLAG BIT HERE - 0=A, 1=B
+               BEQ.S   FLOORED_1
+               ST      BG_TEMP_1_B
+FLOORED_1
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               TTL     "MIDI XMIT ROUTINES"
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             XMIT LIVE ROUTINE.  CALLED IN RESPONSE TO A PAD HIT.  PASSED THE FOLLOWING INFO:
+;
+;             D0.L = (x) (padnum) (x) (soundnum)
+;                 (hi byte)
+;             D1.L = (velocity) (pitch) (pan) (level)
+;
+;             WE HAVE TO SEND THIS SUCKER OUT OVER MIDI AND THROUGH THE MIDI TIME CODE JACKS.
+;              OVER NORMAL MIDI, CHECK WHICH MODE - IF MAPPED, SOUNDNUM DETERMINES A SERCH FOR
+;              WHICH MAP TO FIND IT IN, WHICH THEN DETERMINES CHANNEL AND PITCH TRANSPOSE (SEE
+;              MULTI RCV ROUTINES).  IF POLY/OMNI, THEN SEE IF CURRENTLY SELECTED MAP IS ONE OF
+;              OUR CURRENT MAPS, AND IF SO, XMIT 2 SETS OF KEY EVENTS (ONE FOR PITCH KEY, ONE
+;              FOR PADKEY).  AGAIN, FOR MORE INFO, REFERENCE THE POLY MODE RCV ROUTINES.
+;
+;             FOR MTC, ENCODE AS A SYSTEM EXCLUSIVE MESSAGE AND XMIT.
+;
+;             USES VELOCITY DIRECTLY (THUSLY, VEL=0=NOTE OFF).
+;
+XMIT_LIVE
+XMIT_SEQ
+               MOVEM.L D0-D7/A0,-(A7)       ;PROTECT REGGIES
+;
+               MOVE.L  D0,D7                ;MAKE A REF COPY OF THE REGISTERS
+               MOVE.L  D1,D6
+;
+               MOVE    MIDI_MODE,D2         ;WOT MIDI MODE?
+               BEQ     TRY_MTC              ;    IF OFF, PAGE ON TO MTC
+               CMPI    #3,D2                ;    IF MAPPED, HANDLE
+               BEQ     XMIT_MAPPED
+               MOVE    MIDI_OUT_CHANNEL,D2  ;         ELSE, POLY/OMNI - CHANNEL?
+               BMI     TRY_MTC              ;              IF OFF, PAGE ON TO MTC
+;
+               CLR     D3                   ;GOTTA XREF A KEYNUM
+               MOVE    KIT_INDEX,D4         ;    IS CURRENT FRONT PANEL KIT ONE OF OUR CURRENT KITS?
+               CMP     CUR_L_MAP,D4         ;    MATCH OUR LEFT?
+               BEQ.S   S_FIX_1              ;         IF YES, ES COOL...
+               CMP     CUR_R_MAP,D4         ;    MATC OUR RIGHT?
+               BNE     TRY_MTC              ;         IF NO, PAGE ON...
+               MOVEQ   #16,D3               ;              (ELSE, OFFSET INTO PAD/KEY TABLE)
+S_FIX_1
+               MOVEQ   #90H,D4              ;PITCH KEYON
+               OR      D2,D4                ; MASK ON MIDI CHANNEL
+               MOVE.B  D4,XMIT_TEMP_3
+;
+               SWAP    D1                   ;REF THE VELOCITY AND PITCH
+               ADD.B   #41H,D1              ;    OFFSET PITCH KEYNUM
+               MOVE.B  D1,XMIT_TEMP_2       ;PITCH KEYNUM
+               MOVE.B  D1,BG_TEMP_9_B       ;    SAVE FOR NOTE OFF XMISSION
+;
+               LSR     #8,D1                ;SHIFT VELOCITY INTO PLACE
+               MOVE.B  D1,XMIT_TEMP_1
+               BEQ     TRY_MTC              ;    PAGE NOTE OFFS - FAKE GATE TIME = 0 ON NOTE ON
+;
+               BCLR    #0,D0                ;CLEAR ALT PARAM BIT, MAKE A WORD INDEX
+               SWAP    D0                   ;INDEX BY PAD #
+               LSL     #1,D0                ;MAKE A WORD OFFSET
+               EXT     D0
+               ADD     D0,D3                ; ADD PAD TO L/R INDEX
+               MOVE    PAD_CONV_TBL(PC,D3),D4    ;LOAD UP PAD KEYNUM
+;
+               BRA.S   ACTUALLY_XMIT_PAD    ;(NOTE - PAGEAROUND HERE TO KEEP PAD_CONV_TBL IN RANGE
+                                            ; FOR ABOVE INSTRUCTION'S PC-RELATIVE OFFSET)
+;
+PAD_CONV_TBL
+               DC.W    24H                  ;PAD 1 - LEFT KIT
+               DC.W    28H                  ;PAD 2
+               DC.W    2BH                  ;PAD 3
+               DC.W    2FH                  ;PAD 4
+               DC.W    2EH                  ;PAD 5
+               DC.W    2CH                  ;PAD 6
+               DC.W    31H                  ;PAD 7
+               DC.W    27H                  ;PAD 8
+;
+               DC.W    30H                  ;PAD 1 - RIGHT KIT
+               DC.W    32H                  ;PAD 2
+               DC.W    34H                  ;PAD 3
+               DC.W    35H                  ;PAD 4
+               DC.W    37H                  ;PAD 5
+               DC.W    39H                  ;PAD 6
+               DC.W    3BH                  ;PAD 7
+               DC.W    3CH                  ;PAD 8
+;
+;
+ACTUALLY_XMIT_PAD
+               BTST    #4,D2                ;WAS THIS AIMED AT UART A OR B?
+               BNE.S   THROW_OUT_B          ;    (SET MEANS B)
+THROW_OUT_A
+               TST.B   SEQ_XMIT_EVENT       ;AIMED FOR WHICH UART?
+               BNE.S   S_THROW_OUT_A
+               BSR     XMIT_3_A             ;SEND OUT PITCH KEY
+               MOVE.B  D4,XMIT_TEMP_2       ; LOAD UP PADKEY
+               BSR     XMIT_3_A             ;SOUND OUT PAD KEY
+               CLR.B   XMIT_TEMP_1          ; NOW, PADKEY NOTE OFF
+               BSR     XMIT_3_A
+               MOVE.B  BG_TEMP_9_B,XMIT_TEMP_2   ; NOTE OFF FOR PITCH KEY
+               BSR     XMIT_3_A
+               BRA     TRY_MTC              ;    GO ON TO DO MTC
+;
+S_THROW_OUT_A
+               BSR     XMIT_3_A_SEQ         ;SEND OUT PITCH KEY
+               MOVE.B  D4,XMIT_TEMP_2       ; LOAD UP PADKEY
+               BSR     XMIT_3_A_SEQ         ;SOUND OUT PAD KEY
+               CLR.B   XMIT_TEMP_1          ; NOW, PADKEY NOTE OFF
+               BSR     XMIT_3_A_SEQ
+               MOVE.B  BG_TEMP_9_B,XMIT_TEMP_2   ; NOTE OFF FOR PITCH KEY
+               BSR     XMIT_3_A_SEQ
+               BRA     TRY_MTC              ;    GO ON TO DO MTC
+;
+THROW_OUT_B
+               TST.B   SEQ_XMIT_EVENT       ;AIMED FOR WHICH UART?
+               BNE.S   S_THROW_OUT_B
+               BSR     XMIT_3_B             ;SEND OUT PITCH KEY
+               MOVE.B  D4,XMIT_TEMP_2       ; LOAD UP PADKEY
+               BSR     XMIT_3_B             ;SOUND OUT PAD KEY
+               CLR.B   XMIT_TEMP_1          ; NOW, PADKEY NOTE OFF
+               BSR     XMIT_3_B
+               MOVE.B  BG_TEMP_9_B,XMIT_TEMP_2   ; NOTE OFF FOR PITCH KEY
+               BSR     XMIT_3_B
+               BRA     TRY_MTC              ;    GO ON TO DO MTC
+;
+S_THROW_OUT_B
+               BSR     XMIT_3_B_SEQ         ;SEND OUT PITCH KEY
+               MOVE.B  D4,XMIT_TEMP_2       ; LOAD UP PADKEY
+               BSR     XMIT_3_B_SEQ         ;SOUND OUT PAD KEY
+               CLR.B   XMIT_TEMP_1          ; NOW, PADKEY NOTE OFF
+               BSR     XMIT_3_B_SEQ
+               MOVE.B  BG_TEMP_9_B,XMIT_TEMP_2   ; NOTE OFF FOR PITCH KEY
+               BSR     XMIT_3_B_SEQ
+               BRA     TRY_MTC              ;    GO ON TO DO MTC
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               PAGE
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             MAPPED MODE XMIT ROUTINE - CONTINUATION OF XMIT_LIVE (SEE ABOVE)
+;
+XMIT_MAPPED
+               LSR     #1,D0                ;ROTATE OFF ALT PARAM BIT
+               MOVE    D0,A0                ;LOWER WORD OF D0 IS THE SOUND NOMBRE
+               BSR     GET_S_BLK_PTR        ;POINT TO THIS SOUND'S BLOCK
+;
+               MOVE.B  S_MIDI_CHAN(A0),D0   ;GET MULTI MIDI CHANNEL
+               BMI.S   TRY_MTC              ;    IF NEGATIVE, THEN OFF - DO NOT XMIT
+               OR.B    #90H,D0              ;MAKE LOOK LIKE A NOTE ON
+               MOVE.B  D0,XMIT_TEMP_3       ;LOAD UP FOR XMISSION
+;
+               SWAP    D1                   ;MOVE VELOCITY & PITCH INTO RANGE
+;
+               CLR     D2                   ;COMPUTE PITCH
+               MOVE.B  S_RATE(A0),D3        ;SAMPLE RATE OF 42 KHz HAS A DIFFERENT XPOSE RANGE
+               CMPI.B  #2,D3                ; (42 KHz REPRESENTED BY A 2)
+               BNE.S   AON_10
+               MOVEQ   #-5,D2               ;    IF 42 KHz, LOAD UP OFFSET
+AON_10
+               ADD.B   D1,D2                ;ADD IN PITCH (0->31)
+               ADD.B   S_ROOT_KEY(A0),D2    ;ADD IN ROOT KEY OFFSET (0->87)
+               ADDQ    #2,D2                ;ADD IN MIDI KEY OFFSET (LOW KEY ON AN 88-KEY CONTROLLER
+; IS 15H; PITCH FOR ROOT KEY IS 13H - DIFF IS 2, FOR PROPER MIDI OFFSET)
+               MOVE.B  D2,XMIT_TEMP_2       ;LOAD UP PITCH/KEYNUM RESULT
+;
+               LSR     #8,D1                ;ROTATE VELOCITY INTO LOWER BYTE
+               MOVE.B  D1,XMIT_TEMP_1       ; LOAD UP
+;
+               BTST    #4,S_MIDI_CHAN(A0)   ;OKAY - WHICH UART IS THIS SUPPOSED TO GO OUT OVER?
+               BNE.S   S_FIX_2              ;    IF B, THEN B
+               TST.B   SEQ_XMIT_EVENT       ;     SEQ OF LIVE?
+               BNE.S   S_S_FIX_1
+               BSR     XMIT_3_A             ;    BIT 4 CLEAR MEANS A
+               BRA.S   TRY_MTC              ;    (GO ON TO MTC CODE)
+S_S_FIX_1
+               BSR     XMIT_3_A_SEQ
+               BRA     EXIT_XMIT_SEQ        ;SEQUENCE EVENTS DO NOT GO TO TIME CHIP - SPLIT
+;
+S_FIX_2
+               TST.B   SEQ_XMIT_EVENT       ;     SEQ OF LIVE?
+               BNE.S   S_S_FIX_2
+               BSR     XMIT_3_B             ;         SET MEANS B (RETURN FROM THERE)
+               BRA.S   TRY_MTC              ;FINISH WITH MTC
+;
+S_S_FIX_2
+               BSR     XMIT_3_B_SEQ
+               BRA     EXIT_XMIT_SEQ        ;NOT TO TIME CHIP; SPLIT
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               PAGE
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             PASS ON TO TIMING CHIP AS A SYSTEM EXCLUSIVE MESSAGE - EVENTUAL TARGET IS/ARE MTC
+;              MASTER SEQUENCERS.
+;
+;             D7.L = (x) (padnum) (x) (soundnum)
+;                 (hi byte)
+;             D6.L = (velocity) (pitch) (pan) (level)
+;
+TRY_MTC
+               TST.B   XPORT_STATE          ;IF WE BE PLAYING OR RECORDING, THE TIMING CHIP IS
+               BNE.S   EXIT_XMIT_SEQ        ; FAR TOO BUSY DOING IT'S THING TO ALSO SEND STUFF
+                                            ; OUT OVER MIDI.  THEREFORE, WE DON'T.  THE ONLY
+                                            ; REASON WE DO IS FOR CUE SHEET RECORDING, AND THEY
+                                            ; TEND TO HAPPEN AS AN EVENT SEPERATE FROM SEQUENCING.
+ON_WITH_THE_SHOW
+               MOVE    #0F0H,D0             ; F0           (SYS EX)
+               BSR     WRITE_TO_TC
+               MOVEQ   #1,D0                ; 01           (SEQ ID #)
+               BSR     WRITE_TO_TC
+               MOVEQ   #10H,D0              ; 10           (440 ID #)
+               BSR     WRITE_TO_TC
+;
+               MOVE.B  D7,D0                ; soundnum
+               BSR     WRITE_TO_TC
+;
+               MOVE.L  D6,BG_TEMP_1_B
+               MOVE.B  BG_TEMP_1_B,D0       ; velocity
+               BSR     WRITE_TO_TC
+               MOVE.B  BG_TEMP_2_B,D0       ; pitch
+               BSR     WRITE_TO_TC
+               MOVE.B  BG_TEMP_3_B,D0       ; pan
+               BSR     WRITE_TO_TC
+               MOVE.B  BG_TEMP_4_B,D0       ; level
+               BSR     WRITE_TO_TC
+;
+               MOVEQ   #0F7H,D0             ; F7           (EOX)
+               BSR     WRITE_TO_TC
+;
+EXIT_XMIT_SEQ
+               SF      SEQ_XMIT_EVENT
+               MOVEM.L (A7)+,D0-D7/A0           ;RESTORE REGGIES
+;
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               PAGE
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             SUBROUTINES FOR XMITTING CHARACTERS OVER MIDI.  STRICTLY, WE EXIST HERE TO LOAD
+;              UP THE LEVEL 6 (UART A) OR LEVEL 4 (UART B) QUEUE.
+;
+XMIT_3_A       ; UART A - ENTRY POINT FOR XMITTING 3 BYTES
+               MOVE.B  XMIT_TEMP_3,D0
+XMIT_2_PA
+               BSR     LOAD_A_LIVE          ;PUT IN 'LIVE EVENT' BUFFER
+XMIT_2_A
+               MOVE.B  XMIT_TEMP_2,D0
+XMIT_1_PA
+               BSR     LOAD_A_LIVE
+XMIT_1_A
+               MOVE.B  XMIT_TEMP_1,D0
+               BRA     LOAD_A_LIVE          ; (RETURN FROM THERE)
+;
+;
+XMIT_3_B       ; UART B - ENTRY POINT FOR XMITTING 3 BYTES
+               MOVE.B  XMIT_TEMP_3,D0
+XMIT_2_PB
+               BSR     LOAD_B_LIVE          ;PUT IN 'LIVE EVENT' BUFFER
+XMIT_2_B
+               MOVE.B  XMIT_TEMP_2,D0
+XMIT_1_PB
+               BSR     LOAD_B_LIVE
+XMIT_1_B
+               MOVE.B  XMIT_TEMP_1,D0
+               BRA     LOAD_B_LIVE          ; (RETURN FROM THERE)
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               PAGE
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             SUBROUTINES FOR XMITTING CHARACTERS OVER MIDI.  STRICTLY, WE EXIST HERE TO LOAD
+;              UP THE LEVEL 6 (UART A) OR LEVEL 4 (UART B) QUEUE.
+;
+XMIT_3_A_SEQ   ; UART A - ENTRY POINT FOR XMITTING 3 BYTES
+               MOVE.B  XMIT_TEMP_3,D0
+XMIT_2_PA_SEQ
+               BSR     LOAD_A_SEQ           ;PUT IN 'SEQ  EVENT' BUFFER
+XMIT_2_A_SEQ
+               MOVE.B  XMIT_TEMP_2,D0
+XMIT_1_PA_SEQ
+               BSR     LOAD_A_SEQ
+XMIT_1_A_SEQ
+               MOVE.B  XMIT_TEMP_1,D0
+               BRA     LOAD_A_SEQ           ; (RETURN FROM THERE)
+;
+;
+XMIT_3_B_SEQ   ; UART B - ENTRY POINT FOR XMITTING 3 BYTES
+               MOVE.B  XMIT_TEMP_3,D0
+XMIT_2_PB_SEQ
+               BSR     LOAD_B_SEQ           ;PUT IN 'SEQ  EVENT' BUFFER
+XMIT_2_B_SEQ
+               MOVE.B  XMIT_TEMP_2,D0
+XMIT_1_PB_SEQ
+               BSR     LOAD_B_SEQ
+XMIT_1_B_SEQ
+               MOVE.B  XMIT_TEMP_1,D0
+               BRA     LOAD_B_SEQ           ; (RETURN FROM THERE)
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               PAGE
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; ROUTINES TO RECEIVE MIDI CHANNEL MESSAGES, AND WHEN COMPLETE,
+; ECHO OVER MIDI (IF DESIRED).  NO OTRA ACTION.
+;
+BLIND_ECHO_3
+               BSR     GET_BYTE
+               MOVE.B  D0,MIDI_DATA_1
+               BSR     GET_BYTE
+               MOVE.B  D0,MIDI_DATA_2
+               BSR.S   ECHO_3
+               BRA     BLIND_ECHO_3
+;
+;
+BLIND_ECHO_2
+               BSR     GET_BYTE
+               MOVE.B  D0,MIDI_DATA_2
+               BSR.S   ECHO_2
+               BRA     BLIND_ECHO_2
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               PAGE
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             CHECK ECHO STATUS.  IF OFF, RETURN.  IF ON, GATHER LAST DATA BYTES RECEIVED, APPEND
+;              ON LAST STATUS BYTE (RECREATE FULL STATUS FROM RUNNING STATUS), AND THROW IN APROPOS
+;              BUFFER FOR ECHOING.  WHY ALL THIS TROUBLE?  BECAUSE WE HAVE TO MERGE WITH SEQUENCE
+;              DATA, AND THE XMIT ROUTINES ARE RELYING ON FULL STATUS TO SEARCH THIS OUT.
+;
+;             WIPES D0-D1/A0.
+;
+ECHO_3         ;TRES BYTE MESSAGE
+               MOVE    #2700H,SR            ;BLOCK INTS - A UART INT COULD FUCK THIS OPERATION UP
+               MOVE    MIDI_ECHO_FLAG,D1    ;SEE IF TO ECHO, WHAT UART
+               BMI.S   GO_3
+;
+               MOVE.B  LAST_STAT_BYTE,D0
+               MOVE.B  MIDI_DATA_1,XMIT_TEMP_2
+               MOVE.B  MIDI_DATA_2,XMIT_TEMP_1
+               TST     D1                   ;WHICH UART?
+               BNE.S   TRIPPY_1
+               BSR     XMIT_2_PA
+               BRA.S   GO_3
+TRIPPY_1
+               BSR     XMIT_2_PB
+GO_3
+               MOVE    #2000H,SR            ;UNBLOCK INTS
+               RTS
+;
+;
+ECHO_2         ;DOS BYTE MESSAGE
+               MOVE    #2700H,SR            ;BLOCK INTS
+               MOVE    MIDI_ECHO_FLAG,D1
+               BMI.S   GO_2
+;
+               MOVE.B  LAST_STAT_BYTE,D0
+               MOVE.B  MIDI_DATA_2,XMIT_TEMP_1
+               TST     D1                   ;WHICH UART?
+               BNE.S   TRIPPY_2
+               BSR     XMIT_1_PA
+               BRA.S   GO_2
+TRIPPY_2
+               BSR     XMIT_1_PB
+GO_2
+               MOVE    #2000H,SR            ;UNBLOCK INTS
+               RTS
+;
+;
+;
+ECHO_1         ;UNO BYTE MESSAGE
+               MOVE    #2700H,SR            ;BLOCK INTS
+               MOVE    MIDI_ECHO_FLAG,D1
+               BMI.S   GO_1
+;
+               MOVE.B  LAST_STAT_BYTE,D0
+               TST     D1                   ;WHICH UART?
+               BNE.S   TRIPPY_3
+               BSR     LOAD_A_LIVE
+               BRA.S   GO_1
+TRIPPY_3
+               BSR     LOAD_B_LIVE
+GO_1
+               MOVE    #2000H,SR
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               TTL     "MIDI-TO-SEQUENCER PARSER"
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             WHEN MIDI IS SET TO MIMIC THE PADS, HAVE TO CODE AS PADS FOR THE SEQUENCER.
+;
+;             CATCH US WHEN WE HAVE THE ASSIGN_BLOCK BUILT - THEN TAKE THIS INFORMATION, AND CODIFY
+;              IT INTO SEQUENCER FORMAT.
+;
+;             AND YOU MAY ASK YOURSELF - WHAT DOES THIS PAD/SEQUENCER FORMAT LOOK LIKE?
+;
+;             PAD ON:
+;              aaa bbbbb c ddd 0001    aaa = PADNUM, bbbbb = SOUNDNUM, c = ALT PARAM, ddd = TRACKNUM
+;              0 eeeee fffff ggggg     eeeee = PITCH, fffff = PAN, ggggg = VELOCITY
+;              00000000000 hhhhh       hhhhh = LEVEL
+;
+;             PAD OFF:
+;              aaa bbbbb c ddd 0010    aaa = PADNUM, bbbbb = SOUNDNUM, c = ALT PARAM, ddd = TRACKNUM
+;              0 eeeee fffff ggggg     eeeee = PITCH, fffff = PAN, ggggg = VELOCITY
+;
+;             TWO VARIATIONS OF THIS ROUTINE - ONE FOR OMNI/POLY MODE, ONE FOR MAPPED MODE (SINCE
+;              THE TWO STUFF ASSIGN_BLOCK SLIGHTLY DIFFERENTLY).
+;
+;;;;;;;;;;
+POLY_ON_SEQ_PAD
+               MOVE    ASSIGN_BLOCK+14,D7   ;'PADNUM' WAS SAVED AS CHANNEL - USE IN NORMAL SENSE NOW
+               BRA.S   GO_ON_WITH_PARSE
+;
+;;;;;;;;;;
+MAPPED_ON_SEQ_PAD
+               MOVE    ASSIGN_BLOCK+2,D7     ;FOR MAPPED, 'PADNUM' IS SOUNDNUM MODULA 8
+               AND     #7,D7
+;
+GO_ON_WITH_PARSE
+               TST.B   RECORDING            ;HEY - IF NOT RECORDING, THEN SPLIT!!!!
+               BEQ     EXIT_PAD_SEQ_ON
+;
+               MOVE    PAD_ON_WRITE,A2      ;LOAD UP FRONT ADDRESS OF ROUTINE WE BE USING FOR WRITING
+               MOVE.L  SEQ_WR_PTR,A6        ;SET UP SLOT POINTERS FOR WRITE ROUTINES
+               MOVE    WASTELAND_PTR,A3
+;
+               LSL     #5,D7                ;SHIFT PADUM OVER
+;
+               OR      ASSIGN_BLOCK+2,D7    ;MASK ON SOUNDUM
+               LSL     #1,D7                ; SHIFT OVER
+;
+               TST     ASSIGN_BLOCK+4       ;MASK ON ALT PARAM BIT
+               BEQ.S   ISLANDS_1
+               BSET    #0,D7
+ISLANDS_1      LSL     #3,D7                ; SHIFT OVER
+;
+               OR      NOW_TRACK,D7         ;MASK ON TRACKNUM
+               LSL     #4,D7                ; SHIFT OVER
+;
+               OR      #1,D7                ;MASK ON ID CODE
+;
+               SWAP    D7                   ;STOW AWAY HIGH WORD
+;
+               MOVE    ASSIGN_BLOCK+6,D7    ;LOAD UP PITCH
+               LSL     #5,D7                ; SHIFT OVER
+;
+               OR      ASSIGN_BLOCK+10,D7   ;MASK ON PAN
+               LSL     #5,D7                ; SHIFT OVER
+;
+               OR      ASSIGN_BLOCK+12,D7   ;MASK ON VELOCITY
+;
+               .ALONG
+               JSR     LOG_IN_NEW_PAD       ;THROW INTO NOTES_CURRENTLY_ON HANDLER
+               .AWORD
+               BEQ.S   EXIT_PAD_SEQ_ON      ;    IF NO ROOM, IGNORE
+                                            ;         ELSE, COOL - WRITE
+               SWAP    D7
+               JSR     (A2)                 ;FIRST, UPPER WORD
+               SWAP    D7
+               JSR     (A2)                 ;THEN, MIDDLE WORD
+;
+               MOVE    ASSIGN_BLOCK+8,D7    ;FINALLY, LEVEL
+;
+               JSR     (A2)                 ;WRITE THIRD WORD
+;
+;*****SEQ_FULL TEST - ACT, IF NEEDED
+               BSR     SEQ_MEM_CHECK
+;
+               MOVE.L  A6,SEQ_WR_PTR        ;RESAVE SLOT POINTERS FOR WRITE ROUTINES
+               MOVE    A3,WASTELAND_PTR
+;
+EXIT_PAD_SEQ_ON
+               RTS
+;
+;
+;;;;;;;;;;
+MAPPED_OFF_SEQ_PAD     ; ENTER WITH JUST PITCH IN D1, AND 'PADNUM' IN D0
+;
+;06DEC               MOVE    LAST_MIDI_CHANNEL,D0 ;FOR MAPPED MODE, DERIVE PADNUM FROM CHANNEL MODULA 8
+;06DEC               LSR     #2,D0                ; (UNROTATE - DONE ABOVE FOR VOICE BLOCK MASK)
+;06DEC               AND     #7,D0
+;06DEC
+               TST.B   RECORDING            ;HEY, BRO - ARE WE EVEN RECORDING?
+               BEQ.S   EXIT_PAD_SEQ_OFF     ;    IF NOT, GIT
+;
+               .ALONG
+               JSR     LOG_OUT_PITCH_NEW_PAD     ;TRY TO PULL OUT OF NOTES_CUR_ON
+               .AWORD
+               BRA.S   RAP_IT_UP
+;
+;
+POLY_OFF_SEQ_PAD       ; ENTER WITH JUST PITCH IN D5, AND PADNUM IN LOWER 3 BITS OF D4 - WHAT
+; WE HAVE TO DO IS TRY TO LOG IT OUT OF THE NOTES_CURRENTLY_ON LIST, WHO WILL BE SO KIND AS TO
+; PASS US WHAT THE WHOLE SEQUENCE EVENT LOOKED LIKE WHEN WE GOT THE ON.
+;     ADDITIONAL NOTE - OUT MIDI-FAKED-PAD OFF ROUTINES DO A MONDO SEARCH TO KILL OFF THE CORRECT
+; PAD - MEANS WE WILL BE CALLED MANY, MANY TIMES - TRY TO BE FAST.  BECAUSE OF THIS MULTIPLE CALLING,
+; WE MUST ALSO KEEP IN MIND TO NOT WRITE UNFOUND OFFS - WE DON'T HAVE VALID DATA TO WRITE.
+;     WE PRESERVE ALL 'CEPT D7, A2, A3, & A6.
+;
+               TST.B   RECORDING            ;HEY, BRO - ARE WE EVEN RECORDING?
+               BEQ.S   EXIT_PAD_SEQ_OFF     ;    IF NOT, GIT
+               MOVEM.L D0-D1,-(A7)
+               MOVE    D4,D0
+               MOVE    D5,D1
+;
+               .ALONG
+               JSR     LOG_OUT_PITCH_NEW_PAD     ;TRY TO PULL OUT OF NOTES_CUR_ON
+               .AWORD
+               MOVEM.L (A7)+,D0-D1
+RAP_IT_UP
+               BEQ.S   EXIT_PAD_SEQ_OFF     ;IF DID NOT FIND, THEN GIT
+                                            ;    ELSE, FOUND IT - RETURNED w/ WHOLE THING IN D7.L
+;15JAN               MOVE.L  PAD_REC_PARSE,A2     ;LOAD UP FRONT ADDRESS OF ROUTINE WE BE USING FOR WRITING
+               MOVE    NOTE_OFF_WRITE,A2
+               MOVE.L  SEQ_WR_PTR,A6        ;SET UP SLOT POINTERS FOR WRITE ROUTINES
+               MOVE    WASTELAND_PTR,A3
+;
+               SWAP    D7
+               JSR     (A2)                 ;WRITE UPPER WORD
+               SWAP    D7
+               JSR     (A2)                 ;WRITE LOWER WORD
+;
+               MOVE.L  A6,SEQ_WR_PTR        ;RESAVE SLOT POINTERS FOR WRITE ROUTINES
+               MOVE    A3,WASTELAND_PTR
+;
+EXIT_PAD_SEQ_OFF
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               TTL   "SONG POINTER GENERATION"
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; SEND ADVANCE-NOTICE MIDI SONG-POSITION POINTER -
+; FOLLOWING CUEING UNDER SMPTE CHASE, FAST-FWD, REWIND - I.E., IN CASES
+; WHERE INTERNAL 440 PLAYBACK IS ALREADY ROLLING WHEN SONG POINTER MUST
+; BE SENT (NOTE THAT FAST-WIND DONE WHILE PAUSED IS NOT INCLUDED HERE,
+; SINCE WE WILL REMAIN PAUSED AFTER CUEING AND MUST BE EXPLICITLY HAND-
+; UNPAUSED BY USER BEFORE WE GET ROLLING).
+;
+; ASSUMES THAT WE HAVE INTERNALLY CUED TO OUR TARGET CUE POINT WITHIN
+; A SEQUENCE DURING THE LAST 96-TH NOTE CLICK PERIOD -
+; THE POINTER WHICH GETS TRANSMITTED REFLECTS NOT WHERE WE ARE AT THE
+; MOMENT, BUT INSTEAD POINTS TO THE FIRST QUARTER-NOTE BEAT FOLLOWING
+; A POINT IN SEQUENCE-SPACE WHERE WE EXPECT TO BE IN APPROXIMATELY TWO
+; SECONDS, AS EXTRAPOLATED FROM THE TEMPO RIGHT NOW.  THIS TAKES CARE OF
+; TWO IMPORTANT THINGS:
+; 1.  THE OBVIOUS - .IMPORT SEQUENCERS HAVE AMPLE TIME TO RESPOND.
+; 2.  NOT AS OBVIOUS - SONG-POSITION POINTERS RESOLVE TO 16TH-NOTES,
+;     SO IF WE JUST NUMBLY SENT OUT A POINTER BASED ON A ROUNDED-OFF
+;     VERSION OF OUR 96-TH NOTE POSITIONING AND STARTED CLOCKING, THE
+;     SLAVED .IMPORT SEQUENCERS COULD BE OFF BY UP TO A 16-TH NOTE,
+;     EVEN ASSUMING THAT THEY COULD RESPOND THAT FAST (AND THEY CAN'T).
+;
+; SO WHAT WE DO, SEE, IS WE CHECK OVERALL_CLICK(.L) WHICH INDICATES
+; WHERE WE HAVE CUED TO (96-TH NOTE STYLE-Y), THEN WE GET WITH OUR MAN
+; CUR_TEMPO_USEC TO DECIDE HOW MANY 96-TH NOTE CLICKS IT TAKES TO MAKE
+; TWO SECONDS (YES, WE ASSUME NO TEMPO CHANGES IN THE NEXT TWO SECONDS,
+; SO THERE IS ROOM FOR YET FURTHER REFINEMENT HERE).  THIS ADDITIONAL
+; NUMBER OF CLICKS IS TACKED ONTO OVERALL_CLICK TO ARRIVE AT A TARGET
+; CLICK COUNT.  THIS IS CONVERTED TO 16-TH NOTE FORM, ROUNDING UPWARD IF
+; NECESSARY, AND THE RESULT IS ROUNDED UP TO THE NEXT QUARTER-NOTE AND
+; SENT OUT AS THE EFFECTIVE SPP (VIA TIMING CHIP UART AND ANY OF THE
+; NORMAL MIDI UARTS FOR WHICH MIDI CLOCK OUTPUT IS ENABLED).
+;
+; SO MUCH FOR THE POINTER ITSELF - BUT WHAT GOOD IS A SONG-POSTION
+; POINTER WITHOUT A MIDI "CONTINUE" BYTE?  THAT'S RIGHT! - NONE AT ALL.
+; THE DIFFERENCE BETWEEN THE TARGET QUARTER-NOTE CLICK COUNT AND OUR
+; CURRENT OVERALL_CLICK IS PLUGGED INTO A DAEMON (OPERATING OUT OF
+; PRO_CLICK) WHICH CAUSES THE CRUCIAL "FEEB" (FB, THAT IS) TO GO OUT
+; OVER ALL APPROPRIATE CHANNELS WHEN OUR NORMAL CLOCKING HAS BROUGHT US
+; TO THE VERY BRINK OF THAT TARGET BEAT.  BY THIS TIME IT CAN ONLY BE
+; HOPED THAT THE OUTSIDE WORLD IS CUED AS REQUIRED, IN WHICH CASE IT
+; WILL START IN RIGHT ON TIME - TWO SECONDS LATE.
+;
+; GENTLE AND CONSIDERATE WITH ALL REGISTERS.
+;
+; BY THE WAY, THE MIDI SONG POINTER IS A 14-BIT NUMBER WHICH INDICATES
+; A 16-TH NOTE POSITION IN A SEQUENCE.  THE MESSAGE LOOKS LIKE:
+;              11110010B               ;F2H - STATUS BYTE.
+;              0lllllllB               ;LOW-ORDER SEVEN BITS.
+;              0hhhhhhhB               ;HIGH-ORDER SEVEN BITS.
+;
+SEND_ADVANCED_PTR
+               MOVEM.L D0-D1,-(A7)
+               MOVE.L  #2000000,D0          ;TWO SECONDS WORTH OF MICROSECONDS,
+               DIVU    CUR_TEMPO_USEC,D0    ;BROKEN INTO CLICK-SIZED PIECES ....
+               ADDQ    #1,D0                ;ASSUME THERE WAS A REMAINDER, ROUND UP TO NEXT CLICK.
+               AND.L   #1FFH,D0             ;WHOMP REMAINDER - AND, RESULT SHOULD BE 401 OR LESS.
+               ADD.L   OVERALL_CLICK,D0     ;THIS IS WHERE WE WANNA BE, WHEN WE WANNA BE THERE.
+               CMP.L   #17FFAH,D0           ;BUT IF THIS PUTS US PAST THIS POINT(ER), WE CAN'T TELL
+                                            ;'EM WHERE TO GO (MAXIMUM SONG PTR IS 3FFFH - THIS HERE
+                                            ;IS THE SAME THING IN 96-TH NOTE FORM.  NOTE THAT THIS
+                                            ;EQUALS ROUGHLY HALF AN HOUR AT 120 BPM.)
+               BLS.S   SEND_ADV_20          ;BRANCH IF NOT OUT-A-BOUNDS, KEEP ON GOING -
+               CLR     D0                   ;ELSE, MAKE SONG-POINTER DAEMON BE SURELY DEAD.
+               BRA.S   SEND_ADV_60
+SEND_ADV_20
+               DIVU    #6,D0                ;ELSE - SAME THING, IN 16-TH NOTES - ALMOST.  MAYBE.
+               MOVEQ   #3,D1                ;SET UP FOR ROUND-UP TO QUARTER-NOTE.
+               SWAP    D0                   ;SEE IF WE HAD A REMAINDER - IF WE DID, ROUND UP TO
+               TST     D0                   ;NEXT 16-TH NOTE.
+               BEQ.S   SEND_ADV_40          ;BRANCH IF NOT, WE HIT A 16-TH NOTE ON THE NOSE.
+               ADDQ    #1,D1                ;ELSE - BUMP UP TO NEXT 16TH-NOTE.
+SEND_ADV_40
+               SWAP    D0                   ;PUT QUOTIENT BACK IN PLACE,
+               ADD     D1,D0                ;TACK ON ROUND-UP STUFF, MAKE FOR NEXT QUARTER-NOTE -
+               AND     #0FFFCH,D0           ;HACK OFF AT THE NEXT QUARTER-NOTE, EH?
+;
+               BSR.S   SEND_SONG_POINTER    ;SEND OUT THE POINTER AT THIS POINT (SORRY): VIA 6803,
+                                            ;AND VIA MIDI UARTS IF ENABLED FOR MIDI CLOCK OUT.
+;
+                                            ;NOW SET TIMER TICKING FOR MIDI "CONTINUE" BYTE:
+               MULU    #6,D0                ;CONVERT TRANSMITTED POINTER TO 96-TH NOTE CLICK FORM,
+               SUB.L   OVERALL_CLICK,D0     ;TAKE DIFFERENCE FROM WHERE WE ARE NOW, SET TIMER.
+;
+SEND_ADV_60
+               MOVE    D0,CONTINUE_TIMER    ;PLUG VALUE INTO TIMER (IF = 0, TIMER IS DEAD).
+;
+               MOVEM.L (A7)+,D0-D1
+SEND_ADV_EXIT
+               RTS
+;
+;
+;
+; SEND 14-BIT VALUE IN D0 AS MIDI SONG-POSITION POINTER:
+; PUT IT OUT VIA 6803 UART USING DIRECT-CONNECT FUNCTION, ALSO PUT IT
+; OUT VIA WHICHEVER OF THE "A" AND "B" MIDI UARTS IS ENABLED FOR MIDI
+; CLOCK OUTPUT.  ALLA DEM REGISTAH, PRESERVE.
+;
+SEND_SONG_POINTER
+               MOVE.L  D0,-(A7)             ;SAVE RAW-FORM TARGET POINTER (AND POSSIBLE REMAINDER).
+               LSL     #1,D0                ;SPLIT IT INTO 7-BIT BYTES MIDI SONG-POINTER FORMAT.
+               LSR.B   #1,D0
+               MOVE    D0,-(A7)             ;HECK - SAVE THIS FORM TOO.
+               MOVEQ   #0F1H,D0             ;TELL 6803 WE WANT A DIRECT-CONNECT TO ITS UART.
+               JSR     WRITE_TO_TC
+               MOVEQ   #0F2H,D0             ;PUMP OUT THE SONG-POSITION POINTER STATUS BYTE -
+               BSR     XMIT_MIDI_RLTM       ;PUT IT TO THE MIDI UARTS IF THEY'RE UP FOR IT,
+               JSR     WRITE_TO_TC          ;AND ALWAYS OUT THE SYNC UART.
+               MOVE.B  1(A7),D0             ;NOW GET DEM SONG-POINTER L.S.BYTE,
+               BSR     XMIT_MIDI_RLTM       ;AND OUT IT GOES.
+               JSR     WRITE_TO_TC
+               MOVE.B  (A7),D0              ;LIKE, SAME-WISE FOR SONG POINTER M.S.BYTE.
+               BSR     XMIT_MIDI_RLTM
+               JSR     WRITE_TO_TC
+               MOVEQ   #0FFH,D0             ;TERMINATE THE 6803 UART DIRECT-CONNECT.
+               JSR     WRITE_TO_TC
+               ADDQ    #2,A7                ;FORGET MIDI-FORMAT SONG-POINTER - WE'RE TRU WID IT.
+               MOVE.L  (A7)+,D0             ;RETRIEVE RAW-FORM SONG-POINTER, GETTE BACQUES JACQUES.
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               PAGE
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; SEND IMMEDIATE MIDI SONG-POSITION POINTER -
+; CUE THE OUTSIDE WORLD TO THE EXACT PLACE WHERE WE ARE NOW, FOLLOWING
+; CUEING UNDER PLAY-FROM-CUE, PAUSED FAST-WIND - I.E., IN CASES WHERE
+; INTERNAL 440 PLAYBACK IS PAUSED AWAITING USER'S EXPLICIT HAND-UNPAUSE.
+;
+; LATER UNPAUSE WILL TRIGGER TRANSMISSION OF MIDI "CONTINUE" MESSAGES -
+; IN GENERAL WE DON'T WORRY ABOUT IT HERE, NOR DO WE IMPOSE ANY LOCKOUT
+; BY WAY OF GUARANTEEING SUFFICIENT SPP RESPONSE TIME FOR SLAVED MIDI
+; SEQUENCERS - WE JUST HOPE THAT THE USER DOESN'T JUMP THE GUN, AND IF
+; THIS DOES HAPPEN, IT'S REALLY NOT OUR PROBLEM ANYWAY.  ONE EXCEPTION:
+; SINCE MIDI SONG POINTERS RESOLVE ONLY TO 16-TH NOTES, IT IS POSSIBLE
+; THAT WE WON'T BE ABLE TO DO THE JOB PRECISELY ENOUGH WITH SONG-POINTER
+; ALONE (FOR EXAMPLE, IF THE CURRENT SEQUENCE CONTAINS ONE OR MORE BARS
+; WITH LENGTHS THAT ARE AN ODD NUMBER OF 32-ND NOTES).  IF THIS HAPPENS
+; WE MUST LOCK EVERYBODY OUT FOR THE DURATION OF AN SPP RESPONSE DELAY
+; TO ENSURE THAT SLAVE SEQUENCERS ARE FULLY CUED (TO THE NEAREST 16-TH
+; NOTE BEFORE THE ACTUAL CUE POINT), THEN SEND A "CONTINUE"-"CLOCK"-...
+; ..-"STOP" STRING OUT TO GET THEM SLAVES ALL THE WAY CAUGHT UP.
+; FROM THIS POINT, WE CAN SIT AND WAIT FOR USER UNPAUSE ....
+;
+; SO WHAT WE DO, SEE, IS WE CHECK OVERALL_CLICK(.L) WHICH INDICATES
+; WHERE WE HAVE CUED TO (96-TH NOTE STYLE-Y), THEN WE DIVIDE THAT DOWN
+; INTO THE 16-TH NOTE REALM AND SEND THE INTEGER RESULT AS OUR POINTER.
+; WITH ANY LUCK (AND IN GENERAL WE'LL BE LUCKY, SINCE XX/32 TIME IS AN
+; UNCOMMON THING IN POST-MODERN COMMERCIAL/INDUSTRIAL/ENTERTAINMENT
+; APPLICATIONS), THAT WILL BE THAT, AND WE'LL SCRAM.  IF ANY REMAINDER
+; WAS LEFT OVER FROM THE DIVISION, WE GO THROUGH THE DANCE DESCRIBED
+; ABOVE AND THEN SCRAM.
+;
+;
+SEND_IMMED_PTR
+               MOVE.L  D0,-(A7)
+               CLR     CONTINUE_TIMER       ;HEAD OFF ANY PENDING MIDI "CONTINUE" TRANSMISSION.
+               MOVE.L  OVERALL_CLICK,D0     ;THIS IS WHERE WE WANNA BE, WHEN WE WANNA BE THERE.
+               SUBQ.L  #1,D0                ;ACTUALLY, .IMPORT MIDI SHOULD BE ONE CLOCK EARLIER -
+                                            ;WE'RE PRE-FETCHED - "JUST SLIGHTLY AHEAD OF OUR TIME."
+               CMP.L   #17FFAH,D0           ;BUT IF THIS PUTS US PAST THIS POINT(ER), WE CAN'T TELL
+                                            ;'EM WHERE TO GO (MAXIMUM SONG PTR IS 3FFFH - THIS HERE
+                                            ;IS THE SAME THING IN 96-TH NOTE FORM.  NOTE THAT THIS
+                                            ;EQUALS ROUGHLY HALF AN HOUR AT 120 BPM.)
+               BHI.S   SEND_IMM_Z0          ;BRANCH IF OUT-A-BOUNDS, JUST FORGET ABOUT IT.
+;
+               DIVU    #6,D0                ;ELSE - SAME THING, IN 16-TH NOTES - ALMOST.  MAYBE.
+               BSR.S   SEND_SONG_POINTER    ;SEND OUT THE POINTER AT THIS POINT (SORRY): VIA 6803,
+                                            ;AND VIA MIDI UARTS IF ENABLED FOR MIDI CLOCK OUT.
+               SWAP    D0                   ;SEE IF WE HAD A REMAINDER - IF WE DID, GOTTA DO SOME
+               TST     D0                   ;EXTRA CLOCKING BEFORE WE SHAZ-ZAM OUTA HERE.
+               BEQ.S   SEND_IMM_Z0          ;BRANCH IF NOT - HIT 16-TH NOTE ON THE NOSE, ALL COOL.
+;
+;
+                                            ;ELSE, GOTTA NUDGE MIDI SLAVE(S) INTO POSITION:
+               MOVEM.L A0-A1/D1,-(A7)       ;STASH A FEW MORE REGISTERS.
+               MOVE.L  #FRACT_CUE_SCRN,A1   ;SAY WE'RE "CLOSED".
+;890316                .ALONG
+;890316               JSR     DISP_SCREEN
+;890316                .AWORD
+               CALL    LCD_FUNS,DSP_SCRN
+               MOVE    #2700H,SR            ;BLOCK INTERRUPTS FOR TIMING ACCURACY -
+                .ALONG
+               JSR     WAIT_TWO_SECS        ;GUESS WHAT WE'RE DOING NOW ....
+                .AWORD
+               MOVE    #2000H,SR            ;UNBLOCK INTERRUPTS TO ALLOW MIDI TRANSMIT, ETC.
+;
+                                            ;SLAVE(S) SHOULD NOW BE CUED TO POINTER POSITION -
+               BSR     SEND_MIDI_CONTINUE   ;WAKE 'EM UP VIA MIDI UART(S),
+               BSR     SEND_6803_CONTINUE   ;AND VIA 6803 UART.
+;
+SEND_IMM_20
+               BSR     SEND_MIDI_CLOCK      ;KICK SLAVE(S) UPSTREAM BY ONE CLOCK.
+               BSR     SEND_6803_CLOCK
+               MOVE.L  D0,-(A7)             ;SAVE EXCESS-CLOCKS COUNT,
+               MOVE    REAL_TIME,-(A7)      ;DO A 20-MSEC TIMEOUT (TO AVOID CLOCK OVERRUN).
+               MOVE    A7,A0                ;A0 POINTS TO TIMER WORD.
+SEND_IMM_40
+               MOVEQ   #20,D0               ;D0 CONTAINS INTERVAL DURATION -
+                .ALONG
+               JSR     REAL_TIMER           ;ARE WE PAST IT YET?
+                .AWORD
+               BCS     SEND_IMM_40          ;BRANCH IF NOT.
+               ADDQ    #2,A7                ;TIME ENOUGH - TOSS THE TIMER WORD,
+               MOVE.L  (A7)+,D0             ;RETRIEVE EXCESS-CLOCKS COUNT,
+               SUBQ    #1,D0                ;NOTCH DOWN BY ONE - ARE WE THERE YET?
+               BNE     SEND_IMM_20          ;BRANCH IF NOT, REPEAT THE CLOCK/DELAY THING AGAIN.
+;
+               BSR.S   SEND_MIDI_STOP       ;WE'RE THERE - TELL SLAVE(S) TO SIT 'N' WAIT.
+               BSR     SEND_6803_STOP
+               MOVEM.L (A7)+,A0-A1/D1       ;RESTORE STACK BALANCE.
+               ST      SUBFUN_INSTALL       ;AND - SINCE WE MESSED UP THE SCREEN, ORDER REPAIRS.
+;
+;
+SEND_IMM_Z0
+               MOVE.L  (A7)+,D0
+SEND_IMM_EXIT
+               RTS
+;
+;
+FRACT_CUE_SCRN
+               DC.B     "CUEING MIDI TO A"
+               DC.B     "FRACTIONAL POINT"
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               TTL     "MIDI REALTIME MESSSAGE XMIT"
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; ROUTINE FOR TRANSMISSION OF MIDI SYSTEM REALTIME MESSAGES VIA THE
+; "NORMAL" (NON-6803) UARTS - ONE CALL PER BYTE, BYTE PASSED IN D0.
+; TRANSMITS VIA WHICHEVER OF UARTS A AND B HAVE CLOCK-OUT ENABLED -
+; MAY BE BOTH, NONE OR JUST ONE OF 'EM.
+;
+; MESSAGES ARE PLACED INTO THE "LIVE" BUFFERS FOR PRIORITY TRANSMISSION
+; (I.E., AHEAD OF ANY EVENTS SITTING IN THE SEQUENCER OUTPUT BUFFER),
+; EXCEPT FOR "STOP" BYTES (0FCH) - THESE GO INTO THE "SEQ" BUFFERS TO
+; ENSURE THAT BUFFERED SEQUENCE EVENTS GET OUT BEFORE THE "STOP" BYTE.
+;
+; NOTE THAT MIDI CLOCK BYTES SENT OUT OF THE "A" AND "B" UARTS ARE
+; GENERATED AND LOADED INTO TRANSMISSION BUFFERS DIRECTLY BY THE LEVEL 2
+; INTERRUPT AND DO NOT PASS THROUGH HERE - MESSAGES WHICH COME THROUGH
+; HERE ARE RELATED TO TRANSPORT STATUS CHANGES (START, CONTINUE ETC.).
+;
+; ALL REGISTERS ARE PRESERVED.
+;
+XMIT_MIDI_RLTM
+               MOVE.L  A0,-(A7)
+               BTST    #0,MIDI_MT_UART+1    ;SEE IF MIDI REALTIME ENABLED TO UART A.
+               BEQ.S   XMRT_40              ;BRANCH IF NOT, GO CHECK UART B.
+               CMP     #0FCH,D0             ;REALTIME ENABLED TO UART A - IS THIS A "STOP" BYTE?
+               BNE.S   XMRT_20              ;BRANCH IF NOT, PUT IT OUT VIA "LIVE" BUFFER.
+               BSR     LOAD_A_SEQ           ;ELSE, PUT "STOP" BYTE OUT VIA "SEQ" BUFFER,
+               BRA.S   XMRT_40              ;GO DEAL WITH UART B.
+XMRT_20
+               BSR     LOAD_A_LIVE
+;
+XMRT_40
+               BTST    #1,MIDI_MT_UART+1    ;IS MIDI REALTIME ENABLED TO UART B?
+               BEQ.S   XMRT_80              ;BRANCH IF NOT, EXIT.
+               CMP     #0FCH,D0             ;ENABLED - IS THIS A "STOP" BYTE?
+               BNE.S   XMRT_60              ;BRANCH IF NOT, OUT THE "LIVE" BUFFER IT GOES.
+               BSR     LOAD_B_SEQ           ;ELSE, SPIT IT OUT VIA "SEQ" BUFFER,
+               BRA.S   XMRT_80              ;HOMEWARD HEAD.
+XMRT_60
+               BSR     LOAD_B_LIVE
+XMRT_80
+;
+               MOVE.L  (A7)+,A0
+XMRT_EXIT
+               RTS
+;
+;
+;
+; DIDDLY ROUTINES TO DEAL WITH STANDARD-FARE REALTIME MESSAGES:
+; CLEAN WITH REGISTERS, LIKE WE NEVER HAPPENED.
+;
+;
+SEND_MIDI_START
+               MOVE.L  D0,-(A7)
+               MOVEQ   #0FAH,D0
+               BRA.S   SEND_MIDI_SOMETHING
+;
+;
+SEND_MIDI_CONTINUE
+               MOVE.L  D0,-(A7)
+               MOVEQ   #0FBH,D0
+               BRA.S   SEND_MIDI_SOMETHING
+;
+;
+SEND_MIDI_CLOCK
+               MOVE.L  D0,-(A7)
+               MOVEQ   #0F8H,D0
+               BRA.S   SEND_MIDI_SOMETHING
+;
+;
+SEND_MIDI_STOP
+               MOVE.L  D0,-(A7)
+               MOVEQ   #0FCH,D0
+;
+;
+SEND_MIDI_SOMETHING
+               BSR.S   XMIT_MIDI_RLTM
+               MOVE.L  (A7)+,D0
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+

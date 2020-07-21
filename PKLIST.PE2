@@ -1,0 +1,12 @@
+[ds]
+[dir][e][quit]
+[to][column 9][mb][bo][el][mb][dm]
+[bo][column 8][mb][to][bl][mb][cm][um]
+[bo][column 17][mb][to][mb][shift right][c / /.*/*m][um]
+[bo][column 16][mb][to][column 9][mb][c / //*m][shift right][um]
+[bo][bl][mb][to][mb][shift right][c / /\utils\pkarc -a \backup\/*m]
+[name pklist.bat][file]
+
+
+Hold it right there!
+

@@ -1,0 +1,826 @@
+***************************************************************************************************
+***************************************************************************************************
+***                                                                                             ***
+***            SWITCHBOY - HE JUST WATCHES OVER THE SWITCHES .... HIM 'N' HIS BUDDIES ....      ***
+***                                                                                             ***
+***************************************************************************************************
+***************************************************************************************************
+;
+;
+               .AWORD
+;
+;
+               .EXPORT SWITCH_BOY
+               .EXPORT SWITCH_HITTER
+               .EXPORT SET_AUTOSCROLL
+;
+               .IMPORT BACK_HANDLER
+               .IMPORT REAL_TIMER
+               .IMPORT GUIDO
+               .IMPORT DUMP_GUIDO
+               .IMPORT PLAY_SWITCH
+               .IMPORT STOP_SWITCH
+               .IMPORT PAUSE_SWITCH
+               .IMPORT ERASE_SWITCH
+               .IMPORT RECORD_SWITCH
+               .IMPORT FAST_FWD_SWITCH
+               .IMPORT REWIND_SWITCH
+               .IMPORT FOOTSWITCH_1
+               .IMPORT FOOTSWITCH_2
+               .IMPORT PLAY_STOP_SWITCH
+               .IMPORT TEMPO_UP_SWITCH
+               .IMPORT TEMPO_DOWN_SWITCH
+               .IMPORT TAP_BUTTON
+               .IMPORT KIT_BANK_SWITCH
+               .IMPORT ALT_PARAM_SWITCH
+               .IMPORT AUTORPT_SWITCH
+               .import capture_cp_key
+;
+               .IMPORT SCROLLING
+               .IMPORT REAL_LONG_TIME
+               .IMPORT SCROLL_PERIOD
+               .IMPORT SCROLL_COUNT
+               .IMPORT REAL_TIME
+               .IMPORT SWITCH_STAT
+               .IMPORT SCROLL_TIMER
+               .IMPORT SWITCHES_ON
+               .IMPORT SWITCH_HIT
+               .IMPORT SCRN_DM_TIMER
+               .IMPORT SHOWING_TEMPO
+               .IMPORT CUR_FUN_INDEX
+               .IMPORT LED_STEADY
+               .IMPORT FLD_INDEXES
+               .IMPORT CUR_FLD_INDEX
+               .IMPORT SUB_INDEXES
+               .IMPORT CUR_SUB_INDEX
+               .IMPORT CUR_SUB_BLOCK
+               .IMPORT SUBFUN_INSTALL
+               .IMPORT GUIDO_IS_AWAKE
+               .IMPORT LCD_TIMER
+               .IMPORT SHOWING_FF_RW
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; BUT FIRST - A BIT OF FUZZ -
+; SET AUTOSCROLL INTO MOTION, IF IT ISN'T ALREADY -
+; LOCKOUT IF ALREADY SCROLLING IS DONE BECAUSE SCROLLED-SWITCH HANDLERS
+; CALL HERE EVERY TIME THEY'RE EXECUTED, INCLUDING EXECUTION IN RESPONSE
+; TO AUTOMATIC SCROLL HITS - WE DON'T WANT TO GET RESET TO INITIAL
+; SCROLL PERIOD EVERY TIME THAT HAPPENS, ONLY ON THE INITIAL REAL HIT.
+; D1 CONTAINS SWITCH NUMBER FOR SWITCH WHICH IS INVOKING AUTOSCROLL,
+; CALL HERE IS MADE FROM HANDLER FOR THAT SWITCH.
+; ALL REGISTERS PRESERVED.
+;
+;
+SET_AUTOSCROLL
+               TST     SCROLLING            ;ARE WE ALREADY DOING AUTOSCROLL?
+               BNE.S   SET_ASCR_EXIT        ;BRANCH IF YES, WHAT THE HELL ARE WE DOING HERE ANYWAY?
+;
+                                            ;NO - KICK AUTOSCROLL INTO GEAR:
+               MOVE    D1,SCROLLING         ;SET FLAG (WE CAN'T SCROLL SWITCH 0 - OH WELL).
+               MOVE    #800,SCROLL_PERIOD   ;SET DELAY OF APPROX. 0.8 SECOND FOR FIRST REPEAT.
+               CLR     SCROLL_COUNT         ;CLEAR SCROLL COUNTER (USED TO ACCELERATE SCROLL RATE).
+               MOVE    REAL_TIME,SCROLL_TIMER    ;SYNCHRONIZE AUTOSCROLL TIMER.
+;
+SET_ASCR_EXIT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; MONITOR SWITCH IMAGES (IN RAM), RESPOND TO CHANGES AS APPROPRIATE -
+; FOR NEW SWITCH HITS, PASS SWITCH CODE IN SWITCH_HIT_FLAG.
+;
+;
+SWITCH_BOY
+               MOVE    SCROLLING,D0         ;ARE WE, AT THE MOMENT, SCROLLING?
+               BEQ.S   SW_BOY_20            ;BRANCH IF NOT, ACT NORMAL - SCAN SWITCHES_ON IMAGE.
+               MOVE    D0,D1                ;YES - COPY CODE OF SCROLLED SWITCH -
+               LSR     #3,D1                ;D1 NOW INDICATES ROW OF SWITCH IMAGE,
+               AND     #7,D0                ;D0 INDICATES BIT IN ROW (OR, IF YOU PREFER, COLUMN).
+               MOVE    #SWITCH_STAT,A0
+               BTST    D0,0(A0,D1)          ;IS THIS SWITCH STILL ON?
+               BNE.S   SW_BOY_10            ;BRANCH IF YES.
+               CLR     SCROLLING            ;ELSE - EXIT SCROLL MODE,
+               BRA.S   SW_BOY_20            ;PROCEED AS IF NOTHING HAPPENED.
+;
+SW_BOY_10
+               MOVE    #SCROLL_TIMER,A0     ;CHECK FOR END OF AUTOSCROLL INTERVAL.
+               MOVE    SCROLL_PERIOD,D0
+                .ALONG
+               JSR     REAL_TIMER
+                .AWORD
+               BCS     SW_BOY_EXIT               ;BRANCH IF NOT THERE YET - NO ACTION.
+               MOVE    REAL_TIME,SCROLL_TIMER    ;ELSE -RESYNCHRONIZE AUTOSCROLL TIMER,
+               CMP     #3,SCROLL_PERIOD          ;SEE IF SCROLL RATE IS FULLY ACCELERATED -
+               BEQ.S   SW_BOY_1C                 ;BRANCH IF YES - LEAVE SCROLL COUNT, PERIOD ALONE.
+               MOVE    SCROLL_COUNT,D0           ;ELSE, ADVANCE SCROLL COUNT,
+               ADDQ    #1,D0
+               MOVEQ   #100,D1                   ;SET THE TIME FOR NEXT INTERVAL PER SCROLL COUNT -
+               CMP     #16,D0
+               BCS.S   SW_BOY_18
+               MOVEQ   #50,D1
+               CMP     #48,D0
+               BCS.S   SW_BOY_18
+               MOVEQ   #25,D1
+               CMP     #112,D0
+               BCS.S   SW_BOY_18
+               MOVEQ   #12,D1
+               CMP     #240,D0
+               BCS.S   SW_BOY_18
+               MOVEQ   #6,D1
+               CMP     #500,D0
+               BCS.S   SW_BOY_18
+               MOVEQ   #3,D1                ;FINAL SCROLL PERIOD.
+SW_BOY_18
+               MOVE    D1,SCROLL_PERIOD     ;SET NEW SCROLL PERIOD,
+               MOVE    D0,SCROLL_COUNT      ;SAVE NEW SCROLL COUNT.
+SW_BOY_1C
+               MOVE    SCROLLING,D1         ;OBTAIN NUMBER FOR THIS SWITCH,
+               BRA.S   SW_BOY_50            ;VECTOR UPON THIS SWITCH NUMBER.
+               PAGE
+;
+;
+                                            ;NOT SCROLLING AT THE MOMENT:
+SW_BOY_20
+               MOVE    #SWITCHES_ON,A0      ;SCAN IMAGE OF NEW SWITCH CLOSURES.
+               CLR     D1                   ;SET INITIAL SWITCH CODE VALUE.
+SW_BOY_30
+               CLR     D0                   ;SCAN EIGHT BITS PER ROW (INCLUDING FOOTSWITCHES).
+SW_BOY_40
+               BCLR    D0,(A0)              ;TEST AND CLEAR -
+               BNE.S   SW_BOY_50            ;BRANCH IF WE GOT ONE.
+               ADDQ    #1,D1                ;ELSE SET UP NEXT SWITCH CODE -
+               CMP     #60,D1               ;HAVE WE BEEN THROUGH 'EM ALL?
+               BEQ.S   SW_BOY_EXIT          ;BRANCH IF WE HAVE - NOTHING TO SEE OR DO.
+               ADDQ    #1,D0                ;ELSE MOVE TO NEXT BIT IN ROW, IF ANY LEFT -
+               CMP     #8,D0
+               BNE     SW_BOY_40            ;STILL MORE TO GO - STAY IN SAME ROW.
+               LEA     1(A0),A0             ;ELSE, MOVE TO NEXT ROW,
+               BRA     SW_BOY_30            ;CONTINUE WITH BIT 0.
+;
+SW_BOY_50
+               ADDQ    #1,D1                ;INCREMENT SWITCH CODE (SO ALL SWITCHES SET FLAG),
+               MOVE    D1,SWITCH_HIT        ;PASS SWITCH CODE ON TO SWITCH_HITTER.
+;
+SW_BOY_EXIT
+               JMP     BACK_HANDLER
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; HANDLE ALL SWITCH-HITS ON FRONT PANEL AS ENCODED BY SWITCH_BOY -
+; SWITCH CODE IS PASSED IN SWITCH_HIT (IF = 0, NOTHING HAPPENING).
+; CONTROL IS PASSED TO ANOTHER ROUTINE PER SWITCH CODE.
+;
+;
+SWITCH_HITTER
+               MOVE    SWITCH_HIT,D1        ;ANYTHING UP?
+               BEQ.S   SW_HIT_EXIT          ;SKIP OUT IF NOT,
+               CLR     SWITCH_HIT           ;ELSE CLEAR THE FLAG (ACKNOWLEDGE SWITCH_BOY).
+               SUBQ    #1,D1                ;RESTORE SWITCH CODE TO 0-RELATIVE FORMAT.
+;
+               MOVE.L  REAL_LONG_TIME,LCD_TIMER  ;RESTART LCD BACKLIGHT TIMER WHEN ANY SWITCH IS HIT.
+;
+               TST     SCRN_DM_TIMER        ;IS SCREEN_DAEMON TICKING?
+               BEQ.S   SW_HIT_04            ;BRANCH IF NOT - MAY HAVE FAST-FWD/REWIND SCREEN UP.
+               CMP     #51,D1               ;IT IS - RESPOND NORMALLY TO SCREEN_DAEMON SWITCHES -
+               BEQ.S   SW_HIT_30            ;TEMPO-UP, TEMPO-DOWN (....OTHERS, AS YET UNKNOWN?).
+               CMP     #52,D1
+               BEQ.S   SW_HIT_30
+               CLR     SCRN_DM_TIMER        ;FOR OTHER SWITCHES, KILL SCREEN_DAEMON -
+               CLR.B   SHOWING_TEMPO        ;KICK MR. TEMPO-SCREEN OUT, TOO -
+               BRA.S   SW_HIT_0C            ;GO DEAL WITH SWITCH HIT IN THIS CHANGED LIGHT ....
+;
+SW_HIT_04
+               TST.B   SHOWING_FF_RW        ;IS FAST-FORWARD/REWIND SCREEN UP?
+               BEQ.S   SW_HIT_20            ;BRANCH IF NOT, ALL REALLY IS "NORM AL."
+               CMP     #42,D1               ;YES - RESPOND NORMALLY TO FAST-FWD, REWIND SWITCHES.
+               BEQ.S   SW_HIT_30
+               CMP     #44,D1
+               BEQ.S   SW_HIT_30
+               CMP     #45,D1               ;ALSO, LET THE STOP SWITCH GET THROUGH, HEY -
+               BEQ.S   SW_HIT_30
+               BRA.S   SW_HIT_EXIT          ;FOR OTHER SWITCHES, THE GRAND IGNORE - OTHERWISE,
+                                            ;IF WE KILL THIS DAEMON, WE LEAVE TRANSPORT HANGING.
+;
+SW_HIT_0C
+                                            ;NOW - TREAT SWITCH_HIT DIFFERENTLY:
+               CMP     CUR_FUN_INDEX,D1     ;SAME FUNCTION SWITCH AS LAST?
+               BEQ.S   SW_HIT_10            ;BRANCH IF YES, RECALL SAME SUBFUNCTION.
+               CMP     #24,D1               ;RESPOND NORMALLY TO OTHER FUNCTION SWITCHES.
+               BCS.S   SW_HIT_20
+SW_HIT_10
+;
+               ST      SUBFUN_INSTALL       ;IF NOT TEMPO OR NEW FUNCTION SWITCH, REINSTALL SUBFUN
+               BRA.S   SW_HIT_EXIT          ;AND BEGONE, EH?
+;
+;
+SW_HIT_20
+               CMP     #24,D1               ;FIRST THREE ROWS ARE FUNCTION SWITCHES.
+               BCS.S   FUNCTION_SWITCH      ;BRANCH IF THIS IS ONE.
+               CMP     #40,D1               ;NEXT 2 ROWS: DEC KEYPAD, CURSOR, INC/DEC, +/-, ENTER.
+               BCC.S   SW_HIT_30            ;BRANCH IF NOT ONE OF THESE.
+                .ALONG
+               JMP     GUIDO                ;BRANCH IF ONE OF THE ABOVE - GIVE IT TO GUIDO.
+                .AWORD
+;
+SW_HIT_30
+               TST.B   GUIDO_IS_AWAKE       ;REMAINING SWITCHES VECTORED VIA THE FOLLOWING TABLE -
+               BEQ.S   SW_HIT_40            ;PROCEED IF NOT IN MIDDLE OF DECIMAL KEYPAD ENTRY,
+                .ALONG
+               JSR     DUMP_GUIDO           ;ELSE CLEAN UP THE MESS BEFORE GOING ON.
+                .AWORD
+SW_HIT_40
+               SUB     #40,D1
+               ASL     #2,D1
+               MOVE.L  SW_HIT_TABLE(PC,D1),A0
+               JSR     (A0)
+;
+SW_HIT_EXIT
+               JMP     BACK_HANDLER
+;
+SW_HIT_TABLE
+               DC.L    ERASE_SWITCH
+               DC.L    RECORD_SWITCH
+               DC.L    REWIND_SWITCH
+               DC.L    PLAY_SWITCH
+               DC.L    FAST_FWD_SWITCH
+               DC.L    STOP_SWITCH
+               DC.L    PAUSE_SWITCH
+               DC.L    NO_SWITCH
+               DC.L    KIT_BANK_SWITCH
+               DC.L    ALT_PARAM_SWITCH
+               DC.L    AUTORPT_SWITCH
+               DC.L    TEMPO_UP_SWITCH
+               DC.L    TEMPO_DOWN_SWITCH
+               DC.L    TAP_BUTTON
+               DC.L    NO_SWITCH
+               DC.L    NO_SWITCH
+               DC.L    FOOTSWITCH_2
+               DC.L    FOOTSWITCH_1
+               DC.L    PLAY_STOP_SWITCH
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; RESPONSE ROUTINE FOR FUNCTION SWITCH HIT -
+; D1 CONTAINS SWITCH NUMBER 0-23.
+;
+;
+FUNCTION_SWITCH
+;
+               jsr     capture_cp_key       ; get this out of the way first -
+                                            ; user's first function switch hit
+                                            ; following power-up acts to prime
+                                            ; the copy protection system,
+                                            ; in a random sort of way.
+;
+               AND     #0F8FFH,LED_STEADY   ;CLEAR BITS FOR FUNCTION GROUP LEDs,
+               MOVE    #200H,D0             ;PRELOAD BIT FOR SOUND EDIT LED -
+               CMP     #8,D1                ;IS NEW SWITCH IN SOUND EDIT GROUP?
+               BCS.S   FUN_SW_10            ;BRANCH IF YES, LIGHT SOUND EDIT LED.
+               MOVE    #100H,D0             ;NO - PRELOAD BIT FOR SEQUENCER GROUP LED,
+               CMP     #16,D1               ;SEE IF SWITCH IS IN SEQUENCER GROUP -
+               BCS.S   FUN_SW_10            ;BRANCH IF YES, LIGHT SEQUENCER GROUP LED.
+               MOVE    #400H,D0             ;NEITHER OF ABOVE, SO LIGHT SYSTEM LED.
+FUN_SW_10
+               OR      D0,LED_STEADY        ;CLEAR (TURN ON) A FUNC GROUP LED BIT IN STATUS WORD -
+                                            ;IT WILL BE OUTPUT BY LED_FLASH, BY AND BY.
+;
+               CMP     CUR_FUN_INDEX,D1     ;SAME FUNCTION SWITCH AS CURRENTLY IN EFFECT?
+               BNE.S   FUN_SW_30            ;BRANCH IF NOT-
+;
+;18SEP               MOVE    #FLD_INDEXES,A0      ;CLEAR FIELD INDEX (START IN FIRST FIELD OF SCREEN),
+;18SEP               CLR     0(A0,D1)
+;18SEP               CLR     CUR_FLD_INDEX
+;        NEW APPROACH - LET CURSOR FALL WHERE IT MAY ....
+;
+               ADD     D1,D1                ;ELSE LEAVE FUNCTION INDEX ALONE,
+               MOVE    #SUB_INDEXES,A0      ;ADVANCE TO NEXT SUBFUNCTION UNDER THIS SWITCH -
+               MOVE    0(A0,D1),D2          ;D2 CONTAINS PREVIOUS SUBFUNCTION INDEX,
+               ADDQ    #4,D2                ;STEP IT UP BY LONG WORD INCREMENT.
+               MOVE    D1,D0                ;CREATE LONG WORD OFFSET INTO SUBFUNCTION GROUP TABLE.
+               ADD     D0,D0
+               LEA     FUN_GROUP_TABLE(PC),A2
+               MOVE.L  0(A2,D0),A2          ;A2 POINTS TO SUBFUNCTION GROUP FOR THIS SWITCH,
+               TST.L   0(A2,D2)             ;TEST NEW SUBFUNCTION SELECTION -
+                                            ;ZERO HERE MEANS WE HIT THE END OF SUBFUNCTION GROUP.
+               BNE.S   FUN_SW_20            ;BRANCH IF NOT AT THE END,
+               CLR     D2                   ;ELSE WRAP BACK TO START OF SUBFUNCTION GROUP.
+FUN_SW_20
+               MOVE    D2,0(A0,D1)          ;UPDATE SUBFUNCTION INDEX FOR THIS FUNCTION SWITCH.
+               MOVE    D2,CUR_SUB_INDEX
+               BRA.S   FUN_SW_40
+;
+FUN_SW_30
+               MOVE    D1,CUR_FUN_INDEX     ;UPDATE STATUS FOR NEW FUNCTION SWITCH.
+               ADD     D1,D1                ;CREATE WORD OFFSET INTO SUBFUNCTION INDEX TABLE -
+               MOVE    #SUB_INDEXES,A0
+               MOVE    0(A0,D1),CUR_SUB_INDEX    ;RETRIEVE PREVIOUS SUBFUNCTION ACTIVE UNDER THIS
+                                                 ;FUNCTION SWITCH - WE RETURN TO SAME SUBFUNCTION.
+               MOVE    #FLD_INDEXES,A0           ;RETRIEVE FIELD INDEX TOO (AREN'T WE HOT?)
+               MOVE    0(A0,D1),CUR_FLD_INDEX
+;
+FUN_SW_40
+               MOVE    CUR_FUN_INDEX,D0     ;NOW - DUST SETTLING - SET A POINTER TO SUBFUNCTION.
+;
+;890314;
+;890314               MOVE.B  20547H,D2            ;TEST FOR SPECIAL INSTALL MODE OVERRIDE.
+;890314               AND     #7H,D2               ;MUST HAVE BOTH EXCEPTION BITS SET, PLUS SPEC STAT BIT,
+;890314               CMP     #7H,D2               ;BUT NO OTHER INSTALL-PENDING CONDITION BITS -
+;890314               BNE.S   FUN_SW_50            ;IF NOT, WE GO ABOUT OUR BUSINESS AS USUAL.
+;890314               MOVE.L  #EXT_SUB_GROUP,A0    ;ALL CONDITIONS MET, BRANCH AROUND FOR SPECIAL INSTALL.
+;890314               BRA.S   FUN_SW_60
+;890314FUN_SW_50
+;890314;
+;
+               ASL     #2,D0                     ;FUNCTION INDEX BECOMES LONG-WORD OFFSET -
+               LEA     FUN_GROUP_TABLE(PC),A0    ;INTO FUNCTION GROUP TABLE.
+               MOVE.L  0(A0,D0),A0               ;PARTWAY - POINTING TO SUBFUNCTION GROUP -
+               MOVE    CUR_SUB_INDEX,D0          ;(THIS INDEX ALREADY IN LONGWORD OFFSET FORMAT).
+               MOVE.L  0(A0,D0),A0               ;A0 POINTS TO CURRENT SUBFUNCTION BLOCK.
+;890314;
+;890314FUN_SW_60
+;890314;
+               MOVE.L  A0,CUR_SUB_BLOCK     ;STORE POINTER FOR LATER REFERENCE.
+               ST      SUBFUN_INSTALL       ;SET FLAG TO INVOKE INSTALLATION OF SUBFUNCTION.
+               TST.B   GUIDO_IS_AWAKE       ;WERE WE IN THE MIDDLE OF DECIMAL KEYPAD ENTRY?
+               BEQ.S   FUN_SW_EXIT          ;BRANCH IF NOT - EXIT IN COOLNESS.
+                .ALONG
+               JSR     DUMP_GUIDO           ;ELSE, WHOMP IT ON THE WAY OUT.
+                .AWORD
+;
+FUN_SW_EXIT
+               JMP     BACK_HANDLER
+;
+;
+; TABLE OF POINTERS TO SUBFUNCTION GROUPS - ONE PER FUNCTION SWITCH:
+;
+FUN_GROUP_TABLE
+               DC.L    SAMPLE_GROUP         ;SOUND FUNCTIONS.
+               DC.L    SAM_ED_1_GROUP
+               DC.L    SAM_ED_2_GROUP
+               DC.L    OUTPUT_GROUP
+               DC.L    ATTACK_GROUP
+               DC.L    SUSTAIN_GROUP
+               DC.L    RELEASE_GROUP
+               DC.L    BEND_GROUP
+;
+               DC.L    SETUP_GROUP          ;SEQUENCER FUNCTIONS.
+               DC.L    RECORD_1_GROUP
+               DC.L    RECORD_2_GROUP
+               DC.L    TIMING_GROUP
+               DC.L    SONG_GROUP
+               DC.L    SEQ_ED_1_GROUP
+               DC.L    SEQ_ED_2_GROUP
+               DC.L    PLAYBACK_GROUP
+;
+               DC.L    MIDI_1_GROUP         ;SYSTEM FUNCTIONS.
+               DC.L    MIDI_2_GROUP
+               DC.L    INPUTS_GROUP
+               DC.L    DISK_GROUP
+               DC.L    KITS_GROUP
+               DC.L    CLOCK_GROUP
+               DC.L    SMPTE_GROUP
+               DC.L    COUNT_TAP_GROUP
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; SUBFUNCTION GROUPS -
+; EACH GROUP CONSISTS OF LONGWORD POINTERS TO SUBFUNCTION BLOCKS
+; FOR ALL SUBFUNCTIONS UNDER A GIVEN FUNCTION SWITCH,
+; TERMINATED BY A LONGWORD ZERO.
+;
+;
+; FIRST, THE .IMPORT DECLARATIONS (FILE'S BIG ENOUGH ALREADY, EH?):
+;
+;
+; SOUND/SAMPLING SUBFUNCTION GROUPS:
+;
+                                            ;SAMPLE_GROUP.
+               .IMPORT SAMPLE_SIZE_SUB    ;NOTE - SAMPLE_RATE_SUB IS SUBSIDIARY TO THIS ONE.
+               .IMPORT THRESHOLD_SUB
+               .IMPORT TUNE_SUB
+               .IMPORT SAMPLE_NAME_SUB
+                                            ;SAM_ED_1_GROUP.
+               .IMPORT SAMPLE_TRIM_SUB
+               .IMPORT LOOP_POINTS_SUB
+               .IMPORT LOOP_TYPE_SUB
+               .IMPORT XFADE_SUB
+               .IMPORT DIRECTION_SUB
+                                            ;SAM_ED_2_GROUP.
+               .IMPORT SAMPLE_DELETE_SUB
+               .IMPORT RECOVER_MEM_SUB
+               .IMPORT COPY_APPEND_SUB
+               .IMPORT COPY_ANALOG_SUB
+               .IMPORT SAMPLE_MIX_SUB
+               .IMPORT SAMPLE_SCALE_SUB
+                                            ;OUTPUT_GROUP.
+               .IMPORT AUDIO_OUTS_SUB
+               .IMPORT INITIAL_PAN_SUB
+               .IMPORT PITCH_PAN_SUB
+               .IMPORT MODE_4_OUT_SUB
+                                            ;ATTACK_GROUP.
+               .IMPORT INIT_ATTACK_SUB
+               .IMPORT ATT_PITCH_TRK_SUB
+               .IMPORT ATT_VEL_TRK_SUB
+               .IMPORT VEL_START_SUB
+                                            ;SUSTAIN_GROUP.
+               .IMPORT SUS_DURATION_SUB
+               .IMPORT SUS_PITCH_DUR_SUB
+               .IMPORT SUS_LEVEL_SUB
+               .IMPORT SUS_CUTOFF_TRK_SUB
+               .IMPORT SUS_VEL_TRK_SUB
+                                            ;RELEASE_GROUP.
+               .IMPORT INIT_RELEASE_SUB
+               .IMPORT REL_PITCH_TRK_SUB
+               .IMPORT REL_VEL_TRK_SUB
+                                            ;BEND_GROUP.
+               .IMPORT BEND_DEPTH_SUB
+               .IMPORT BEND_RATE_SUB
+               .IMPORT BEND_PITCH_TRK_SUB
+               .IMPORT BEND_VEL_TRK_SUB
+               .IMPORT BEND_MODE_SUB
+;
+;
+; SEQUENCER SUBFUNCTION GROUPS:
+;
+                                            ;SETUP_GROUP.
+               .IMPORT SEQ_NAME_SUB
+               .IMPORT TIME_SIG_SUB
+               .IMPORT MEASURES_SUB
+               .IMPORT SEQ_REPEAT_SUB
+               .IMPORT SEQ_MEM_STAT_SUB
+                                            ;RECORD_1_GROUP.
+               .IMPORT TRACK_TYPE_SUB
+               .IMPORT AUTOCORRECT_SUB
+               .IMPORT METRONOME_SUB
+               .IMPORT SWING_SUB
+                                            ;RECORD_2_GROUP.
+               .IMPORT PUNCH_IN_SUB
+               .IMPORT PUNCH_OUT_SUB
+;900621               .IMPORT WORK_LOOP_SUB
+               .IMPORT MUTE_SUB
+                                            ;TIMING_GROUP.
+               .IMPORT TEMPO_CHANGE_SUB
+               .IMPORT RECORD_TAP_SUB
+               .IMPORT EDIT_TAP_SUB
+               .IMPORT UART_TIMING_SUB
+               .IMPORT CHEESE_STEAK_SUB
+                                            ;SONG_GROUP.
+               .IMPORT BUILD_SONG_SUB
+               .IMPORT CLEAR_SONG_SUB
+               .IMPORT SONG_NAME_SUB
+               .IMPORT DUB_TO_SEQ_SUB
+                                            ;SEQ_ED_1_GROUP.
+               .IMPORT SEQ_ERASE_SUB
+               .IMPORT TRANSPOSE_SUB
+               .IMPORT CHANNELIZE_SUB
+               .IMPORT SEQ_REPLACE_SUB
+               .IMPORT SEQ_VEL_SCALE_SUB
+                                            ;SEQ_ED_2_GROUP.
+               .IMPORT SEQ_DELETE_SUB
+               .IMPORT SEQ_COPY_SUB
+               .IMPORT SEQ_INSERT_SUB
+               .IMPORT SEQ_ROTATE_SUB
+               .IMPORT SEQ_BOUNCE_SUB
+                                            ;PLAYBACK_GROUP.
+               .IMPORT SEQ_PLAYBACK_SUB
+               .IMPORT SEQ_CUE_SUB
+;
+;
+; SYSTEM SUBFUNCTION GROUPS:
+;
+                                            ;MIDI_1_GROUP.
+               .IMPORT MIDI_CHANNEL_SUB
+               .IMPORT MIDI_MODE_SUB
+               .IMPORT MIDI_ECHO_SUB
+               .IMPORT MIDI_MOD_ROUTS_SUB
+               .IMPORT MIDI_KIT_ASSIGN_SUB
+                                            ;MIDI_2_GROUP.
+               .IMPORT MIDI_VOL_SUB
+               .IMPORT MIDI_HOLD_SUB
+               .IMPORT MIDI_DEF_VEL_SUB
+               .IMPORT MIDI_SONG_SEL_SUB
+;890321               .IMPORT MIDI_DUMP_SUB
+               .IMPORT SDS_MENU_SUB
+                                            ;INPUTS_GROUP.
+               .IMPORT FOOTSWITCH_SUB
+               .IMPORT TRIG_ROUTING_SUB
+               .IMPORT TRIG_THRESH_SUB
+               .IMPORT TRIG_DELAY_SUB
+                                            ;DISK_GROUP.
+               .IMPORT LOAD_FILE_SUB
+               .IMPORT SAVE_FILE_SUB
+               .IMPORT DIRECTORY_SUB
+               .IMPORT MOVE_UNIT_SUB
+               .IMPORT FORMAT_SUB
+;900621               .IMPORT DRIVE_SEL_SUB
+               .IMPORT DISK_UTILS_SUB
+                                            ;KITS_GROUP.
+               .IMPORT KIT_BUILD_SUB
+               .IMPORT COPY_TO_KIT_SUB
+               .IMPORT KIT_REPLACE_SUB
+               .IMPORT KIT_CLEAR_SUB
+                                            ;CLOCK_GROUP.
+               .IMPORT CLOCK_IN_SUB
+               .IMPORT CLOCK_OUT_SUB
+               .IMPORT MIDI_CLOCK_SUB
+               .IMPORT CLOCK_TEMPO_SUB
+                                            ;SMPTE_GROUP.
+               .IMPORT SMPTE_START_SUB
+               .IMPORT SMPTE_TYPE_SUB
+               .IMPORT FPB_BPM_SUB
+               .IMPORT TIME_DISPLAY_SUB
+                                            ;COUNT_TAP_GROUP.
+               .IMPORT TAP_METHOD_SUB
+               .IMPORT COUNT_IN_SUB
+;
+;
+; (AND) NOW, THE TABLE(S) IT(THEM)SELF(SELVES):
+;
+;
+; SOUND/SAMPLING SUBFUNCTION GROUPS:
+;
+SAMPLE_GROUP
+               DC.L    SAMPLE_SIZE_SUB
+               DC.L    THRESHOLD_SUB
+               DC.L    TUNE_SUB
+               DC.L    SAMPLE_NAME_SUB
+               DC.L    0
+SAM_ED_1_GROUP
+               DC.L    SAMPLE_TRIM_SUB
+               DC.L    LOOP_TYPE_SUB
+               DC.L    LOOP_POINTS_SUB
+               DC.L    XFADE_SUB
+               DC.L    DIRECTION_SUB
+               DC.L    0
+SAM_ED_2_GROUP
+               DC.L    SAMPLE_DELETE_SUB
+               DC.L    RECOVER_MEM_SUB
+               DC.L    COPY_APPEND_SUB
+               DC.L    COPY_ANALOG_SUB
+               DC.L    SAMPLE_MIX_SUB
+               DC.L    SAMPLE_SCALE_SUB
+               DC.L    0
+OUTPUT_GROUP
+               DC.L    AUDIO_OUTS_SUB
+               DC.L    INITIAL_PAN_SUB
+               DC.L    PITCH_PAN_SUB
+               DC.L    0
+ATTACK_GROUP
+               DC.L    INIT_ATTACK_SUB
+               DC.L    ATT_VEL_TRK_SUB
+               DC.L    ATT_PITCH_TRK_SUB
+               DC.L    VEL_START_SUB
+               DC.L    0
+SUSTAIN_GROUP
+               DC.L    SUS_DURATION_SUB
+               DC.L    SUS_LEVEL_SUB
+               DC.L    SUS_VEL_TRK_SUB
+               DC.L    SUS_PITCH_DUR_SUB
+               DC.L    SUS_CUTOFF_TRK_SUB
+               DC.L    0
+RELEASE_GROUP
+               DC.L    INIT_RELEASE_SUB
+               DC.L    REL_VEL_TRK_SUB
+               DC.L    REL_PITCH_TRK_SUB
+               DC.L    0
+BEND_GROUP
+               DC.L    BEND_DEPTH_SUB
+               DC.L    BEND_RATE_SUB
+               DC.L    BEND_VEL_TRK_SUB
+               DC.L    BEND_PITCH_TRK_SUB
+               DC.L    BEND_MODE_SUB
+               DC.L    0
+;
+;
+; SEQUENCER SUBFUNCTION GROUPS:
+;
+SETUP_GROUP
+               DC.L    TIME_SIG_SUB
+               DC.L    MEASURES_SUB
+               DC.L    SEQ_REPEAT_SUB
+               DC.L    SEQ_NAME_SUB
+               DC.L    SEQ_MEM_STAT_SUB
+               DC.L    0
+RECORD_1_GROUP
+               DC.L    TRACK_TYPE_SUB
+               DC.L    AUTOCORRECT_SUB
+               DC.L    SWING_SUB
+               DC.L    METRONOME_SUB
+               DC.L    0
+RECORD_2_GROUP
+               DC.L    PUNCH_IN_SUB
+               DC.L    PUNCH_OUT_SUB
+;900621               DC.L    WORK_LOOP_SUB
+               DC.L    MUTE_SUB
+               DC.L    0
+TIMING_GROUP
+               DC.L    TEMPO_CHANGE_SUB
+               DC.L    RECORD_TAP_SUB
+               DC.L    EDIT_TAP_SUB
+               DC.L    UART_TIMING_SUB
+               DC.L    CHEESE_STEAK_SUB
+               DC.L    0
+SONG_GROUP
+               DC.L    BUILD_SONG_SUB
+               DC.L    CLEAR_SONG_SUB
+               DC.L    SONG_NAME_SUB
+               DC.L    DUB_TO_SEQ_SUB
+               DC.L    0
+SEQ_ED_1_GROUP
+               DC.L    SEQ_ERASE_SUB
+               DC.L    TRANSPOSE_SUB
+               DC.L    CHANNELIZE_SUB
+               DC.L    SEQ_REPLACE_SUB
+               DC.L    SEQ_VEL_SCALE_SUB
+               DC.L    0
+SEQ_ED_2_GROUP
+               DC.L    SEQ_DELETE_SUB
+               DC.L    SEQ_COPY_SUB
+               DC.L    SEQ_INSERT_SUB
+               DC.L    SEQ_ROTATE_SUB
+               DC.L    SEQ_BOUNCE_SUB
+               DC.L    0
+PLAYBACK_GROUP
+               DC.L    SEQ_PLAYBACK_SUB
+               DC.L    SEQ_CUE_SUB
+               DC.L    0
+;
+;
+; SYSTEM SUBFUNCTION GROUPS:
+;
+MIDI_1_GROUP
+               DC.L    MIDI_ECHO_SUB
+               DC.L    MIDI_MODE_SUB
+               DC.L    MIDI_CHANNEL_SUB
+               DC.L    MIDI_KIT_ASSIGN_SUB
+               DC.L    MIDI_MOD_ROUTS_SUB
+               DC.L    0
+MIDI_2_GROUP
+               DC.L    MIDI_DEF_VEL_SUB
+               DC.L    MIDI_VOL_SUB
+               DC.L    MIDI_HOLD_SUB
+               DC.L    MIDI_SONG_SEL_SUB
+;890321               DC.L    MIDI_DUMP_SUB
+               DC.L    SDS_MENU_SUB
+               DC.L    0
+INPUTS_GROUP
+               DC.L    FOOTSWITCH_SUB
+               DC.L    TRIG_ROUTING_SUB
+               DC.L    TRIG_THRESH_SUB
+               DC.L    TRIG_DELAY_SUB
+               DC.L    0
+DISK_GROUP
+               DC.L    LOAD_FILE_SUB
+               DC.L    SAVE_FILE_SUB
+               DC.L    DIRECTORY_SUB
+               DC.L    MOVE_UNIT_SUB
+               DC.L    FORMAT_SUB
+;900621               DC.L    DRIVE_SEL_SUB
+               DC.L    DISK_UTILS_SUB
+               DC.L    0
+KITS_GROUP
+               DC.L    KIT_BUILD_SUB
+               DC.L    COPY_TO_KIT_SUB
+               DC.L    KIT_REPLACE_SUB
+               DC.L    KIT_CLEAR_SUB
+               DC.L    0
+CLOCK_GROUP
+               DC.L    CLOCK_IN_SUB
+               DC.L    CLOCK_OUT_SUB
+               DC.L    MIDI_CLOCK_SUB
+               DC.L    CLOCK_TEMPO_SUB
+               DC.L    0
+SMPTE_GROUP
+               DC.L    SMPTE_START_SUB
+               DC.L    SMPTE_TYPE_SUB
+               DC.L    TIME_DISPLAY_SUB
+               DC.L    FPB_BPM_SUB
+               DC.L    0
+COUNT_TAP_GROUP
+               DC.L    TAP_METHOD_SUB
+               DC.L    COUNT_IN_SUB
+               DC.L    0
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; PLACE-HOLDERS - UNTIL SOMETHING BETTER COMES ALONG:
+;
+NO_SWITCH
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+

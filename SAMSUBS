@@ -1,0 +1,952 @@
+***************************************************************************************************
+***************************************************************************************************
+***                                                                                             ***
+***            SAMSUBS - MODEL 440 SAMPLE MEMORY UTILITY SUBROUTINES                            ***
+***                                                                                             ***
+***************************************************************************************************
+***************************************************************************************************
+;
+;
+               .AWORD
+;
+;
+               INCLUDE EQUATES         ;HDW ADDR AND CONSTANT DEFS, .AWORD DIRECTIVE.
+;
+               INCLUDE S_BLK_EQU       ;SOUND BLOCK EQUATES/OFFSETS
+;
+;
+;
+               .EXPORT READ_UPWARD
+               .EXPORT READ_DOWNWARD
+               .EXPORT WRITE_UPWARD
+               .EXPORT WRITE_DOWNWARD
+               .EXPORT POSTDEL_SAMSPC
+               .EXPORT GET_PROP_BLK_PTR
+               .EXPORT GET_S_SUB_PTR
+               .EXPORT GET_S_BLK_PTR
+               .EXPORT GET_DUMB_BLK_PTR
+               .EXPORT S_BLK_TABLE
+               .EXPORT INIT_SND_CTL_BLK
+               .EXPORT WRITE_ZERO_AND_PEAK
+               .EXPORT MOVE_MEMORY
+               .EXPORT RECALCMEM
+               .EXPORT SET_SAMPLED_SOUNDS
+               .EXPORT SET_ROOT_PITCH
+;
+;
+;
+;
+                                            ; external ROM addresses.
+;890402               .IMPORT INSTALL_KIT
+;
+;
+;
+;
+                                            ; RAM addresses.
+               .IMPORT SAMPLED_SOUNDS
+               .IMPORT CURRENT_SOUND
+               .IMPORT ALT_PARAM_FLAG
+               .IMPORT CR_SAM_SIZE
+               .IMPORT CR_SAM_RATE
+               .IMPORT SAMPLE_RAM_END
+               .IMPORT FREE_SAM_RAM
+               .IMPORT MISC_OUT_STAT
+               .IMPORT S_BLK_00
+               .IMPORT KIT_PITCHES
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+READ_UPWARD
+;
+; SET UP RAM INTERFACE CHIP 1 CHANNEL 0 FOR SINGLE-STEP UPWARD READ
+; FROM ADDRESS IN D0 THROUGH ADDRESS IN D1.
+; NOTE: SETS UP TWO-CHIP DAISY CHAIN, WHICH  ** YOU **  MUST UNDO LATER.
+; ALL REGISTERS ARE PRESERVED.
+;
+               MOVEM.L D6-D7,-(A7)          ;SAVE D6-D7, A0.
+               MOVE.L  A0,-(A7)
+               MOVE.L  #CHIP1,A0            ;SET UP A0 AS CHIP POINTER.
+               MOVE.B  #9CH,D7              ;PASS MODE BYTE IN D7.
+               BRA.S   STEP_ON_IT           ;GO TO IT.
+;
+;
+READ_DOWNWARD
+;
+; SET UP RAM INTERFACE CHIP 1 CHANNEL 0 FOR SINGLE-STEP DOWNWARD READ
+; FROM ADDRESS IN D1 THROUGH ADDRESS IN D0.
+; NOTE: SETS UP TWO-CHIP DAISY CHAIN, WHICH  ** YOU **  MUST UNDO LATER.
+; ALL REGISTERS ARE PRESERVED.
+;
+               MOVEM.L D6-D7,-(A7)          ;SAVE D6-D7, A0.
+               MOVE.L  A0,-(A7)
+               MOVE.L  #CHIP1,A0            ;SET UP A0 AS CHIP POINTER.
+               MOVE    #0BCH,D7             ;PASS MODE BYTE IN D7.
+               BRA.S   STEP_ON_IT           ;GO TO IT.
+;
+;
+WRITE_UPWARD
+;
+; SET UP RAM INTERFACE CHIP 2 CHANNEL 0 FOR SINGLE-STEP UPWARD WRITE
+; FROM ADDRESS IN D0 THROUGH ADDRESS IN D1.
+; NOTE: SETS UP TWO-CHIP DAISY CHAIN, WHICH  ** YOU **  MUST UNDO LATER.
+; ALL REGISTERS ARE PRESERVED.
+;
+               MOVEM.L D6-D7,-(A7)          ;SAVE D6-D7, A0.
+               MOVE.L  A0,-(A7)
+               MOVE.L  #CHIP2,A0            ;SET UP A0 AS CHIP POINTER.
+               MOVE    #9CH,D7              ;PASS MODE BYTE IN D7.
+                                            ;REMEMBER - CHIP 2 IS REFRESHER-MEISTER, NEEDS
+                                            ;LONGER CHANNEL DELAY.
+               BRA.S   STEP_ON_IT           ;GO TO IT.
+;
+;
+WRITE_DOWNWARD
+;
+; SET UP RAM INTERFACE CHIP 2 CHANNEL 0 FOR SINGLE-STEP DOWNWARD WRITE
+; FROM ADDRESS IN D1 THROUGH ADDRESS IN D0.
+; NOTE: SETS UP TWO-CHIP DAISY CHAIN, WHICH  ** YOU **  MUST UNDO LATER.
+; ALL REGISTERS ARE PRESERVED.
+;
+               MOVEM.L D6-D7,-(A7)          ;SAVE D6-D7, A0.
+               MOVE.L  A0,-(A7)
+               MOVE.L  #CHIP2,A0            ;SET UP A0 AS CHIP POINTER.
+               MOVE    #0BCH,D7             ;PASS MODE BYTE IN D7.
+                                            ;REMEMBER - CHIP 2 IS REFRESHER-MEISTER, NEEDS
+                                            ;LONGER CHANNEL DELAY.
+                                            ;GO TO IT - FALL INTO STEP_ON_IT.
+;
+;
+STEP_ON_IT
+               BSR.S   SINGLE_STEP_RAM
+               MOVE.L  (A7)+,A0             ;RESTORE D6-D7, A0.
+               MOVEM.L (A7)+,D6-D7
+STEPPIN_OUT
+               RTS
+;
+;
+;
+;
+SINGLE_STEP_RAM
+;
+; SWITCHES DAISY-CHAIN INTO TWO-CHIP MODE, THEN PROCEEDS TO
+; SET UP SINGLE-STEP READ OR WRITE OF SAMPLE RAM IN EITHER DIRECTION
+; USING PARAMETERS PASSED "FROM ABOVE" -
+; A0 POINTS TO CHIP1 OR CHIP2 (FOR READ, WRITE RESPECTIVELY).
+; D0 HOLDS VALUE FOR LEFT ADDRESS, D1 HOLDS VALUE FOR RIGHT ADDRESS.
+; MODE PARAMETER IS PASSED IN D7.W (HIGH, LOW BYTES RESPECTIVELY).
+;
+               BCLR    #7,MISC_OUT_STAT          ;SET STATUS BIT FOR TWO-CHIP DAISY-CHAIN,
+               .ALONG
+               MOVE.B  MISC_OUT_STAT,MISC_OUT    ;MOVE NEW STATUS OUT TO REGISTER.
+               .AWORD
+;
+STEP_ASIDE
+               MOVE.B  #94H,MISC(A0)        ;SELECT CHIP CHANNEL 0, SINGLE-STEP CLOCK, LOOP ON,
+                                            ;LOOP UNIDIRECTIONAL, DIRECTION FORWARD, JAM PITCH.
+;
+               BTST    #5,D7                ;TEST BLOCK TRANSFER DIRECTION (IN MODE BYTE) -
+               BNE.S   STEPPIN_DOWN         ;BRANCH IF DOING DOWNWARD READ OR WRITE.
+               BSR.S   SET_RIGHT_ADDR       ;FOR UPWARD READ/WRITE, SET RIGHT, THEN LEFT, ADDRESS.
+               BSR.S   SET_LEFT_ADDR
+               BRA.S   SET_STEP_MODE
+STEPPIN_DOWN
+               BSR.S   SET_LEFT_ADDR        ;IF GOING DOWN, SET LEFT ADDRESS, THEN RIGHT ADDRESS.
+               BSR.S   SET_RIGHT_ADDR
+;
+SET_STEP_MODE
+               MOVE.B  D7,MISC(A0)          ;SELECT CHIP CHANNEL 0, SINGLE-STEP CLOCK, LOOP ON,
+                                            ;LOOP UNIDIRECTIONAL, JAM PITCH, SET ADDRESS DIRECTION,
+                                            ;JAM ONE ADDRESS INTO CURRENT ADDRESS LATCH.
+;
+               .FOR COUNT = 1,16            ;INEXPLICABLE 8 USEC DELAY AS MYSTERIOUSLY REQUIRED
+               NOP                          ;FOR SOME UNKNOWN REASON.
+               .ENDFOR
+;
+               AND.B   #30H,D7              ;UNJAM PITCH AND ADDRESS, SET LOOP OFF, KEEP SAME
+               MOVE.B  D7,MISC(A0)          ;ADDRESS DIRECTION AND SELECT SINGLE-STEP CLOCK.
+;
+               RTS
+;
+;
+SET_RIGHT_ADDR
+               MOVE.L  D1,D6                ;LOAD RIGHT ADDRESS LATCH - COPY ADDRESS INTO D6.
+               SWAP    D6                   ;MOVE HIGH BYTE INTO POSITION.
+               OR.B    #80H,D6              ;SET BIT FOR RIGHT ADDRESS LATCH SELECT.
+               MOVE.B  D6,ADDRHI(A0)        ;WRITE HIGH BYTE (ACTUALLY, NIBBLE) TO CHIP.
+               MOVE.L  D1,D6                ;REFRESH COPY OF RIGHT ADDRESS IN D6.
+               LSR     #8,D6                ;MOVE MIDDLE BYTE INTO POSITION.
+               MOVE.B  D6,ADDRMID(A0)       ;WRITE MIDDLE BYTE TO CHIP,
+               MOVE.B  D1,ADDRLO(A0)        ;FOLLOWED BY LOW BYTE.
+               RTS
+;
+SET_LEFT_ADDR
+               MOVE.L  D0,D6                ;LOAD LEFT ADDRESS LATCH - COPY ADDRESS INTO D6.
+               SWAP    D6                   ;MOVE HIGH BYTE INTO POSITION.
+               MOVE.B  D6,ADDRHI(A0)        ;WRITE HIGH BYTE (ACTUALLY, NIBBLE) TO CHIP.
+               MOVE.L  D0,D6                ;REFRESH COPY OF RIGHT ADDRESS IN D6.
+               LSR     #8,D6                ;MOVE MIDDLE BYTE INTO POSITION.
+               MOVE.B  D6,ADDRMID(A0)       ;WRITE MIDDLE BYTE TO CHIP,
+               MOVE.B  D0,ADDRLO(A0)        ;FOLLOWED BY LOW BYTE.
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;
+; Move a block of sample memory - upwards, downwards, or not at all.
+; A1.L = start address of source block,
+; A2.L = start address of destination block,
+; D2.L is the number of words to be moved.
+; This is raw form - sample control block info is not affected/adjusted.
+;
+; Correctly copies all data even if source and destination blocks overlap -
+; returns almost immediately, with no data moved, if source and destination
+; starting addresses are equal.
+;
+; Note that no changes to interrupt enable status are made in this routine -
+; this is essential to allow use of this routine in MIDI sample dump procedures.
+; Faster results can be obtained by disabling interrupts to whatever extent
+; is allowable before calling here.
+;
+; Redgo-preservomatic.
+;
+;
+MOVE_MEMORY
+               MOVEM.L D0-D2,-(A7)
+               CMP.L   A1,A2                ; is it a move up or move down?
+               BCS.S   MOVEMEM_40           ; branch if dest lower than source.
+               BEQ.S   MOVEMEM_Z0           ; exit if source, dest addrs equal -
+                                            ; no need to move anything.
+;
+                                            ; moving up - work down from top:
+               MOVE.L  A1,D1                ; set read chip to top end of source block -
+               ADD.L   D2,D1                ; that's source address plus block word length.
+               CLR.L   D0                   ; default to zero as bottom source address.
+               BSR     READ_DOWNWARD        ; set up to read downward through source block.
+               MOVE.L  A2,D1                ; do similar setup for write block -
+               ADD.L   D2,D1                ; start writing at top of destination block,
+               BSR     WRITE_DOWNWARD       ; work down to bottom - D0 still contains end addr = 0.
+               BRA.S   MOVEMEM_80           ; all set, head into data-move loop.
+;
+MOVEMEM_40
+                                            ; moving block downward, work up from bottom of block:
+               MOVE.L  A1,D0                ; set read chip to source block start address,
+               MOVE.L  #80000H,D1           ; default to top of memory for read end address.
+               BSR     READ_UPWARD
+               MOVE.L  A2,D0
+               BSR     WRITE_UPWARD         ; set write chip to destination block start address.
+                                            ; from here, same as block upward-move.
+;
+MOVEMEM_80
+               MOVEQ   #8,D0                ; (4) sound chip daisy-chain delay -
+MOVEMEM_84
+               DBRA    D0,MOVEMEM_84        ; (8*10 + 14) wait for daisy.
+               MOVE    RD_SAM_RAM,D0        ; (16) get data word from source block,
+               MOVE    D0,WR_SAM_RAM        ; (16) move it to destination block.
+               SUBQ.L  #1,D2                ; (8) be looping until entire block moved.
+               BNE     MOVEMEM_80           ; (10)
+;
+               BSR.S   WRITE_ZERO_AND_PEAK  ; restore zero and peak data words -
+                                            ; also restore 4-chip daisy-chain.
+MOVEMEM_Z0
+               MOVEM.L (A7)+,D0-D2
+               RTS
+;
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; WRITE THE FORCED-ZERO AND FORCED-PEAK SAMPLE RAM LOCATIONS -
+; ALSO, RESTORE 4-CHIP DAISY CHAIN OPERATION.
+; SAMPLE RAM LOCATION 7FFFEH GETS 000H, AND 7FFFFH GETS 07FFH.
+; THE FORMER IS USED AS THE PLACE TO PARK A PLAYBACK CHIP WHILE
+; SETTING UP ITS VOICE CONTROL BLOCK AND STARTING ITS ENVELOPES.
+; THE LATTER IS THE SINGLE PLAYBACK LOCATION USED FOR TRIGGER-OUT SOUNDS.
+; THESE LOCATIONS MUST ALWAYS BE MAINTAINED IN THIS STATE,
+; AND IN GENERAL WE'RE INTERESTED IN RUNNING WITH A 4-CHIP DAISY-CHAIN,
+; SO CALL THIS ROUTINE WHENEVER SAMPLE RAM HAS BEEN WRITTEN INTO,
+; AS A FINAL STEP IN WHATEVER OPERATION IT WAS.
+; ALL REGISTERS LEFT PLEASANTLY ALONE.
+;
+WRITE_ZERO_AND_PEAK
+;
+               MOVEM.L D0-D1,-(A7)
+;
+               CLR.L   D1                   ;SET UP WRITE ADDRESSES:  (SAMPLE_RAM_END) -1, -2 ....
+               MOVE    SAMPLE_RAM_END,D1    ;JUST ON THE OUTSIDE CHANCE OF EVENTUAL RAM EXPANSION.
+               LSL.L   #8,D1                ;(sigh....)
+               LSL.L   #2,D1
+               SUBQ.L  #1,D1                ;THIS IS THE PEAK POINT,
+               MOVE.L  D1,D0
+               SUBQ.L  #1,D0                ;THIS, THE ZERO ZONE.
+;
+               BSR     WRITE_UPWARD         ;INITIALIZE RAM INTERFACE FOR SINGLE STEP WRITE.
+               MOVEQ   #100,D0              ;DIDDLE AROUND FOR A SPELL.
+WR_ZRPK_20
+               DBRA    D0,WR_ZRPK_20
+               .ALONG
+               MOVE    #0,WR_SAM_RAM        ;WRITE THE FORCED-ZERO LOCATION.
+               .AWORD
+               MOVEQ   #100,D0              ;DIDDLE AROUND SOME MORE.
+WR_ZRPK_40
+               DBRA    D0,WR_ZRPK_40
+               .ALONG
+               MOVE    #7FFFH,WR_SAM_RAM    ;WRITE THE FORCED-PEAK LOCATION.
+               .AWORD
+               BSET    #7,MISC_OUT_STAT          ;RAM CHIP SET-UP SWITCHES TO 2-CHIP DAISY CHAIN -
+               .ALONG
+               MOVE.B  MISC_OUT_STAT,MISC_OUT    ;SWITCH BACK TO 4-CHIP MODE.
+               .AWORD
+;
+               MOVEM.L (A7)+,D0-D1
+WR_ZRPK_EXIT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; RECALCULATE FREE_SAM_RAM FROM DATA IN SOUND BLOCKS  -
+; COMPUTES A SUM OVER ALL 32 SOUNDS OF THE NUMBER OF COMPLETE 1K BLOCKS
+; USED BY EACH NON-DELETED SOUND - SO AS NOT TO GET TRIPPED UP BY THINGS
+; LIKE TRIGGER-OUT SOUNDS, FOR WHICH ALL POINTERS POINT TO THE LAST WORD
+; IN SAMPLE MEMORY, OR BY THE CASE OF ALL SOUNDS BEING DELETED.
+;
+; RESULT IS REFERENCED TO SAMPLE_RAM_END, WHICH CONTAINS THE 1K BLOCK
+; ADDRESS OF (THE TOP OF SAMPLE RAM + 1) - THIS IS ALSO BY DEFINITION
+; THE MAXIMUM VALUE THAT CAN BE ATTAINED BY FREE_SAM_RAM -
+; JUST IN CASE RAM EXPANSION SHOULD SOMEHOW APPEAR ON THE SCENE ....
+;
+; IT SHOULD (GENERALLY DOES) GO WITHOUT SAYING THAT ALL FREE SAMPLE RAM
+; IS ASSUMED TO BE IN A CONTIGUOUS BLOCK AT THE TOP OF SAMPLE RAM SPACE.
+;
+; NO INPUT, ALL REGISTERS SAVED.
+;
+RECALCMEM
+               MOVEM.L A0/D0-D2,-(A7)
+               CLR     D1                   ;KEEP RUNNING USED-RAM-BLOCK SUM IN D1.
+               MOVEQ   #31,D2               ;WALK THROUGH ALL 32 SOUND CONTROL BLOCKS.
+               MOVE    #S_BLK_00,A0
+RECALC_10
+               BTST    #NOT_DEL_BIT,S_STATUS(A0) ;SEE IF SOUND IS DELETED -
+               BEQ.S   RECALC_20            ;IF SO ITS RAM IS FREE - LEAVE IT OUT OF USED-RAM SUM.
+               MOVE.L  S_FINISH(A0),D0      ;ELSE, COMPUTE ITS RAM USAGE IN 1K BLOCKS -
+               SUB.L   S_BEGIN(A0),D0
+               ADDQ.L  #1,D0                ;COMPENSATE FOR THE 1-SHY FINISH ADDRESS (xxxFFH),
+               LSR.L   #8,D0                ;DIVIDE BY 1024.
+               LSR.L   #2,D0
+               ADD     D0,D1                ;ADD 1K RESULT TO RUNNING SUM - NOTE THAT TRIGGER-OUT
+                                            ;SOUNDS ALL USE THE SAME SINGLE WORD AT THE TOP OF RAM,
+                                            ;ARE CONSIDERED FOR ACCOUNTING PURPOSES TO USE NO RAM.
+RECALC_20
+               ADD     #S_BLOCK_SIZE,A0     ;POINT TO NEXT SOUND CONTROL BLOCK, IF ANY -
+               DBRA    D2,RECALC_10         ;LOOP BACK AND DO ANOTHER IF ALL NOT DONE.
+;
+               MOVE    SAMPLE_RAM_END,FREE_SAM_RAM    ;SET FREE RAM TO MAX POSSIBLE VALUE,
+               SUB     D1,FREE_SAM_RAM                ;CHOP IT DOWN BY AMOUNT OF USED RAM -
+               MOVEM.L (A7)+,A0/D0-D2                 ;THAT'S IT.
+RECALC_EXIT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; TAKE A CENSUS ON SAMPLED (I.E., PLAYABLE) SOUNDS -
+; USE RESULT TO UPDATE SAMPLED_SOUNDS STATUS BIT MAP, WHICH CONTROLS
+; DIRECTLY WHETHER OR NOT VOICE_ASSIGN WILL ATTEMPT TO PLAY IT,
+; AS WELL AS WHETHER SEQUENCER WILL BOTHER TO NOTICE IT ON PLAYBACK.
+;
+; NOTE: this routine is called by INIT_SND_CTL_BLK, which is used during setup
+; for receive of a sample via MIDI sample dump.
+; The MIDI sample dump use requires that we do not disable
+; the MIDI receive interrupt (LEVEL6) for any appreciable amount of time.
+; This routine is specified to effect no interrupt enable status changes.
+;
+; PRESERVES ALL REGIMURS.
+;
+SET_SAMPLED_SOUNDS
+               MOVEM.L A0/D0-D1,-(A7)
+               MOVE    #S_BLK_00+31*0C0H,A0 ;GO THROUGH 32 SOUND BLOCKS, BACKWARDS.
+               MOVEQ   #31,D0               ;HE BE SOUND BLOCK INDEX.
+               CLR.L   D1                   ;HE WILL BE NEW SAMPLED_SOUNDS.
+ST_SAMD_20
+               BTST    #SAMPLED_BIT,S_STATUS(A0)      ;VERY STRAIGHTFORWARD, REALLY.
+               BEQ.S   ST_SAMD_40
+               BSET    D0,D1                ;SET BIT IN 32-BIT MAP IF SOUND IS SAMPLED.
+ST_SAMD_40
+               SUB     #S_BLOCK_SIZE,A0     ;UPDATE SOUND BLOCK POINTER.
+               DBRA    D0,ST_SAMD_20        ;CHECK STATUS OF NEXT SOUND IF ALL NOT DONE.
+;
+               MOVE.L  D1,SAMPLED_SOUNDS    ;DONE - STORE NEW LIST OF SAMPLED (PLAYABLE) SOUNDS.
+               MOVEM.L (A7)+,A0/D0-D1
+ST_SAMD_EXIT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;
+; Compute the total amount of free sample space which would be available
+; if CURRENT_SOUND were deleted - but don't delete anything just yet.
+; Helps with go/no-go decision in one-sound load from disk, MIDI sample receive.
+; Result is based directly on FREE_SAM_RAM if CURRENT_SOUND doesn't exist.
+; Returns result in D1.L as a number of sample words.
+; Other registers are preserved.
+;
+;
+POSTDEL_SAMSPC
+               MOVEM.L D0/A0,-(A7)
+               MOVE    FREE_SAM_RAM,D1      ; compute free sample space (words).
+               MULU    #1024,D1
+               BSR.S   GET_PROP_BLK_PTR     ; A0 points to CURRENT_SOUND blk -
+               BEQ.S   PDS_SPC_Z0           ; exit if sound deleted, we're done.
+               ADD.L   S_FINISH(A0),D1      ; else, add space alloc'd to sample.
+               SUB.L   S_BEGIN(A0),D1
+               ADDQ.L  #1,D1
+PDS_SPC_Z0
+               MOVEM.L (A7)+,D0/A0
+               RTS
+;
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;
+; Routines to access sample control block and sub-blocks -
+; GET_PROP_BLK_PTR uses CURRENT_SOUND and ALT_PARAM_FLAG values directly.
+; GET_DUMB_BLK_PTR uses ALT_PARAM_FLAG value but wants sound number in A0.W.
+; GET_S_SUB_PTR wants sound number in A0.W, alt params status in D0.W.
+; All three return sound common block pointer in A0.L,
+; with offset to selected sub-block in D0.W -
+; and Z flag true if sample not allocated, false if allocated.
+; All other registers preserved.
+;
+;
+GET_PROP_BLK_PTR
+               MOVE    CURRENT_SOUND,A0
+GET_DUMB_BLK_PTR
+               MOVE    ALT_PARAM_FLAG,D0
+GET_S_SUB_PTR
+               TST     D0                   ; which sub-block wouldst like?
+               BNE.S   GET_S_SUB_20         ; branch for sub-block 1,
+               MOVE.W  #S_SUB_0,D0          ; else fetch offset for sub-block 0.
+               BRA.S   GET_S_SUB_40
+GET_S_SUB_20
+               MOVE    #S_SUB_1,D0
+GET_S_SUB_40
+               BSR.S   GET_S_BLK_PTR        ; get ptr into A0.L, set Z flag.
+               RTS
+;
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; COMPUTE POINTER TO SOUND BLOCK PER SOUND NUMBER IN A0 -
+; RETURNS POINTER IN A0.
+; RETURNS Z FLAG CLEAR IF SAMPLE ALLOCATED, SET IF NOT ALLOCATED.
+; PRESERVES ALL REGISTERS EXCEPT A0.
+;
+GET_S_BLK_PTR
+               ADDA.W  A0,A0                     ;COMPUTE WORD OFFSET FOR TABLE,,
+               MOVEA.W S_BLK_TABLE(PC,A0),A0     ;FETCH ABS SHORT ADDRESS FROM TABLE.
+               BTST    #NOT_DEL_BIT,S_STATUS(A0) ;SET Z FLAG PER SAMPLE STATUS,
+               RTS
+;
+;
+S_BLK_TABLE
+               DC.W    S_BLK_00
+               DC.W    S_BLK_00+01*0C0H
+               DC.W    S_BLK_00+02*0C0H
+               DC.W    S_BLK_00+03*0C0H
+               DC.W    S_BLK_00+04*0C0H
+               DC.W    S_BLK_00+05*0C0H
+               DC.W    S_BLK_00+06*0C0H
+               DC.W    S_BLK_00+07*0C0H
+               DC.W    S_BLK_00+08*0C0H
+               DC.W    S_BLK_00+09*0C0H
+               DC.W    S_BLK_00+10*0C0H
+               DC.W    S_BLK_00+11*0C0H
+               DC.W    S_BLK_00+12*0C0H
+               DC.W    S_BLK_00+13*0C0H
+               DC.W    S_BLK_00+14*0C0H
+               DC.W    S_BLK_00+15*0C0H
+               DC.W    S_BLK_00+16*0C0H
+               DC.W    S_BLK_00+17*0C0H
+               DC.W    S_BLK_00+18*0C0H
+               DC.W    S_BLK_00+19*0C0H
+               DC.W    S_BLK_00+20*0C0H
+               DC.W    S_BLK_00+21*0C0H
+               DC.W    S_BLK_00+22*0C0H
+               DC.W    S_BLK_00+23*0C0H
+               DC.W    S_BLK_00+24*0C0H
+               DC.W    S_BLK_00+25*0C0H
+               DC.W    S_BLK_00+26*0C0H
+               DC.W    S_BLK_00+27*0C0H
+               DC.W    S_BLK_00+28*0C0H
+               DC.W    S_BLK_00+29*0C0H
+               DC.W    S_BLK_00+30*0C0H
+               DC.W    S_BLK_00+31*0C0H
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;
+; "Create" a sample -
+; by setting up params in a previously-unused sound control block.
+; Among its uses are creating sounds from scratch (front-panel function), and
+; setting up default parameters for sounds loaded from Prophet 2000 disks or
+; received via MIDI sample dump, for which most sound parameters are not known.
+; Sound block is the one indicated by CURRENT_SOUND (assumed to be deleted).
+; All params get specific default values except for sample pointers and rate.
+; Pointers are set based upon FREE_SAM_RAM, which indicates where the new sound
+; will be (or already is) located in sample memory, and upon CR_SAM_SIZE,
+; which dictates how much memory is allocated to the new sound.
+; (We assume that CR_SAM_SIZE is no larger than FREE_SAM_RAM upon entry here).
+; Sample rate is set per the current value of CR_SAM_RATE.
+; Sample is created with "unsampled" status (to accomodate new sample function).
+; FREE_SAM_RAM is updated, and is also used as the new value for CR_SAM_SIZE if
+; it ends up being smaller than the existing CR_SAM_SIZE value.
+; Sound name is initialized to "unsampld" (again, for new sample function).
+;
+; Note special case: if CR_SAM_SIZE = 0 upon entry, a trigger sound is created.
+; It uses no memory other than the single word at top-of-RAM - 1, which contains
+; a peak positive value at all times, and thus has no effect upon FREE_SAM_RAM.
+; In this case only, sound name is set to  "trigger " and status to "sampled".
+;
+; Also updates master list of sampled sounds.
+;
+; NOTE: the MIDI sample dump use requires that we do not disable
+; the MIDI receive interrupt (LEVEL6) for any appreciable amount of time.
+; This routine is specified to effect no interrupt enable status changes.
+;
+; All registers are preserved.
+;
+;
+INIT_SND_CTL_BLK
+;
+               MOVEM.L D0-D2/A0-A2,-(A7)
+;
+               BSR     GET_PROP_BLK_PTR     ; A0.L points to CURRENT_SOUND blk.
+               MOVEA.L A0,A1                ;COPY POINTER FOR CLEARING THE SOUND BLOCK.
+               MOVE.W  #S_BLOCK_SIZE-1,D0   ;CLEAR THE HOLE DAM THING.
+IN_SCB_10
+               CLR.B   (A1)+
+               DBRA    D0,IN_SCB_10
+;
+               LEA     S_SUB_0(A0),A1       ;A1 POINTS TO SUB-BLOCK 0.
+               LEA     S_SUB_1(A0),A2       ;A2 POINTS TO SUB-BLOCK 1.
+;
+                                            ;SET ALL DEFAULTS NOT RELATED TO SAMPLE SIZE:
+                                            ;NOTE - THOSE INITIALIZATIONS WHICH ARE CORRECTLY
+                                            ;HANDLED BY THE ABOVE BLOCK-CLEAR OPERATION ARE
+                                            ;*****'D OUT BELOW, BUT LEFT IN SOURCE FILE FOR
+                                            ;REFERENCE AND POSSIBLE LATER MODIFICATION.
+;
+                                            ;FIRST, PARAMETERS IN THE COMMON BLOCK:
+;
+               MOVE.B  CR_SAM_RATE+1,S_RATE(A0)  ;SET SELECTED SAMPLE RATE.
+;                                                ;(S_RATE_TRANS DOESN'T EXIST).
+;890317*****          SF      S_FINE_TUNE(A0)    ;NO FINE-TUNE OFFSET.
+                                                 ; no longer a common param.
+               MOVE.B  #0FFH,S_MIDI_CHAN(A0)     ;MIDI PLAY OFF,
+               MOVE.B  #27H,S_ROOT_KEY(A0)       ;ROOT KEY AT C(3),
+               MOVE.B  #2EH,S_HIGH_KEY(A0)       ;HIGH KEY AT G(3) - VALID FOR ALL SAMPLE RATES.
+;
+;
+                                            ;NOW, PARAMETERS IN THE SUB-BLOCKS:
+;
+*****          CLR     S_VEL_LIST(A1)       ;NO VELOCITY-DEPENDENT PARAMETERS, AS YET.
+*****          CLR     S_VEL_LIST(A2)
+*****          SF      S_LOOP_TYPE(A1)      ;LOOP OFF, UNIDIRECTIONAL, FORWARD PLAY, SUS LOOP.
+*****          SF      S_LOOP_TYPE(A2)
+*****          SF      S_VEL_START(A1)      ;NO VEL-MOD OF START POINT.
+*****          SF      S_VEL_START(A2)
+*****          SF      S_PAN_VS_PITCH(A1)   ;PAN NOT MODULATED BY PITCH SETTING.
+*****          SF      S_PAN_VS_PITCH(A2)
+*****          SF      S_MIDI_CHAN(A1)      ;MIDI OUT DISABLED, OUTPUT A, CHANNEL 0.
+*****          SF      S_MIDI_CHAN(A2)
+;
+*****          SF      S_A_INIT_ATT(A1)     ;SET INSTANT-ON VCA ATTACK RATE.
+*****          SF      S_A_INIT_ATT(A2)
+*****          SF      S_A_PITCH_ATT(A1)    ;ATTACK RATE NOT MODULATED BY PITCH SETTING.
+*****          SF      S_A_PITCH_ATT(A2)
+*****          SF      S_A_VEL_ATT(A1)      ;ATTACK RATE NOT MODULATED BY VELOCITY.
+*****          SF      S_A_VEL_ATT(A2)
+*****          SF      S_A_PITCH_TIME(A1)   ;SUSTAIN TIME NOT MODULATED BY PITCH SETTING.
+*****          SF      S_A_PITCH_TIME(A2)
+*****          SF      S_A_VEL_TIME(A1)     ;SUSTAIN TIME NOT MODULATED BY VELOCITY.
+*****          SF      S_A_VEL_TIME(A2)
+*****          SF      S_A_PITCH_REL(A1)    ;RELEASE RATE NOT MODULATED BY PITCH SETTING.
+*****          SF      S_A_PITCH_REL(A2)
+*****          SF      S_A_VEL_REL(A1)      ;RELEASE RATE NOT MODULATED BY VELOCITY.
+*****          SF      S_A_VEL_REL(A2)
+               MOVE.B  #31,S_A_LEVEL(A1)    ;SET MAXIMUM VCA LEVEL.
+               MOVE.B  #31,S_A_LEVEL(A2)
+*****          SF      S_A_VEL_LEVEL(A1)    ;VCA LEVEL NOT MODULATED BY VELOCITY.
+*****          SF      S_A_VEL_LEVEL(A2)
+;
+*****          SF      S_F_INIT_ATT(A1)     ;SET INSTANT-ON VCF ATTACK RATE.
+*****          SF      S_F_INIT_ATT(A2)
+*****          SF      S_F_PITCH_ATT(A1)    ;ATTACK RATE NOT MODULATED BY PITCH SETTING.
+*****          SF      S_F_PITCH_ATT(A2)
+*****          SF      S_F_VEL_ATT(A1)      ;ATTACK RATE NOT MODULATED BY VELOCITY.
+*****          SF      S_F_VEL_ATT(A2)
+               ST      S_F_INIT_TIME(A1)    ;SET VCF SUSTAIN INTO GATE MODE.
+               ST      S_F_INIT_TIME(A2)
+*****          SF      S_F_PITCH_TIME(A1)   ;SUSTAIN TIME NOT MODULATED BY PITCH SETTING.
+*****          SF      S_F_PITCH_TIME(A2)
+*****          SF      S_F_VEL_TIME(A1)     ;SUSTAIN TIME NOT MODULATED BY VELOCITY.
+*****          SF      S_F_VEL_TIME(A2)
+               MOVE.B  #35,S_F_INIT_REL(A1) ;RELEASE RATE FOR APPROX. 2 SEC RELEASE.
+               MOVE.B  #35,S_F_INIT_REL(A2)
+*****          SF      S_F_PITCH_REL(A1)    ;RELEASE RATE NOT MODULATED BY PITCH SETTING.
+*****          SF      S_F_PITCH_REL(A2)
+*****          SF      S_F_VEL_REL(A1)      ;RELEASE RATE NOT MODULATED BY VELOCITY.
+*****          SF      S_F_VEL_REL(A2)
+*****          SF      S_F_ENV_AMT(A1)      ;NO VCF ENVELOPE.
+*****          SF      S_F_ENV_AMT(A2)
+*****          SF      S_F_VEL_ENV(A1)      ;VCF ENVELOPE AMOUNT NOT MODULATED BY VELOCITY.
+*****          SF      S_F_VEL_ENV(A2)
+               MOVE.B  #99,S_F_CUTOFF(A1)   ;SET VCF WIDE OPEN.
+               MOVE.B  #99,S_F_CUTOFF(A2)
+*****          SF      S_F_PITCH_CUT(A1)    ;VCF CUTOFF NOT MODULATED BY PITCH SETTING.
+*****          SF      S_F_PITCH_CUT(A2)
+;
+*****          SF      S_B_PEAK(A1)         ;NO PITCH BEND.
+*****          SF      S_B_PEAK(A2)
+*****          SF      S_B_RATE(A1)         ;PITCH BEND RATE = 0.
+*****          SF      S_B_RATE(A2)
+*****          SF      S_B_PITCH_RATE(A1)   ;PITCH BEND RATE NOT MODULATED BY PITCH SETTING.
+*****          SF      S_B_PITCH_RATE(A2)
+*****          SF      S_B_VEL_PEAK(A1)     ;PITCH BEND DEPTH NOT MODULATED BY VELOCITY.
+*****          SF      S_B_VEL_PEAK(A2)
+*****          SF      S_B_VEL_RATE(A1)     ;PITCH BEND RATE NOT MODULATED BY VELOCITY.
+*****          SF      S_B_VEL_RATE(A2)
+;
+;
+               MOVE.W  CR_SAM_SIZE,D0       ;NAOW - HOW BIG SHALL IT GONNA BE?
+               BNE.S   IN_SCB_20            ;BRANCH IF GREATER THAN ZERO,
+                                            ; we're creating a "real" sample.
+;
+;
+                                            ; we're creating a trigger sound:
+;
+               MOVE.L  TRIG_STRING,S_NAME(A0)         ;"trig"
+               MOVE.L  TRIG_STRING+4,S_NAME+4(A0)     ;     "ger "
+               CLR.L   D0                   ;SET ALL POINTERS TO FORCED PEAK ADDRESS -
+               MOVE.W  SAMPLE_RAM_END,D0    ; IT BE (SAMPLE_RAM_END) - 1.
+               LSL.L   #8,D0
+               LSL.L   #2,D0
+               SUBQ.L  #1,D0
+               MOVE.L  D0,S_BEGIN(A0)
+               MOVE.L  D0,S_START(A1)
+               MOVE.L  D0,S_START(A2)
+               MOVE.L  D0,S_END(A1)
+               MOVE.L  D0,S_END(A2)
+               MOVE.L  D0,S_FINISH(A0)
+               MOVE.L  D0,S_LOOP_START(A1)
+               MOVE.L  D0,S_LOOP_END(A1)
+               MOVE.L  D0,S_LOOP_START(A2)
+               MOVE.L  D0,S_LOOP_END(A2)
+               MOVE.B  #SAMPLED,S_STATUS(A0)     ; sound is playable (sampled).
+               MOVE.W  CURRENT_SOUND,D0          ; set fixed-assign mode,
+               BSET    D0,S_VOICE(A1)            ; voice = mod 8 (sound number).
+               BSET    D0,S_VOICE(A2)
+*****          SF      S_A_INIT_REL(A1)     ; USE WAY FAST RELEASE RATE.
+*****          SF      S_A_INIT_REL(A2)
+                                            ; VCA SUSTAIN TIME IS LEFT AT ZERO (APPROX 8 MSEC).
+;
+               BRA.S   IN_SCB_X0            ; go update master list of sampled
+                                            ; sounds, then exit.
+;
+;
+;
+IN_SCB_20
+                                            ; creating sample of non-zero size,
+                                            ; D0.W contains size in 1K blocks:
+;
+               MOVE.L  SOUND_STRING,S_NAME(A0)        ;"unsa"
+               MOVE.L  SOUND_STRING+4,S_NAME+4(A0)    ;    "mpld"
+               MOVE    SAMPLE_RAM_END,D1    ;ADDR OF TOP OF INSTALLED SAMPLE RAM + 1 (1K BLOCKS).
+               MOVE    FREE_SAM_RAM,D2      ;NUMBER OF FREE 1K BLOCKS OF SAMPLE RAM.
+               SUB     D2,D1                ;D1 NOW CONTAINS BEGIN ADDR OF NEW SAMPLE (1K BLOCKS).
+               SUB     D0,FREE_SAM_RAM      ;UPDATE THE FREE SAMPLE RAM ACCOUNT.
+               CMP     FREE_SAM_RAM,D0      ;IS REMAINING FREE RAM < CREATE-SAMPLE SIZE SETTING?
+               BLS.S   IN_SCB_40            ;BRANCH IF NOT,
+               MOVE    FREE_SAM_RAM,CR_SAM_SIZE  ;ELSE BRING CREATE-SIZE SETTING DOWN INTO RANGE.
+IN_SCB_40
+               MULU    #1024,D0             ;CONVERT SIZE IN 1K BLOCKS TO UNITS COUNT.
+               MULU    #1024,D1             ;DO LIKEWISE FOR SAMPLE BEGIN ADDRESS.
+               ADD.L   D1,D0                ;COMPUTE SAMPLE FINISH ADDRESS.
+               SUBQ.L  #1,D0
+               MOVE.L  D1,S_BEGIN(A0)       ;SET DEFAULT SAMPLE POINTERS.
+               MOVE.L  D1,S_START(A1)
+               MOVE.L  D1,S_START(A2)
+               MOVE.L  D0,S_END(A1)
+               MOVE.L  D0,S_END(A2)
+               MOVE.L  D0,S_FINISH(A0)
+               MOVE.L  D1,S_LOOP_START(A1)
+               MOVE.L  D0,S_LOOP_END(A1)
+               MOVE.L  D1,S_LOOP_START(A2)
+               MOVE.L  D0,S_LOOP_END(A2)
+               MOVE.B  #NOT_DELETED,S_STATUS(A0) ;SAMPLE ALLOCATED BUT NOT YET SAMPLED.
+               ST      S_A_INIT_TIME(A1)    ;VCA SUSTAIN TIME UNDER GATE CONTROL.
+               ST      S_A_INIT_TIME(A2)
+;890317               MOVE.B  #40,S_A_INIT_REL(A1)      ;MIDDLIN' SLOW RELEASE RATE.
+;890317               MOVE.B  #40,S_A_INIT_REL(A2)
+               MOVE.B  #10,S_A_INIT_REL(A1)      ; sorta fast release rate,
+               MOVE.B  #10,S_A_INIT_REL(A2)      ; good for START/END editing.
+;
+;
+IN_SCB_X0
+               BSR     SET_SAMPLED_SOUNDS   ; update master sampled-sound list.
+;
+;
+IN_SCB_Z0
+               MOVEM.L (A7)+,D0-D2/A0-A2
+IN_SCB_EXIT
+               RTS
+;
+;
+SOUND_STRING
+               DC.B    "unsampld"
+;
+;
+TRIG_STRING
+               DC.B    "trigger "
+;
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;890402;
+;890402; SET ROOT PITCH FOR CURRENT_SOUND WHERE IT APPEARS IN PRESET BANKS -
+;890402; ALSO, INSTALL THE BANK CONTAINING THAT SOUND.
+;890402; USED AFTER A SOUND IS SAMPLED, TO MAKE IT APPEAR ON ONE OF THE PADS
+;890402; AT ITS SAMPLED PITCH - ALSO CALLED (PER SOUND) AFTER LOADING A 2000
+;890402; DISK, FOR THE SAME REASON (TIMES 16).
+;890402; NO INPUTS (OTHER THAN CURRENT_SOUND VALUE) - ALL REGISTERS PRESERVED.
+;890402;
+;
+;
+; Set root pitch for CURRENT_SOUND where it appears in preset banks.
+; Used after a sound is sampled, to make it appear on its dedicated pad
+; at its sampled pitch.
+; Also called (per sound) after loading a 2000 disk, for the same reason,
+; and likewise after receiving a sample via MIDI SDS.
+;
+; Note that we DO NOT install the associated kit as was previously the case,
+; because CURRENT_SOUND is not always the one which would be indicated by
+; most-recent pad hit status (which is what INSTALL_KIT goes by) -
+; spurious changes of CURRENT_SOUND to unwanted value wreak sampling havoc, etc.
+;
+; No inputs (other than CURRENT_SOUND value) - all registers preserved.
+;
+;
+SET_ROOT_PITCH
+               MOVEM.L D0/A0,-(A7)
+               BSR     GET_PROP_BLK_PTR     ;SET A0 AS POINTER TO CURRENT_SOUND CONTROL BLOCK.
+               MOVE.B  S_RATE(A0),D0        ;FETCH ITS SAMPLE RATE (AT PRESENT, ANYWAY).
+               EXT.W   D0                   ;MAKE SAMPLE RATE SETTING INTO BYTE OFFSET,
+               MOVE.B  ROOT_PITCH_TABLE(PC,D0),D0     ;FETCH ROOT PITCH FOR THIS SAMPLE RATE.
+               MOVEA.W #32,A0               ;NOW SET OFFSET FOR THIS SOUND'S KIT ARRAY CELL -
+               ADDA.W  CURRENT_SOUND,A0     ; = SOUND # + 32 SINCE WE WANT PRESET BANKS (KITS 4-7).
+               MOVE.B  D0,KIT_PITCHES(A0)   ;THIS BE THE PRESET BANK ARRAY ITSELF - DON'T NEED TO
+                                            ;BOTHER WITH PAD ARRAY, INSTALL_KIT WILL COVER IT.
+;890402;
+;890402               MOVE.W  A0,D0                ;NOW GENERATE KIT_INDEX FOR THIS SOUND'S PRESET BANK.
+;890402               LSR.W   #3,D0                ;RESULT OUGHT BE 4-7 ....
+;890402               JSR     INSTALL_KIT          ;SELECT THIS BANK, SO SOUND APPEARS ON ONE OF THE PADS.
+;
+               MOVEM.L (A7)+,D0/A0
+SET_ROOT_EXIT
+               RTS
+;
+;
+ROOT_PITCH_TABLE
+               DC.B    19                   ;ROOT PITCH FOR 16KHz SAMPLE RATE.
+               DC.B    19                   ;ROOT PITCH FOR 31KHz SAMPLE RATE.
+               DC.B    24                   ;ROOT PITCH FOR 42KHz SAMPLE RATE.
+               .ALIGN  2
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+

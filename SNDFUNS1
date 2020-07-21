@@ -1,0 +1,2721 @@
+               INCLUDE HPFIXUPS
+               TITLE "SNDFUNS1"
+***************************************************************************************************
+***************************************************************************************************
+***                                                                                             ***
+***            SOUNDFUN1 - SUBFUNCTIONS UNDER "SAMPLE", "EDIT 1" SOUND EDIT FUNCTION SWITCHES   ***
+***                                                                                             ***
+***************************************************************************************************
+***************************************************************************************************
+;
+NEG_EXT        EQU     0FFFFFF00H      ;USE IN MOVEQ INSTRUCTIONS WHERE ARG IS
+                                       ;80H OR LARGER - HP XASM DOES NOT HANDLE
+                                       ;SIGN-EXTEND CORRECTLY.  COSMETIC, KEEPS
+                                       ;ACTUAL BYTE VALUE CLEARER.
+;
+               INCLUDE EQUATES         ;HDW ADDR AND CONSTANT DEFS, ABS_SHORT DIRECTIVE.
+;
+               INCLUDE S_BLK_EQU       ;SOUND CONTROL BLOCK DEFINITIONS.
+;
+               INCLUDE FIELD_EQU       ;SUBFUNCTION/FIELD BLOCK DEFINITIONS.
+;
+               INCLUDE TRAPDEFS        ;SYSTEM FUNCTION ACCESS DEFINITIONS.
+;
+               INCLUDE LCD_FUNS        ;LCD/SCREEN_BUFFER SYSTEM FUNCTION DEFS.
+;
+               GLB     ALT_PARAM_STRING
+               GLB     SET_ENTER_FLASH
+;
+                                            ;EXTERNAL ROM.
+;890317               EXTERNAL  CREATE_SAMPLE
+               EXTERNAL  INIT_SND_CTL_BLK
+               EXTERNAL  GET_PROP_BLK_PTR,GET_S_BLK_PTR
+               EXTERNAL  WRITE_ZERO_AND_PEAK
+               EXTERNAL  READ_UPWARD,READ_DOWNWARD
+               EXTERNAL  WRITE_UPWARD,WRITE_DOWNWARD
+               EXTERNAL  NOTHINGNESS
+               EXTERNAL  WRITE_PARAM_STRING
+               EXTERNAL  SCAN_SWITCHES
+               EXTERNAL  SAMPLE_SET_UP
+               EXTERNAL  INCR_PARAMETER,DECR_PARAMETER,STORE_PARAMETER
+               EXTERNAL  GO_TO_NEXT_FIELD
+               EXTERNAL  USER_STALL,SOLID_ENTER,WIPE_OUT_ENTER
+               EXTERNAL  WAIT_DAISY
+               EXTERNAL  SCALE_010
+               EXTERNAL  SET_ROOT_PITCH
+               EXTERNAL  STOP_THE_SEQUENCER
+               EXTERNAL  SET_NAME_BUF_ACC,FETCH_NAME
+               EXTERNAL  NAME_CURS_LEFT,NAME_CURS_RIGHT,CHAR_EDIT_LIM
+               EXTERNAL  WRITE_NAME_BUF,STORE_NAME_BUF,NOT_SAVED_WARNING
+;
+               EXTERNAL  START_VEL_BIT      ;BIT FLAG FOR VELOCITY-START IN VEL INIT LIST.
+;
+                                            ;RAM-THING.
+               EXTERNAL  DI_TEMP_1_B
+               EXTERNAL  DI_TEMP_5_B
+               EXTERNAL  MISC_OUT_STAT
+               EXTERNAL  CURRENT_SOUND
+               EXTERNAL  FREE_SAM_RAM
+               EXTERNAL  CUR_SUB_BLOCK
+               EXTERNAL  CUR_FLD_INDEX
+               EXTERNAL  SUBFUN_INSTALL
+               EXTERNAL  CR_SAM_SIZE,CR_SAM_RATE
+               EXTERNAL  PARAM_HI_LIM
+               EXTERNAL  LED_SLOW_FLASH
+               EXTERNAL  LED_EXTINGUISH
+               EXTERNAL  PARAM_BUFFER
+               EXTERNAL  AUX_ED_PTR_1
+               EXTERNAL  AUX_ED_PTR_2
+               EXTERNAL  SAMPLED_SOUNDS
+               EXTERNAL  UPDATE_LCD
+               EXTERNAL  SWITCH_STAT
+               EXTERNAL  WASTELAND
+               EXTERNAL  WASTELAND_2
+               EXTERNAL  HI_LO_RES_FLAG
+               EXTERNAL  DISPLAY_OFFSET
+               EXTERNAL  PARAM_LO_LIM
+               EXTERNAL  ALT_PARAM_FLAG
+               EXTERNAL  BG_TEMP_3_B,BG_TEMP_1_B
+               EXTERNAL  XFADE_LEN
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; FOR STARTERS, GLOBAL DECLARATIONS FOR THE SUBFUNCTION BLOCKS -
+; THEY'RE ACCESSED FROM SWITCHBOY MODULE:
+;
+                                            ;SAMPLE_GROUP.
+               GLB     SAMPLE_SIZE_SUB
+               GLB     SAMPLE_RATE_SUB      ;NOTE - THIS IS SUBSIDIARY TO SAMPLE_SIZE_SUB.
+               GLB     THRESHOLD_SUB
+               GLB     TUNE_SUB
+               GLB     SAMPLE_NAME_SUB
+                                            ;SAM_ED_1_GROUP.
+               GLB     SAMPLE_TRIM_SUB
+               GLB     LOOP_POINTS_SUB
+               GLB     LOOP_TYPE_SUB
+               GLB     XFADE_SUB
+               GLB     DIRECTION_SUB
+;
+;NOTE - BELOW SUBFUNCTION ACTUALLY UNDER ATTACK NOW
+               GLB     VEL_START_SUB   ;NOT MEANING, "IT'S BEING ATTACKED" -
+                                       ;JUST THE BUTTON WHICH CALLS IT UP.
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; THE SUBFUNCTION BLOCKS -
+; EACH BEGINS WITH THE DEFAULT SCREEN TEXT FOR THE SUBFUNCTION.
+;
+;
+; SAMPLE_GROUP:
+;
+;
+; SAMPLE SIZE SUBFUNCTION - A DOOZEY.  I'LL LET MATT EXPLAIN IT BELOW...
+;
+;
+;
+; This subfunction is directly accessible to the subfunction manager -
+; if the size of the current sample is already fixed, then a jump is made
+; into the subsidiary subfunction SAMPLE_RATE_SUB via
+; the ACCESS-setup routine CR_SAMSIZ_ACCESS.
+;
+;
+SAMPLE_SIZE_SUB
+               ASC     "SIZE=    K   #  "
+               ASC     "RATE=  KHz     s"
+;
+               DC.B    5                    ;SIZE FIELD.
+               DC.B    4
+               DC.W    ACCESS+SET_PTR
+               DC.L    CR_SAMSIZ_ACCESS
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+MIN_STRNG
+               DC.L    SIZE_TRIG_STRING
+               DC.W    DISPLAY+MIN_LIMIT
+               DC.W    0
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_SIZE_EDIT
+;890317               DC.W    EDIT+ENTR_VEC
+;890317               DC.L    CREATE_SAMPLE
+               DC.W    EDIT+ENTR_VEC
+               DC.L    CREATE_NEW_SAMPLE
+               DC.W    EDIT+LINKED          ;USED BECAUSE OF MIN_STRNG (TRIGGER).
+               DC.W    FIELD_END
+;
+               DC.B    14                   ;SOUND NUMBER FIELD.
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CURRENT_SOUND
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    EDIT+HI_LIMIT
+               DC.W    31
+;890317               DC.W    EDIT+ENTR_VEC
+;890317               DC.L    CREATE_SAMPLE
+               DC.W    EDIT+ENTR_VEC
+               DC.L    CREATE_NEW_SAMPLE
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+;
+               DC.B    21                   ;RATE FIELD.
+               DC.B    2
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CR_SAM_RATE
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    SAM_RATE_STRING
+               DC.W    EDIT+HI_LIMIT
+               DC.W    2
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+;890317               DC.W    EDIT+ENTR_VEC
+;890317               DC.L    CREATE_SAMPLE
+               DC.W    EDIT+ENTR_VEC
+               DC.L    CREATE_NEW_SAMPLE
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+;
+               DC.B    27                   ;TIME FIELD.
+               DC.B    4
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CR_SAM_SIZE          ;SORT OF UNIMPORTANT, BUT WE NEED SOMETHING HERE.
+               DC.W    ACCESS+LONG          ;REFERS TO SAMPLE POINTERS FROM WHICH SIZE IS COMPUTED,
+                                            ;DISPLAY VECTORS FOLLOW SUIT (EXPECT LONG VALUES).
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    CR_WR_SAM_TIME
+               DC.W    DISPLAY+DEC_POINT
+               DC.W    1
+               DC.W    SUBFUN_END
+;
+;
+;
+;
+;
+;
+; This subfunction is invoked by SAMPLE_SIZE_SUB upon encountering a sound
+; whose sample size is already fixed.
+; If this subfunction subsequently encounters a sound whose sample size
+; is not fixed, it invokes SAMPLE_SIZE_SUB via the sample size ACCESS-setup
+; routine SET_SAMSIZ_ACCESS.
+;
+;
+SAMPLE_RATE_SUB
+               ASC     "SIZE=    K   #  "
+               ASC     "RATE=  KHz     s"
+;
+               DC.B    5                    ;SIZE FIELD.
+               DC.B    4
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+SET_PTR
+               DC.L    SET_SAMSIZ_ACCESS
+               DC.W    ACCESS+LONG          ;REFERS TO SAMPLE POINTERS FROM WHICH SIZE IS COMPUTED.
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WR_SAM_SIZE
+               DC.W    DISPLAY+MIN_STRNG
+               DC.L    SIZE_TRIG_STRING
+               DC.W    DISPLAY+MIN_LIMIT
+               DC.W    0
+               DC.W    FIELD_END
+;
+               DC.B    14                   ;SOUND NUMBER FIELD.
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CURRENT_SOUND
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    31
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+;
+               DC.B    21                   ;RATE FIELD.
+               DC.B    2
+               DC.W    ACCESS+SET_PTR
+               DC.L    SET_RATE_ACCESS
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    SAM_RATE_STRING
+               DC.W    EDIT+HI_LIMIT
+               DC.W    2
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+;
+               DC.B    27                   ;TIME FIELD.
+               DC.B    4
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+SET_PTR       ;CALL ROUTINE TO SET ACCESS POINTERS.
+               DC.L    SAM_TIME_ACCESS
+               DC.W    ACCESS+LONG          ;REFERS TO SAMPLE POINTERS FROM WHICH SIZE IS COMPUTED,
+                                            ;DISPLAY VECTORS FOLLOW SUIT (EXPECT LONG VALUES).
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WR_SAM_TIME
+               DC.W    DISPLAY+DEC_POINT
+               DC.W    1
+               DC.W    SUBFUN_END
+;
+;
+;
+;
+;
+; SET PARAMETER POINTER TO CR_SAM_SIZE -
+; THEN DETERMINE WHETHER SIZE OF CURRENT SAMPLE IS ALREADY FIXED -
+; IF SO, INVOKE TRANSITION TO SAMPLE_RATE_SUB (FROM SAMPLE_SIZE_SUB).
+;
+;
+CR_SAMSIZ_ACCESS
+;
+;890317               MOVE    CURRENT_SOUND,A0     ;FETCH CURRENT SOUND NUMBER,
+;890317               JSR     GET_S_BLK_PTR        ;TEST SAMPLE DELETED/NOT-DELETED STATUS.
+               JSR     GET_PROP_BLK_PTR     ; is this sample already allocated?
+               BEQ.S   CRSMSZAC_10          ;BRANCH IF SAMPLE SIZE NOT FIXED - NO SPECIAL ACTION.
+               MOVE.L  #SAMPLE_RATE_SUB,CUR_SUB_BLOCK      ;ELSE, SET POINTER TO RATE SUBFUN BLOCK,
+               ST      SUBFUN_INSTALL                      ;INVOKE SUBFUNCTION INSTALLATION -
+;
+CRSMSZAC_10
+               MOVEA.W #CR_SAM_SIZE,A0      ;RETURN POINTER TO SAMPLE-CREATE-SIZE GLOBAL PARAMETER,
+               MOVE.W  (A0),D0              ;FIRST MAKING SURE IT'S NO LARGER THAN ACTUAL FREE RAM.
+               CMP     FREE_SAM_RAM,D0
+               BCS.S   CRSMSZAC_20          ;IT'S NOT, FOR SHURRR.
+               MOVE    FREE_SAM_RAM,(A0)    ;MIGHTA BIN, BUT NOT ANYMORE.
+CRSMSZAC_20
+               MOVE.L  A0,D0
+CRSMSZAC_EXIT
+               RTS
+;
+;
+;
+SIZE_TRIG_STRING
+               DC.B    0
+               DC.B    12
+               ASC     "trigger (0K)"
+;
+;
+;
+SET_SIZE_EDIT
+               MOVE.W  FREE_SAM_RAM,PARAM_HI_LIM      ;UPPER EDIT LIMIT IF SAMPLE NOT ALLOCATED -
+                                                      ;REFERS TO GLOBAL PARAMETER CR_SAM_SIZE.
+SET_ENTER_FLASH
+               BSET    #3,LED_SLOW_FLASH              ;ENTER LED FLASHES WHILE IN THIS FIELD.
+               BCLR    #3,LED_EXTINGUISH              ;SET BY INSTALL_SUBFUNCTION, MUST BE CLEARED
+                                                      ;OR WILL STOMP ON LED_SLOW_FLASH BIT.
+               RTS
+;
+;
+;
+;
+SET_SAMSIZ_ACCESS
+;
+;890317               MOVE    CURRENT_SOUND,A0     ;FETCH CURRENT SOUND NUMBER,
+;890317               JSR     GET_S_BLK_PTR        ;SET A0 AS POINTER TO CURRENT SOUND BLOCK.
+               JSR     GET_PROP_BLK_PTR     ; is this sample already allocated?
+               BNE.S   STSMSZAC_20          ;BRANCH IF SAMPLE SIZE IS FIXED FOR THIS PUPPY -
+               MOVE.L  #SAMPLE_SIZE_SUB,CUR_SUB_BLOCK      ;ELSE, INVOKE SAMPLE_SIZE_SUB - HOWEVER,
+               ST      SUBFUN_INSTALL                      ;WILL FINISH INSTALLING SAMPLE_RATE_SUB.
+;
+STSMSZAC_20
+               MOVE.L  A0,D0                ;COPY SOUND BLOCK POINTER,
+               ADD     #S_FINISH,D0         ;RETURN POINTER TO SAMPLE FINISH PARAM IN D0.
+               LEA     S_BEGIN(A0),A0       ;SET AUX EDIT PTR TO SAMPLE BEGIN ADDRESS PARAM.
+               MOVE.L  A0,AUX_ED_PTR_1
+STSMSZAC_EXIT
+               RTS
+;
+;
+;
+;
+;
+WR_SAM_SIZE
+               BSR.S   COMPUTE_SAM_SIZE     ;GET SAMPLE SIZE (IN 1K BLOCKS) INTO PARAM_BUFFER.L -
+               JUMP    LCD_FUNS,WR_PRM_VAL  ;JUST THE USUAL, PLEASE, FROM HERE.
+;
+;
+COMPUTE_SAM_SIZE
+               MOVE.L  D0,-(A7)
+               MOVE.L  PARAM_BUFFER,D0      ;PARAM_BUFFER CONTAINS SAMPLE FINISH ADDRESS.
+               MOVEA.L AUX_ED_PTR_1,A0      ;THIS IS POINTING TO SAMPLE BEGIN ADDRESS -
+               SUB.L   (A0),D0              ;TAKE THE DIFFERENCE,
+               ADDQ.L  #1,D0                ;ROUND IT UP (AS IS CLEARLY NECESSARY),
+               LSR.L   #8,D0                ;PUT IT INTO UNITS OF 1K,
+               LSR.L   #2,D0
+               MOVE.L  D0,PARAM_BUFFER      ;STICK IT BACK OUT THERE TO BE WRITTEN TO DISPLAY -
+                                            ;LEAVE IT IN LONG FORMAT FOR DISPLAY COMPATIBILITY.
+               MOVE.L  (A7)+,D0             ;FEAR NOT, NO ONE WILL TRY TO STORE THIS TRASHED VALUE.
+               RTS
+;
+;
+;
+;
+SET_RATE_ACCESS
+;
+;890317               MOVE    CURRENT_SOUND,A0     ;FETCH CURRENT SOUND NUMBER.
+;890317               JSR     GET_S_BLK_PTR        ;A0 NOW POINTS TO CURRENT SOUND BLOCK -
+               JSR     GET_PROP_BLK_PTR     ; A0.L point to CURRENT_SOUND block,
+               LEA     S_RATE(A0),A0        ;BUMP IT UP TO SAMPLE RATE PARAMETER IN THIS BLOCK,
+               MOVE.L  A0,D0                ;RETURN POINTER IN D0.
+               RTS
+;
+;
+;
+SAM_RATE_STRING
+               ASC     "163142"
+;
+;
+;
+; SET UP POINTERS TO SAMPLE BEGIN, FINISH ADDRESSES FOR USE IN COMPUTING
+; SIZE - USED IN TURN FOR TIME COMPUTATION, ALLOCATED SAMPLE.
+;
+SAM_TIME_ACCESS
+               BSR     SET_RATE_ACCESS      ;D0 POINTS TO RATE PARAM IN CURRENT SOUND BLOCK -
+               MOVE.L  D0,AUX_ED_PTR_2      ;SET AUX PTR TO IT.
+               BRA     SET_SAMSIZ_ACCESS    ;AUX_ED_PTR_1 POINTS TO SAMPLE BEGIN ADDRESS PARAM,
+                                            ;D0 POINTS TO SAMPLE FINISH ADDRESS PARAM, RETURN THRU.
+;
+;
+;
+; SAMPLE TIME DISPLAY FOR NON-FIXED SAMPLE -
+; ACCESS SIZE/RATE CONTROL PARAMS INSTEAD OF SAMPLE PARAMETERS.
+;
+CR_WR_SAM_TIME
+               MOVEM.L D0-D1,-(A7)
+               MOVE.W  CR_SAM_SIZE,D0
+               MOVE.W  CR_SAM_RATE,D1
+               BRA.S   WR_STM_20
+;
+;
+; SAMPLE TIME DISPLAY FOR SAMPLE WHICH ACTUALLY EXISTS -
+; ACCESS SAMPLE PARAMETERS TO OBTAIN SIZE, RATE:
+;
+WR_SAM_TIME
+               MOVEM.L D0-D1,-(A7)
+               BSR     COMPUTE_SAM_SIZE     ;ACCESS SAMPLE BEGIN AND FINISH ADDRESSES, RENDER
+                                            ;SAMPLE SIZE IN 1K BLOCKS IN PARAM_BUFFER(.L).
+               MOVE.L  PARAM_BUFFER,D0      ;FETCH SAMPLE SIZE JUST COMPUTED.
+               MOVE.L  AUX_ED_PTR_2,A0      ;FETCH SAMPLE RATE - AUX_ED_PTR_2 HOLDS POINTER TO IT.
+               MOVE.B  (A0),D1
+WR_STM_20
+               MULU    #1024,D0             ;CONVERT SIZE IN 1K BLOCKS TO NUMBER OF SAMPLES.
+               TST.B   D1                   ;CHECK SAMPLE RATE BEING USED FOR TIME COMPUTATION -
+               BEQ.S   WR_STM_40            ;BRANCH IF 16KHz.
+               CMP.B   #1,D1
+               BEQ.S   WR_STM_60            ;BRANCH IF 31KHz (ACTUALLY 31.25KHz).
+               MOVE    #4167,D1             ;DIVISOR FOR 42KHz (ACTUALLY 41.667KHz).
+               BRA.S   WR_STM_80
+WR_STM_40
+               MOVE    #1562,D1             ;DIVISOR FOR 16KHz (ACTUALLY 15.625KHz).
+               BRA.S   WR_STM_80
+WR_STM_60
+               MOVE    #3125,D1
+WR_STM_80
+               DIVU    D1,D0                ;COMPUTE TIME IN UNITS OF 0.1 SEC.
+               MOVE.W  D0,PARAM_BUFFER+2    ;STASH RESULT IN PARAM_BUFFER AS LONG-WORD -
+               CLR.W   PARAM_BUFFER         ;SO (OF COURSE) CLEAR M.S.WORD.
+               MOVEM.L (A7)+,D0-D1
+               JUMP    LCD_FUNS,WR_PRM_VAL  ;WRITE VALUE INTO SCREEN_BUFFER, RETURN THROUGH.
+;
+;
+;
+;
+; EXEC vector for SAMPLE_SIZE_SUB -
+; we initialize sound control block per current settings and system status,
+; then invoke SAMPLE_RATE_SUB (whereby results are immediately visible).
+;
+;
+CREATE_NEW_SAMPLE
+;
+               JSR     INIT_SND_CTL_BLK               ; initialize params, etc.
+               MOVE.L  #SAMPLE_RATE_SUB,CUR_SUB_BLOCK ; set up our next screen
+               ST      SUBFUN_INSTALL                 ; function, and go to it.
+               RTS
+;
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+THRESHOLD_SUB
+               ASC     "ENTER ARMS TRIG "
+               ASC     "(SLIDER=THRESH) "
+;
+               DC.B    30                   ;BOGUS FIELD SPEC - PREVENTS UNWANTED DETECTION
+               DC.B    1                    ;OF A  "NO_FIELDS" SUBFUNCTION BLOCK.
+               DC.W    EDIT+NO_EDITS        ;WASTE NO TIME HERE OTHER THAN TO UNPLUG EDIT VECTORS.
+               DC.W    DISPLAY+DISP_VEC     ;BLOCK NORMAL DISPLAY ROUTINE VECTORING TO PREVENT
+               DC.L    NOTHINGNESS          ;TRASHING OF SCREENS LEFT SET UP BY SAMPLING MODULE.
+               DC.W    ACCESS+SET_PTR       ;USE ACCESS-SETUP UTILITY TO GET INTO SAMPLING MODULE -
+               DC.L    GO_TO_SAMPLING       ;WE STAY THERE UNTIL SAMPLING OPERATION IS COMPLETE.
+               DC.W    SUBFUN_END
+;
+;
+;
+; PARAMETER ACCESS SETUP UTILITY IS USED TO GET INTO THE SAMPLING MODULE -
+; NEITHER BACKGROUND NOR INTERRUPT ROUTINES EXECUTE UNTIL THIS MODULE IS EXITED.
+; BEFORE WE GET HERE, THE FOLLOWING THINGS HAVE BEEN DONE VIA NORMAL SUBFUNCTION INSTALLATION:
+;    *  SCREEN TEXT IS IN SCREEN_BUFFER, UPDATE_LCD FLAG HAS BEEN SET.
+;    *  DISPLAY VECTOR HAS BEEN DISCONNECTED (= NOTHINGNESS).
+; BEFORE WE LEAVE, WE DO THE FOLLOWING THINGS TO SHUT DOWN ANY UNWANTED NORMAL PROCEDURES:
+;    *  A BOGUS PARAMETER ACCESS POINTER IS SET UP IN D0 (POINTS TO PARAM_BUFFER).
+;    *  UPDATE_LCD FLAG IS CLEARED TO PREVENT DESTRUCTION OF SCREENS LEFT BY SAMPLING MODULE.
+; BECAUSE THE FIELD IS SET UP AS A NO_EDITS FIELD, ALL EDIT PATHWAYS ARE DISCONNECTED AFTER EXIT
+; AND THE REDISP_FIELD FLAG DOES NOT GET SET.
+; PRESERVES A1, WHICH AT THIS POINT CONTAINS THE CURRENT FIELD BLOCK POINTER AND IS NEEDED ON EXIT.
+; CAN BE ASSUMED TO DESTROY ALL OTHER REGISTERS (UNLIKE THE NORMAL CASE FOR ACCESS-SETUP ROUTINES).
+;
+GO_TO_SAMPLING
+;
+               BSR     STOP_THE_SEQUENCER   ;MAKE SURE SEQUENCER IS NOT RUNNING.
+               MOVE.L  A1,-(A7)             ;SAVE FIELD BLOCK POINTER - OTHERS CAN GO FISH ....
+               MOVE    CURRENT_SOUND,A0     ;FETCH CURRENT SOUND NUMBER,
+               JSR     GET_S_BLK_PTR        ;TEST SAMPLE STATUS -
+               BEQ.S   GO_SAM_04            ;BRANCH IF SAMPLE HAS NOT BEEN ALLOCATED - CAN'T DO IT.
+               MOVE.L  S_BEGIN(A0),D0       ;IF ALLOCATED, MAY BE A TRIGGER SOUND WITH NO RAM -
+               CMP.L   S_FINISH(A0),D0      ;LOOK FOR BEGIN ADDRESS =  FINISH ADDRESS -
+               BNE.S   GO_SAM_10            ;IF NOT SAME, ASSUME REAL SAMPLE WITH SAMPLE-ABLE RAM.
+GO_SAM_04
+               MOVE.L  #SAM_DEL_SCREEN,A1   ;ELSE - DISPLAY "NO RAM, CAN'T SAMPLE" MESSAGE -
+               CALL    LCD_FUNS,DSP_SCRN    ;WON'T ALLOW ENTRY INTO SAMPLING MODULE.
+GO_SAM_08
+               MOVEQ   #-1,D0               ;AWAIT ALL-SWITCHES-UP STATE,
+               ABS_LONG
+               JSR     SCAN_SWITCHES
+               CLR     D0                   ;THEN WAIT FOR A HIT ON ANY SWITCH -
+               JSR     SCAN_SWITCHES
+               ABS_SHORT
+               CMP     #24,D0               ;WAS IT A FUNCTION SWITCH?
+               BCS     GO_SAM_80            ;BRANCH IF AYE, WE BE GAWN.
+               BRA.S   GO_SAM_08            ;ELSE, HOP BACK AND TRY AGAIN.
+GO_SAM_10
+               CALL    LCD_FUNS,DSP_BUF     ;OUTPUT BASIC SCREEN TEXT FROM SCREEN_BUFFER TO LCD.
+GO_SAM_20
+               MOVEQ   #-1,D0               ;AWAIT ALL-SWITCHES-UP STATE,
+               ABS_LONG
+               JSR     SCAN_SWITCHES
+               ABS_SHORT
+GO_SAM_28
+               ABS_LONG
+               JSR     SAMPLE_SET_UP        ;IN WHICH IT DOTH OCCUR, ENTIRELY.
+               ABS_SHORT
+               TST.B   D0                   ;DID WE RETURN FROM SAMPLING MODULE VIA SWITCH ABORT?
+               BEQ     GO_SAM_50            ;BRANCH IF YES - SEE IF IT'S A FUNCTION SWITCH OR WHAT.
+;
+;
+                                            ;ELSE, RETURNED AFTER SAMPLING -
+               JSR     SET_ROOT_PITCH       ;SET ROOT PITCH FOR THIS SOUND IN PRESET BANK
+                                            ;IN WHICH IT LIVES.
+               MOVE    CURRENT_SOUND,D0     ;INDICATE "SAMPLED" STATUS
+               MOVE.L  SAMPLED_SOUNDS,D1    ;IN THE MASTER LIST.
+               BSET    D0,D1
+               MOVE.L  D1,SAMPLED_SOUNDS
+GO_SAM_2C
+               MOVE.L  D5,-(A7)
+               CLR     ALT_PARAM_FLAG
+               ABS_LONG
+               JSR     GET_PROP_BLK_PTR     ;GET SOUND BLOCK POINTERS
+               ABS_SHORT
+               CMP.L   #756E7361H,S_NAME(A0)     ;SAMPLE NAME "unsampld"?   CHECK FIRST 4 CHARS -
+               BNE.S   GO_SAM_2D                 ;BRANCH IF NOT, LEAVE NAME ALONE.
+               MOVE.L  #6E616D65H,S_NAME(A0)     ;ELSE RENAME IT AS "nameless".
+               MOVE.L  #6C657373H,S_NAME+4(A0)
+GO_SAM_2D      MOVE    #S_COMMON_SIZE,D7
+               ADD     #S_SUB_SIZE,D7
+               MOVE.L  S_BEGIN(A0),A1    ;STARTING ADDRESS FOR 0 XING SEARCH
+SAM_TRIMST_11  MOVE.L  S_END(A0,D0),A3      ;WE WONT SEARCH PAST THE END
+               SUBQ.L  #1,A3
+               MOVE.L  A3,D5
+               SUB.L   A1,D5                    ;LIMIT SERCH TO 1K
+               CMP.L   #400H,D5
+               BLE.S   SAM_TRIMST_12
+               MOVE.L  A1,A3
+               ADDA.L  #400H,A3
+SAM_TRIMST_12  CLR     D5                      ;ZERO CROSSING FLAG
+               MOVE.L  #0,DI_TEMP_1_B
+               MOVEM.L  D0-D7,-(A7)
+               BSR     INC_TO_ZERO
+               MOVEM.L  (A7)+,D0-D7
+               MOVE.L  A1,S_START(A0,D0)        ;SAVE NEW START ADDRESS
+               MOVE.L  A1,S_START(A0,D7)
+               MOVE.L  A1,S_LOOP_START(A0,D0)
+               MOVE.L  A1,S_LOOP_START(A0,D7)
+               BCLR    #7,S_LOOP_TYPE(A0,D0)   ;CLEAR OUT THE LOOPS
+               BCLR    #7,S_LOOP_TYPE(A0,D7)
+;
+               MOVE.L  S_FINISH(A0),A1      ;START OF 0 XING SEARCH
+SAM_TRIMEND_11 MOVE.L  S_START(A0,D0),A3    ;LIMIT OF SEARCH
+               ADDQ.L  #1,A3
+               MOVE.L  A1,D5
+               SUB.L   A3,D5                ;LIMIT SEARCH TO 1K
+               CMP.L   #400H,D5
+               BLE.S   SAM_TRIMEND_12
+               MOVE.L  A1,A3
+               SUB.L   #400H,A3
+SAM_TRIMEND_12 CLR     D5
+               MOVE.L  #1,DI_TEMP_1_B
+               MOVEM.L  D0-D7,-(A7)
+               BSR     DEC_TO_ZERO
+               MOVEM.L  (A7)+,D0-D7
+               MOVE.L  A1,S_END(A0,D0)          ;SAVE NEW END ADDRESS
+               MOVE.L  A1,S_END(A0,D7)
+               MOVE.L  A1,S_LOOP_END(A0,D0)
+               MOVE.L  A1,S_LOOP_END(A0,D7)
+;
+               MOVE.L  (A7)+,D5
+               BNE.S   GO_SAM_30            ;BRANCH IF CLIPPING OCCURRED, DISPLAY CLIP COUNT.
+               MOVE.L  #SAM_OK_SCREEN,A1    ;ELSE, DISPLAY "SAMPLING OK" MESSAGE.
+               CALL    LCD_FUNS,WR_SCRN
+               BRA.S   GO_SAM_40            ;GO DISPLAY SCREEN, RE-ENTER SAMPLING MODULE.
+;
+GO_SAM_30
+               MOVE.L  #SAM_CLIP_SCREEN,A1  ;PUT THE SAMPLING-CLIPPED MESSAGE IN SCREEN_BUFFER.
+               CALL    LCD_FUNS,WR_SCRN
+               MOVE.L  D5,D0                ;CREATE ASCII STRING FOR CLIP COUNT -
+               CALL    LCD_FUNS,LNG_BIN_2_BCD    ;ASCII DECIMAL STRING IS NOW IN BCD_DIGITS ARRAY.
+               MOVE    #1306H,D1            ;SPECIFY THE FIELD INTO WHICH CLIP COUNT IS COPIED,
+               CALL    LCD_FUNS,WR_BCD_DGTS ;COPY IT INTO SCREEN_BUFFER.
+GO_SAM_40
+               CALL    LCD_FUNS,DSP_BUF     ;DISPLAY THE CONTENTS OF SCREEN_BUFFER.
+               BRA     GO_SAM_28            ;FALL BACK INTO SAMPLING MODULE.
+;
+GO_SAM_50
+               CLR     D0                   ;SWITCH ABORT PATH - GET SWITCH NUMBER.
+               ABS_LONG
+               JSR     SCAN_SWITCHES
+               ABS_SHORT
+GO_SAM_60
+               CMP     #24,D0               ;WAS IT A FUNCTION SWITCH HIT?
+               BCS.S   GO_SAM_70            ;BRANCH IF YEAH - WE OUTA HERE.
+               MOVE.L  #THRESHOLD_SUB,A1    ;ELSE - REDISPLAY INITIAL SCREEN TEXT,
+               CALL    LCD_FUNS,DSP_SCRN
+               BRA     GO_SAM_20            ;RE-ENTER THE SAMPLING MODULE.
+;
+GO_SAM_70
+               JSR     WRITE_ZERO_AND_PEAK  ;MAKE SURE FORCED-ZERO, FORCED-PEAK WORDS ARE INTACT.
+GO_SAM_80
+               MOVE.L  #PARAM_BUFFER,D0     ;BOGUS PARAM_POINTER (SET_ACCESS EXPECTS SOMETHING).
+               SF      UPDATE_LCD           ;NO SPONTANEOUS SCREEN_BUFFER REDISPLAYS UPON RETURN.
+               CLR.L   SWITCH_STAT          ;THIS IS TO CONVINCE BACKGROUND SWITCH HANDLER THAT ALL
+               CLR.L   SWITCH_STAT+4        ;SWITCHES WERE OFF BEFORE THIS NEW ONE CAME ALONG.
+               MOVE.L  (A7)+,A1             ;RESTORE FIELD BLOCK POINTER.
+               RTS
+;
+;
+;
+;
+SAM_DEL_SCREEN
+               ASC     "SOUND HAS NO MEM"
+               ASC     " - CAN'T SAMPLE "
+;
+SAM_CLIP_SCREEN
+               ASC     " SAMPLE  PEAKED "
+               ASC     "AT xxxxxx POINTS"
+;
+SAM_OK_SCREEN
+               ASC     "SAMPLE  RECORDED"
+               ASC     "WITHOUT PEAKING "
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;              FINE TUNE SUBFUNCTION
+;
+TUNE_SUB
+               ASC     "TUNE SAMPLE #   "
+               ASC     "         CENTS  "
+;
+;SOUND NUMBER FIELD
+;
+               DC.B    13
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CURRENT_SOUND
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    31
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+;
+;ALT PARAM FIELD - NOTE THAT THIS IS A NO-EDIT FIELD
+;
+               DC.B    15
+               DC.B    1
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+DIR_PTR
+               DC.W    ALT_PARAM_FLAG
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    ALT_PARAM_STRING
+               DC.W    FIELD_END
+;
+;TUNE FIELD
+;
+               DC.B    18
+               DC.B    6
+               DC.W    ACCESS+SET_PTR
+               DC.L    POINT_AT_TUNE
+               DC.W    ACCESS+SIGNED
+               DC.W    DISPLAY+DISP_SCALE
+               DC.W    625
+               DC.W    DISPLAY+DEC_POINT
+               DC.W    2
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+LO_LIMIT
+               DC.W    -7
+               DC.W    EDIT+HI_LIMIT
+               DC.W    7
+;
+               DC.W    SUBFUN_END
+;
+POINT_AT_TUNE
+                ABS_LONG
+               JSR     GET_PROP_BLK_PTR     ;A0 POINTS TO CURRENT_SOUND CONTROL BLOCK,
+                                            ;D0 = SUB-BLOCK OFFSET PER ALT_PARAM_FLAG.
+                ABS_SHORT
+               LEA     S_FINE_TUNE(A0,D0),A0     ;POINT DIRECTLY AT SELECTED S_FINE_TUNE -
+               MOVE.L  A0,D0                     ;RETURN THE POINTER IN D0.L .
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;21MAR;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;21MAR;
+;21MAR; SAMPLE NAMING - LEFT FOR MATT
+;21MAR; - GOT IT, PAL.
+;21MAR;
+;21MARSAMPLE_NAME_SUB
+;21MAR               ASC     "             #  "
+;21MAR               ASC     "EDIT SOUND NAME "
+;21MAR;
+;21MAR;SOUND NUMBER FIELD
+;21MAR;
+;21MAR               DC.B    14
+;21MAR               DC.B    2
+;21MAR               DC.W    ACCESS+DIR_PTR
+;21MAR               DC.W    CURRENT_SOUND
+;21MAR               DC.W    ACCESS+WORD
+;21MAR               DC.W    DISPLAY+DISP_OFFSET
+;21MAR               DC.W    -1
+;21MAR               DC.W    EDIT+HI_LIMIT
+;21MAR               DC.W    31
+;21MAR               DC.W    EDIT+LINKED
+;21MAR               DC.W    EDIT+CURS_LFT        ;SCROLL FROM SOUND NUMBER
+;21MAR               DC.L    GO_TO_NEXT_FIELD     ;TO FIRST NAME CHAR FIELD
+;21MAR               DC.W    FIELD_END            ;WITH EITHER SCROLL BUTTON.
+;21MAR;
+;21MAR               DC.B    0                    ;NAME-FETCH FIELD - INVISIBLE.
+;21MAR               DC.B    0
+;21MAR               DC.W    EDIT+NO_EDITS
+;21MAR               DC.W    ACCESS+SET_PTR
+;21MAR               DC.L    FETCH_SOUND_NAME
+;21MAR               DC.W    DISPLAY+DISP_VEC
+;21MAR               DC.L    NOTHINGNESS
+;21MAR               DC.W    FIELD_END
+;21MAR;
+;21MAR               DC.B    0                    ;NAME-CHARACTER FIELD 0.
+;21MAR               DC.B    1
+;21MAR               DC.W    ACCESS+DIR_PTR
+;21MAR               DC.W    NAME_BUFFER+0
+;21MAR               DC.W    DISPLAY+DISP_VEC
+;21MAR               DC.L    WRITE_PARAM_STRING
+;21MAR               DC.W    DISPLAY+DISP_STRNG
+;21MAR               DC.L    NAME_CHAR_STRING
+;21MAR               DC.W    EDIT+NO_KEYPAD       ;SORRY, BUD.
+;21MAR               DC.W    EDIT+HI_LIMIT
+;21MAR               DC.W    MAX_EDIT_INDEX
+;21MAR               DC.W    EDIT+ED_VEC
+;21MAR               DC.L    NOT_SAVED_WARNING
+;21MAR               DC.W    EDIT+ENTR_VEC
+;21MAR               DC.L    STORE_SOUND_NAME
+;21MAR               DC.W    FIELD_END
+;21MAR;
+;21MAR               DC.B    1                    ;NAME-CHARACTER FIELD 1.
+;21MAR               DC.B    1
+;21MAR               DC.W    ACCESS+DIR_PTR
+;21MAR               DC.W    NAME_BUFFER+1
+;21MAR               DC.W    DISPLAY+DISP_VEC
+;21MAR               DC.L    WRITE_PARAM_STRING
+;21MAR               DC.W    DISPLAY+DISP_STRNG
+;21MAR               DC.L    NAME_CHAR_STRING
+;21MAR               DC.W    EDIT+NO_KEYPAD       ;SORRY, BUD.
+;21MAR               DC.W    EDIT+HI_LIMIT
+;21MAR               DC.W    MAX_EDIT_INDEX
+;21MAR               DC.W    EDIT+ED_VEC
+;21MAR               DC.L    NOT_SAVED_WARNING
+;21MAR               DC.W    EDIT+ENTR_VEC
+;21MAR               DC.L    STORE_SOUND_NAME
+;21MAR               DC.W    FIELD_END
+;21MAR;
+;21MAR               DC.B    2                    ;NAME-CHARACTER FIELD 2.
+;21MAR               DC.B    1
+;21MAR               DC.W    ACCESS+DIR_PTR
+;21MAR               DC.W    NAME_BUFFER+2
+;21MAR               DC.W    DISPLAY+DISP_VEC
+;21MAR               DC.L    WRITE_PARAM_STRING
+;21MAR               DC.W    DISPLAY+DISP_STRNG
+;21MAR               DC.L    NAME_CHAR_STRING
+;21MAR               DC.W    EDIT+NO_KEYPAD       ;SORRY, BUD.
+;21MAR               DC.W    EDIT+HI_LIMIT
+;21MAR               DC.W    MAX_EDIT_INDEX
+;21MAR               DC.W    EDIT+ED_VEC
+;21MAR               DC.L    NOT_SAVED_WARNING
+;21MAR               DC.W    EDIT+ENTR_VEC
+;21MAR               DC.L    STORE_SOUND_NAME
+;21MAR               DC.W    FIELD_END
+;21MAR;
+;21MAR               DC.B    3                    ;NAME-CHARACTER FIELD 3.
+;21MAR               DC.B    1
+;21MAR               DC.W    ACCESS+DIR_PTR
+;21MAR               DC.W    NAME_BUFFER+3
+;21MAR               DC.W    DISPLAY+DISP_VEC
+;21MAR               DC.L    WRITE_PARAM_STRING
+;21MAR               DC.W    DISPLAY+DISP_STRNG
+;21MAR               DC.L    NAME_CHAR_STRING
+;21MAR               DC.W    EDIT+NO_KEYPAD       ;SORRY, BUD.
+;21MAR               DC.W    EDIT+HI_LIMIT
+;21MAR               DC.W    MAX_EDIT_INDEX
+;21MAR               DC.W    EDIT+ED_VEC
+;21MAR               DC.L    NOT_SAVED_WARNING
+;21MAR               DC.W    EDIT+ENTR_VEC
+;21MAR               DC.L    STORE_SOUND_NAME
+;21MAR               DC.W    FIELD_END
+;21MAR;
+;21MAR               DC.B    4                    ;NAME-CHARACTER FIELD 4.
+;21MAR               DC.B    1
+;21MAR               DC.W    ACCESS+DIR_PTR
+;21MAR               DC.W    NAME_BUFFER+4
+;21MAR               DC.W    DISPLAY+DISP_VEC
+;21MAR               DC.L    WRITE_PARAM_STRING
+;21MAR               DC.W    DISPLAY+DISP_STRNG
+;21MAR               DC.L    NAME_CHAR_STRING
+;21MAR               DC.W    EDIT+NO_KEYPAD       ;SORRY, BUD.
+;21MAR               DC.W    EDIT+HI_LIMIT
+;21MAR               DC.W    MAX_EDIT_INDEX
+;21MAR               DC.W    EDIT+ED_VEC
+;21MAR               DC.L    NOT_SAVED_WARNING
+;21MAR               DC.W    EDIT+ENTR_VEC
+;21MAR               DC.L    STORE_SOUND_NAME
+;21MAR               DC.W    FIELD_END
+;21MAR;
+;21MAR               DC.B    5                    ;NAME-CHARACTER FIELD 5.
+;21MAR               DC.B    1
+;21MAR               DC.W    ACCESS+DIR_PTR
+;21MAR               DC.W    NAME_BUFFER+5
+;21MAR               DC.W    DISPLAY+DISP_VEC
+;21MAR               DC.L    WRITE_PARAM_STRING
+;21MAR               DC.W    DISPLAY+DISP_STRNG
+;21MAR               DC.L    NAME_CHAR_STRING
+;21MAR               DC.W    EDIT+NO_KEYPAD       ;SORRY, BUD.
+;21MAR               DC.W    EDIT+HI_LIMIT
+;21MAR               DC.W    MAX_EDIT_INDEX
+;21MAR               DC.W    EDIT+ED_VEC
+;21MAR               DC.L    NOT_SAVED_WARNING
+;21MAR               DC.W    EDIT+ENTR_VEC
+;21MAR               DC.L    STORE_SOUND_NAME
+;21MAR               DC.W    FIELD_END
+;21MAR;
+;21MAR               DC.B    6                    ;NAME-CHARACTER FIELD 6.
+;21MAR               DC.B    1
+;21MAR               DC.W    ACCESS+DIR_PTR
+;21MAR               DC.W    NAME_BUFFER+6
+;21MAR               DC.W    DISPLAY+DISP_VEC
+;21MAR               DC.L    WRITE_PARAM_STRING
+;21MAR               DC.W    DISPLAY+DISP_STRNG
+;21MAR               DC.L    NAME_CHAR_STRING
+;21MAR               DC.W    EDIT+NO_KEYPAD       ;SORRY, BUD.
+;21MAR               DC.W    EDIT+HI_LIMIT
+;21MAR               DC.W    MAX_EDIT_INDEX
+;21MAR               DC.W    EDIT+ED_VEC
+;21MAR               DC.L    NOT_SAVED_WARNING
+;21MAR               DC.W    EDIT+ENTR_VEC
+;21MAR               DC.L    STORE_SOUND_NAME
+;21MAR               DC.W    FIELD_END
+;21MAR;
+;21MAR               DC.B    7                    ;NAME-CHARACTER FIELD 7.
+;21MAR               DC.B    1
+;21MAR               DC.W    ACCESS+DIR_PTR
+;21MAR               DC.W    NAME_BUFFER+7
+;21MAR               DC.W    DISPLAY+DISP_VEC
+;21MAR               DC.L    WRITE_PARAM_STRING
+;21MAR               DC.W    DISPLAY+DISP_STRNG
+;21MAR               DC.L    NAME_CHAR_STRING
+;21MAR               DC.W    EDIT+NO_KEYPAD       ;SORRY, BUD.
+;21MAR               DC.W    EDIT+HI_LIMIT
+;21MAR               DC.W    MAX_EDIT_INDEX
+;21MAR               DC.W    EDIT+ED_VEC
+;21MAR               DC.L    NOT_SAVED_WARNING
+;21MAR               DC.W    EDIT+ENTR_VEC
+;21MAR               DC.L    STORE_SOUND_NAME
+;21MAR               DC.W    EDIT+CURS_RGT        ;SCROLL-RIGHT FROM LAST CHARACTER STORES NAME.
+;21MAR               DC.L    STORE_SOUND_NAME
+;21MAR               DC.W    SUBFUN_END
+;21MAR;
+;21MAR;
+;21MAR; CHARACTERS AVAILABLE FOR SOUND NAMES -
+;21MAR; SPACE CHARACTER IS AT HIGH END FOR EASY DATA SLIDER ACCESS.
+;21MAR; SPACE AND 0-9 ARE GROUPED AT HIGH END TO ALLOW THEM TO BE EASILY
+;21MAR; EXCLUDED FROM EDIT RANGE VIA HI_LIMIT SPEC (E.G. FOR FIRST CHARACTER).
+;21MAR; CHARACTER SET AND FIRST-CHARACTER RESTRICTION GUARANTEE SOUND NAMES
+;21MAR; WILL BE COMPUTER-FILENAME-COMPATIBLE (AS IF THAT MATTERED ....)
+;21MAR;
+;21MARNAME_CHAR_STRING
+;21MAR               ASC     "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+;21MARMAX_EDIT_INDEX EQU     *-NAME_CHAR_STRING
+;21MAR               ASC     " abcdefghijklmnopqrstuvwxy"
+;21MARMAX_CHAR_INDEX EQU     *-NAME_CHAR_STRING
+;21MAR               ASC     "z"
+;21MAR               EVEN
+;21MAR;
+;21MAR;
+;21MAR; FETCH SOUND NAME FROM CURRENT_SOUND CONTROL BLOCK -
+;21MAR; ENCODE IT INTO A STRING OF INDEXES INTO NAME_CHAR_STRING,
+;21MAR; DROP IT INTO NAME_BUFFER WHERE IT WILL BE EDITED.
+;21MAR;
+;21MARFETCH_SOUND_NAME
+;21MAR               MOVEM.L D1-D2/A1-A2,-(A7)
+;21MAR               ABS_LONG
+;21MAR               JSR     GET_PROP_BLK_PTR     ;A0 POINTS TO CURRENT_SOUND CONTROL BLOCK.
+;21MAR               ABS_SHORT
+;21MAR               MOVE    #NAME_BUFFER,A1      ;A1 POINTS TO NAME-EDIT BUFFER.
+;21MAR               MOVE.L  #NAME_CHAR_STRING,A2 ;A2 POINTS TO NAME CHARACTER TABLE.
+;21MAR               MOVEQ   #7,D0                ;DO IT UP FOR 8 CHARACTERS.
+;21MARFIND_CHAR_INDEX
+;21MAR               CLR     D1                   ;WORK UP FROM BOTTOM OF THE LIST.
+;21MAR               MOVE.B  S_NAME(A0,D0),D2     ;CURRENT NAME CHARACTER TO ENCODE.
+;21MARINDEX_NOT_FOUND
+;21MAR               CMP.B   0(A2,D1),D2          ;FIND CHARACTER IN TABLE -
+;21MAR               BEQ.S   FOUND_CHAR_INDEX     ;IF MATCH, GO RECORD ITS TABLE INDEX.
+;21MAR               ADDQ    #1,D1                ;IF NOT, KEEP TRYING -
+;21MAR               CMP.W   #MAX_CHAR_INDEX,D1   ;DEFAULT TO SPACE CHAR IF NO OTHER MATCH FOUND.
+;21MAR               BLT     INDEX_NOT_FOUND
+;21MAR               MOVE.W  #MAX_EDIT_INDEX,D1
+;21MARFOUND_CHAR_INDEX
+;21MAR               MOVE.B  D1,0(A1,D0)          ;WHEN INDEX FOUND, PUT IT INTO NAME_BUFFER.
+;21MAR               DBRA    D0,FIND_CHAR_INDEX   ;LOOP UNTIL 8 CHARS PROCESSED.
+;21MAR;
+;21MAR               MOVEM.L (A7)+,D1-D2/A1-A2
+;21MARFET_NAME_EXIT
+;21MAR               RTS
+;21MAR;
+;21MAR;
+;21MAR; STORE BUFFERED SOUND NAME BACK INTO CONTROL BLOCK -
+;21MAR; DECODE STRING OF CHARACTER INDEXES BACK INTO ASCII CHARACTERS,
+;21MAR; GO OUT AND COME IN AGAIN, SETTLING ON FIRST NAME CHARACTER POSITION.
+;21MAR;
+;21MARSTORE_SOUND_NAME
+;21MAR               MOVEM.L D1/A1-A2,-(A7)
+;21MAR               ABS_LONG
+;21MAR               JSR     GET_PROP_BLK_PTR     ;STICK 'EM INTO ....
+;21MAR               ABS_SHORT
+;21MAR               MOVEQ   #7,D0                ;YAH, YAH, EIGHT CHARACTERS.
+;21MAR               MOVE    #NAME_BUFFER,A1      ;GET 'EM FROM ....
+;21MAR               MOVE.L  #NAME_CHAR_STRING,A2 ;WITH THE HELP OF ....
+;21MARSTO_NAME_10
+;21MAR               MOVE.B  0(A1,D0),D1          ;FETCH A CHARACTER INDEX.
+;21MAR               EXT.W   D1
+;21MAR               MOVE.B  0(A2,D1),S_NAME(A0,D0)    ;STORE ASSOCIATED CHARACTER TO CONTROL BLOCK.
+;21MAR               DBRA    D0,STO_NAME_10            ;LOOP UNTIL ALL EIGHT ARE DONE.
+;21MAR;
+;21MAR               ST      SUBFUN_INSTALL       ;GO OUT AND COME IN AGAIN.
+;21MAR               MOVE    #2,CUR_FLD_INDEX     ;WHEN WE RETURN, SETTLE ON FIRST NAME CHARACTER FIELD.
+;21MAR               MOVEM.L (A7)+,D1/A1-A2
+;21MARSTO_NAME_EXIT
+;21MAR               RTS
+;21MAR;
+;21MAR;
+;21MAR; AS SOON AS NAME EDIT OCCURS, MAKE USER (DIMLY) AWARE THAT WHAT HE IS
+;21MAR; LOOKING AT IS ONLY TEMPORARY UNTIL HE SAVES IT.
+;21MAR;
+;21MARNOT_SAVED_WARNING
+;21MAR               MOVEM.L D1/A2,-(A7)
+;21MAR               MOVE    #1010H,D1            ;SEND A VERBAL MESSAGE ....
+;21MAR               MOVE.L  #NOT_SVD_STRING,A2
+;21MAR               ABS_LONG
+;21MAR               JSR     WRITE_STRING
+;21MAR               ABS_SHORT
+;21MAR               ST      UPDATE_LCD
+;21MAR               BSR     SET_ENTER_FLASH      ;MAKE THE LIGHT WINK IF IT WARN'T ALREADY.
+;21MAR               MOVEM.L (A7)+,D1/A2
+;21MARNOT_SVD_EXIT
+;21MAR               RTS
+;21MAR;
+;21MARNOT_SVD_STRING
+;21MAR               ASC     "(NOT YET SAVED) "
+;21MAR;
+;21MAR;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; SAMPLE NAMING - LEFT FOR MATT
+; - GOT IT, PAL.
+; NOTE:  NAME-EDIT SUBROUTINES ARE IN SYSFUNS2 UNDER BANK_NAME_SUB.
+;
+SAMPLE_NAME_SUB
+               ASC     "  #             "
+               ASC     "EDIT SOUND NAME "
+;
+               DC.B    0                    ;SOUND NUMBER FIELD.
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CURRENT_SOUND
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    31
+               DC.W    EDIT+LINKED
+               DC.W    EDIT+CURS_LFT        ;SCROLL FROM SOUND NUMBER
+               DC.L    GO_TO_NEXT_FIELD     ;TO FIRST NAME CHAR FIELD
+               DC.W    FIELD_END            ;WITH EITHER SCROLL BUTTON.
+;
+               DC.B    0                    ;NAME-FETCH FIELD - INVISIBLE.
+               DC.B    0
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+SET_PTR
+               DC.L    FETCH_SOUND_NAME
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    NOTHINGNESS
+               DC.W    FIELD_END
+;
+               DC.B    8                    ;NAME FIELD.
+               DC.B    8
+               DC.W    ACCESS+SET_PTR
+               DC.L    SET_NAME_BUF_ACC
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_NAME_BUF
+               DC.W    EDIT+NO_KEYPAD       ;SORRY, BUD.
+               DC.W    EDIT+HI_LIMIT
+               DC.W    CHAR_EDIT_LIM
+               DC.W    EDIT+CURS_RGT
+               DC.L    NAME_CURS_RIGHT
+               DC.W    EDIT+CURS_LFT
+               DC.L    NAME_CURS_LEFT
+               DC.W    EDIT+ED_VEC
+               DC.L    NOT_SAVED_WARNING
+               DC.W    EDIT+ENTR_VEC
+               DC.L    STORE_SOUND_NAME
+               DC.W    SUBFUN_END
+;
+;
+;
+; SET A0 AS POINTER TO SOUND NAME PER CURRENT_SOUND:
+; SINCE THIS IS DONE AS PART OF FETCHING OR STORING A SOUND NAME,
+; AS A BY-PRODUCT WE SET UP TO SETTLE ON FIRST FIELD IN SCREEN -
+; THE SOUND NUMBER FIELD - TO HELP AVERT ACCIDENTAL NAME EDITS.
+;
+GET_SOUNDNAME_PTR
+               CLR     CUR_FLD_INDEX        ;WHEN SUBFUN INSTALLED, SETTLE ON UNIT SELECTION FIELD.
+                ABS_LONG
+               JMP     GET_PROP_BLK_PTR     ;SET A0 AS POINTER TO CURRENT_SOUND COMMON BLOCK -
+                                            ;SOUND NAME IS AT THE BEGINNING - THEN RETURN THROUGH.
+                ABS_SHORT
+;
+;
+;
+; FETCH NAME FROM CURRENT_SOUND CONTROL BLOCK INTO NAME EDIT BUFFER:
+; AS A BY-PRODUCT, WE SET UP TO SETTLE ON FIRST FIELD IN SCREEN -
+; THE SOUND NUMBER FIELD - TO HELP AVERT ACCIDENTAL NAME EDITS.
+;
+FETCH_SOUND_NAME
+               BSR     GET_SOUNDNAME_PTR    ;SET A0 AS POINTER TO NAME,
+                ABS_LONG
+               JMP     FETCH_NAME           ;RETURN THROUGH GENERAL NAME-FETCH PROCEDURE.
+                ABS_SHORT
+;
+;
+;
+; STORE BUFFERED/EDITED SOUND NAME BACK TO CURRENT_SOUND CONTROL BLOCK:
+; AS A BY-PRODUCT, WE SET UP TO SETTLE ON FIRST FIELD IN SCREEN -
+; THE SOUND NUMBER FIELD - TO HELP AVERT ACCIDENTAL NAME EDITS.
+;
+STORE_SOUND_NAME
+               ST      SUBFUN_INSTALL       ;AFTER WE'RE DONE HERE, REINSTALL SUBFUNCTION.
+               BSR     GET_SOUNDNAME_PTR    ;SET A0 AS POINTER TO NAME SLOT IN CONTROL BLOCK,
+                ABS_LONG
+               JMP     STORE_NAME_BUF       ;RETURN THROUGH GENERAL NAME-STORE PROCEDURE.
+                ABS_SHORT
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; SAMPLE EDIT 1 FUNCTION
+;
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             SAMPLE TRIM
+;
+SAMPLE_TRIM_SUB
+               ASC     "ST/END #        "
+               ASC     "       ==       "
+;
+;SOUND NUMBER FIELD
+;
+               DC.B    8
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CURRENT_SOUND
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    31
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+;
+;ALT PARAM FIELD - NOTE THAT THIS IS A NO-EDIT FIELD
+;
+               DC.B    10
+               DC.B    1
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+DIR_PTR
+               DC.W    ALT_PARAM_FLAG
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    ALT_PARAM_STRING
+               DC.W    FIELD_END
+;
+;RESOLUTION FIELD
+;
+               DC.B    12
+               DC.B    4
+               DC.W    ACCESS+DIR_PTR
+               DC.W    HI_LO_RES_FLAG
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    HI_LO_STRING
+               DC.W    EDIT+HI_LIMIT
+               DC.W    1
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    FIELD_END
+;
+;START POINT FIELD
+;
+               DC.B    16
+               DC.B    6
+               DC.W    ACCESS+LONG
+               DC.W    ACCESS+SET_PTR
+               DC.L    POINT_AT_START
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+INCR_VEC
+               DC.L    INC_TRIM_ST
+               DC.W    EDIT+DECR_VEC
+               DC.L    DEC_TRIM_ST
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    TRIM_ST_LIMITS
+               DC.W    EDIT+ED_VEC
+               DC.L    TRIM_ST_LOOPS
+               DC.W    FIELD_END
+;
+;END POINT FIELD
+;
+               DC.B    26
+               DC.B    6
+               DC.W    ACCESS+LONG
+               DC.W    ACCESS+SET_PTR
+               DC.L    POINT_AT_END
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+INCR_VEC
+               DC.L    INC_TRIM_END
+               DC.W    EDIT+DECR_VEC
+               DC.L    DEC_TRIM_END
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    TRIM_END_LIMITS
+               DC.W    EDIT+ED_VEC
+               DC.L    TRIM_END_LOOPS
+               DC.W    SUBFUN_END
+;
+HI_LO_STRING
+               ASC     "AUTOSNGL"
+;
+;
+POINT_AT_START ; POINT TO CORRECT VALUE TO EDIT.  ALSO, WHILE WE'RE HERE, LOAD A DSIPLAY OFFSET.
+;
+               ABS_LONG
+               JSR     GET_PROP_BLK_PTR          ;START IN SUBBLOCK - WHICH ONE ACTIVE?
+               ABS_SHORT
+;16MAR               EXT.L   D0                        ;A0-> SOUNDBLOCK, D0=OFFSET TO SUBBLOCK
+;16MAR               ADD.L   A0,D0
+;16MAR               ADD.L   #S_START,D0
+               ADD     #S_START,D0
+               EXT.L   D0                        ;A0-> SOUNDBLOCK, D0=OFFSET TO SUBBLOCK
+               ADD.L   A0,D0
+;
+               MOVE.L  S_BEGIN(A0),DISPLAY_OFFSET
+;
+; ALL ADDRESSES REFERENCED TO BEGINNING OF THIS SOUND
+;
+               RTS
+;
+;
+;
+; IF LOW RESOLUTION MODE, USE AUTO-INCREMENT-TO-ZERO-CROSSING ROUTINE.
+; IF HIGH RESOLUTION, INCREMENT BY WORDS.
+;
+INC_TRIM_ST
+               TST     HI_LO_RES_FLAG       ;1 = HI RES
+               BEQ.S   INCTRIMST_10
+               ABS_LONG
+               JMP     INCR_PARAMETER       ; IF HIGH RES, THEN INC AS NORMAL
+               ABS_SHORT
+INCTRIMST_10
+               ABS_LONG
+               JSR     GET_PROP_BLK_PTR     ;GET SOUND BLOCK POINTERS
+               ABS_SHORT
+               MOVE.L  S_START(A0,D0),A1    ;STARTING ADDRESS FOR 0 XING SEARCH
+               BTST    #7,S_LOOP_TYPE(A0,D0) ;IS LOOPING ON ?
+               BEQ.S   INCTRIMST_11            ;IF NOT THEN END IS LIMIT OF SEARCH
+               MOVE.L  S_LOOP_START(A0,D0),A3  ;OTHERWISE DONT GO PAST LOOP START
+               BRA.S   INCTRIMST_12
+INCTRIMST_11   MOVE.L  S_END(A0,D0),A3      ;WE WONT SEARCH PAST THE END
+               SUBQ.L  #1,A3
+INCTRIMST_12   CLR     D5                      ;ZERO CROSSING FLAG
+               CLR     DI_TEMP_1_B
+               BSR     INC_TO_ZERO
+               ABS_LONG
+               JMP     STORE_PARAMETER      ;GO ABOUT STORAGE
+               ABS_SHORT
+;
+;
+DEC_TRIM_ST    ; REMARKABLY LIKE THE ABOVE ROUTINE.
+               TST     HI_LO_RES_FLAG       ;1 = HI RES
+               BEQ.S   DECTRIMST_10
+               ABS_LONG
+               JMP     DECR_PARAMETER       ; IF HIGH RES, THEN DEC AS NORMAL
+               ABS_SHORT
+DECTRIMST_10
+               ABS_LONG
+               JSR     GET_PROP_BLK_PTR
+               ABS_SHORT
+               MOVE.L  S_START(A0,D0),A1    ;STARTING ADDRESS OF SEARCH
+               MOVE.L  S_BEGIN(A0),A3       ;LIMIT OF SEARCH AT BEGINNING
+               CLR     D5
+               CLR     DI_TEMP_1_B
+               BSR     DEC_TO_ZERO
+               ABS_LONG
+               JMP     STORE_PARAMETER      ;GO ABOUT STORAGE
+               ABS_SHORT
+;
+TRIM_ST_LIMITS ; HERE, WE SET UPPER & LOWER LIMITS.  LOWER IS THE BEGIN ADDRESS.  UPPER IS THE
+; NEAREST 'ON' LOOP'S START ADDRESS, OR FAILING THAT, THE END ADDRESS.
+               MOVE.L  D1,-(A7)
+               ABS_LONG
+               JSR     GET_PROP_BLK_PTR
+               ABS_SHORT
+               MOVE.L  S_BEGIN(A0),PARAM_LO_LIM  ;LOWER LIMIT IS EASY.
+               MOVE.L  S_END(A0,D0),PARAM_HI_LIM ;DEFAULT END LIMIT IS THE SAMPLE END ADDRESS
+               BTST    #7,S_LOOP_TYPE(A0,D0)     ;IS OUR LOOP ON?
+               BEQ.S   HAMMER_2                  ;    IF NOT, END IS VALID OUTER LIMIT
+               MOVE.L  S_LOOP_START(A0,D0),PARAM_HI_LIM    ;ELSE, LOOP START IS
+;
+;
+HAMMER_2
+               SUBQ.L  #1,PARAM_HI_LIM      ;BACK OFF BY A WORD - CANNOT BE EQUAL; LOOP MAY UNTRAP
+               MOVE.L  (A7)+,D1
+               RTS
+;
+;
+TRIM_ST_LOOPS  ; TRICK HERE IS THAT IF THE START CHANGES, IT HAS TO MOVE DERELICT LOOPS WITH IT
+; (SO WHEN ENABLED, THEY ARE LEGAL).  BY DEFINITION OF OUR LIMITS, WE WON'T HURT AN ACTIVE LOOP.
+               MOVE.L  D1,-(A7)             ;SAVE REGGIE....
+               ABS_LONG
+               JSR     GET_PROP_BLK_PTR     ;DEAL WITH ACTIVE SUBBLOCK
+               ABS_SHORT
+               MOVE.L  S_START(A0,D0),D1    ;LOAD UP START ADDRESS FOR REFERENCE
+;
+               CMP.L   S_LOOP_START(A0,D0),D1  ;COMPARE LOOP AGAINST START
+               BCS.S   HAMMER_3             ;IF SAFE, SKIP
+               MOVE.L  D1,S_LOOP_START(A0,D0)    ;ELSE, COPY OVER
+HAMMER_3
+               CMP.L   S_LOOP_END(A0,D0),D1 ;COMPARE LOOP AGAINST END
+               BCS.S   HAMMER_31            ;IF SAFE, SKIP
+               MOVE.L  D1,S_LOOP_END(A0,D0)      ;ELSE, COPY OVER
+               ADDQ.L  #1,S_LOOP_END(A0,D0) ;BUMP OUT BY 1 CANNOT TOUCH
+HAMMER_31
+               MOVE.L  (A7)+,D1             ;RESTORE REGGIE
+               RTS     ;DONE!
+;
+;
+;
+;
+POINT_AT_END   ; POINT TO CORRECT VALUE TO EDIT.  ALSO, WHILE WE'RE HERE, LOAD A DSIPLAY OFFSET.
+;
+               ABS_LONG
+               JSR     GET_PROP_BLK_PTR     ;DEAL WITH THIS SUBBLOCK
+               ABS_SHORT
+;16MAR               EXT.L   D0                   ; A0-> BLOCK START, D0=OFFSET TO SUBBLOCK
+;16MAR               ADD.L   A0,D0
+;16MAR               ADD.L   #S_END,D0
+               ADD     #S_END,D0
+               EXT.L   D0                   ; A0-> BLOCK START, D0=OFFSET TO SUBBLOCK
+               ADD.L   A0,D0
+;
+               MOVE.L  S_BEGIN(A0),DISPLAY_OFFSET    ;ALL ADDRESSES REFERENCED TO BEGINNING OF THIS SOUND
+;
+               RTS
+;
+;
+; IF LOW RESOLUTION MODE, USE AUTO-INCREMENT-TO-ZERO-CROSSING ROUTINE.
+; IF HIGH RESOLUTION, INCREMENT BY WORDS.
+;
+INC_TRIM_END
+               TST     HI_LO_RES_FLAG
+               BEQ.S   INCTRIMEND_10
+               ABS_LONG
+               JMP     INCR_PARAMETER       ; IF HIGH RES, THEN INC AS NORMAL
+               ABS_SHORT
+INCTRIMEND_10
+               ABS_LONG
+               JSR     GET_PROP_BLK_PTR
+               ABS_SHORT
+               MOVE.L  S_END(A0,D0),A1      ;START OF SEARCH
+               MOVE.L  S_FINISH(A0),A3      ;LIMIT SEARCH TO FINISH OF SAMPLE
+               CLR     D5
+               CLR     DI_TEMP_1_B
+               BSR     INC_TO_ZERO
+               ABS_LONG
+INCTRIMEND_11  JMP      STORE_PARAMETER
+               ABS_SHORT
+;
+;
+; REMARKABLY LIKE THE ABOVE ROUTINE.
+;
+DEC_TRIM_END
+               TST     HI_LO_RES_FLAG       ;1 = HI RES
+               BEQ.S   DECTRIMEND_10
+               ABS_LONG
+               JMP     DECR_PARAMETER       ; IF HIGH RES, THEN DEC AS NORMAL
+               ABS_SHORT
+DECTRIMEND_10
+               ABS_LONG
+               JSR     GET_PROP_BLK_PTR
+               ABS_SHORT
+               MOVE.L  S_END(A0,D0),A1      ;START OF 0 XING SEARCH
+               BTST    #7,S_LOOP_TYPE(A0,D0)    ;ARE LOOPS ON ?
+               BEQ.S   DECTRIMEND_11            ;IF NOT THEN START IS THE LIMIT
+               MOVE.L  S_LOOP_END(A0,D0),A3      ;IF THEY ARE THEN DONT DEC PAST LOOP END
+               BRA.S   DECTRIMEND_12
+DECTRIMEND_11  MOVE.L  S_START(A0,D0),A3    ;LIMIT OF SEARCH
+               ADDQ.L  #1,A3
+DECTRIMEND_12  CLR     D5
+               CLR     DI_TEMP_1_B
+               BSR     DEC_TO_ZERO
+               ABS_LONG
+DECTRIMEND_13  JSR      STORE_PARAMETER
+               ABS_SHORT
+;
+;
+TRIM_END_LIMITS ; HERE, WE SET UPPER & LOWER LIMITS.  UPPER IS THE FINISH ADDRESS.  LOWER IS THE
+; NEAREST 'ON' LOOP'S END ADDRESS, OR FAILING THAT, THE START ADDRESS.
+               MOVE.L  D1,-(A7)
+;
+               ABS_LONG
+               JSR     GET_PROP_BLK_PTR
+               ABS_SHORT
+;
+               MOVE.L  S_FINISH(A0),PARAM_HI_LIM ;UPPER LIMIT IS EASY.
+;
+               MOVE.L  S_START(A0,D0),PARAM_LO_LIM  ;DEFAULT LOW LIMIT IS THE SAMPLE START ADDR.
+               BTST    #7,S_LOOP_TYPE(A0,D0)     ;SEE IF OUR LOOP ON OR OFF
+               BEQ.S   HAMMER_6             ;IF OFF, OKAY
+               MOVE.L  S_LOOP_END(A0,D0),PARAM_LO_LIM ;ELSE, LOOP END IS OUR LIMIT
+;
+;
+HAMMER_6
+               ADDQ.L  #1,PARAM_LO_LIM      ;BACK OFF BY A WORD - CANNOT BE EQUAL; LOOP MAY UNTRAP
+               MOVE.L  (A7)+,D1
+               RTS
+;
+;
+TRIM_END_LOOPS ; TRICK HERE IS THAT IF THE END CHANGES, IT HAS TO MOVE DERELICT LOOPS WITH IT
+; (SO WHEN ENABLED, THEY ARE LEGAL).  BY DEFINITION OF OUR LIMITS, WE WON'T HURT AN ACTIVE LOOP.
+               MOVE.L  D1,-(A7)
+;
+               ABS_LONG
+               JSR     GET_PROP_BLK_PTR     ;DEAL WITH OUR CHOSEN SUBBLOCK
+               ABS_SHORT
+               MOVE.L  S_END(A0,D0),D1      ;LOAD UP END ADDRESS FOR COMAPRISONS
+;
+               CMP.L   S_LOOP_END(A0,D0),D1 ;COMPARE LOOP AGAINST END
+               BCC.S   HAMMER_7             ; IF SAFE, SKIP
+               MOVE.L  D1,S_LOOP_END(A0,D0) ;    ELSE, COPY OVER
+HAMMER_7
+               CMP.L   S_LOOP_START(A0,D0),D1    ;COMPARE LOOP AGAINST START
+               BCC.S   HAMMER_71            ; IF SAFE, SKIP
+               MOVE.L  D1,S_LOOP_START(A0,D0)    ;    ELSE, COPY OVER
+               SUBQ.L  #1,S_LOOP_START(A0,D0)    ;CANNOT TOUCH THE END!
+HAMMER_71
+               MOVE.L  (A7)+,D1
+               RTS
+;
+;
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;              LOOP POINTS SUBFUNCTION
+;
+LOOP_POINTS_SUB
+               ASC     "LOOP  #         "
+               ASC     "       ==       "
+;
+;SOUND NUMBER FIELD
+;
+               DC.B    8
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CURRENT_SOUND
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    31
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+;
+;ALT PARAM FIELD - NOTE THAT THIS IS A NO-EDIT FIELD
+;
+               DC.B    10
+               DC.B    1
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+DIR_PTR
+               DC.W    ALT_PARAM_FLAG
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    ALT_PARAM_STRING
+               DC.W    FIELD_END
+;
+;RESOLUTION FIELD
+;
+               DC.B    12
+               DC.B    4
+               DC.W    ACCESS+DIR_PTR
+               DC.W    HI_LO_RES_FLAG
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    HI_LO_STRING
+               DC.W    EDIT+HI_LIMIT
+               DC.W    1
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    FIELD_END
+;
+;LOOP START ADDRESS FIELD
+;
+               DC.B    16
+               DC.B    6
+               DC.W    ACCESS+LONG
+               DC.W    ACCESS+SET_PTR
+               DC.L    LOOP_START_ACCESS
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+INCR_VEC
+               DC.L    INC_LOOP_ST
+               DC.W    EDIT+DECR_VEC
+               DC.L    DEC_LOOP_ST
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    LOOP_START_LIMITS
+               DC.W    FIELD_END
+;
+;LOOP END ADDRESS FIELD
+;
+               DC.B    26
+               DC.B    6
+               DC.W    ACCESS+LONG
+               DC.W    ACCESS+SET_PTR
+               DC.L    LOOP_END_ACCESS
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+INCR_VEC
+               DC.L    INC_LOOP_END
+               DC.W    EDIT+DECR_VEC
+               DC.L    DEC_LOOP_END
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    LOOP_END_LIMITS
+               DC.W    SUBFUN_END
+;
+;
+ALT_PARAM_STRING
+               ASC     " a"
+;
+;
+LOOP_START_ACCESS      ; POINT AT CORRECT LOOP START VALUE, FOR THE GIVEN SUBBLOCK,  ALSO SET UP
+; THE DISPLAY OFFSET.
+               ABS_LONG
+               JSR     GET_PROP_BLK_PTR     ;WILL RET W/ A0-> SOUNDBLOCK, D0=OFFSET TO SUBBLOCK
+               ABS_SHORT
+               MOVE.L  S_BEGIN(A0),DISPLAY_OFFSET     ;REF ALL DISPLAYS TO THE BEGINNING ADDRESS
+;
+;16MAR               EXT.L   D0
+;16MAR               ADD.L   A0,D0
+;16MAR               ADD.L   #S_LOOP_START,D0
+               ADD     #S_LOOP_START,D0
+               EXT.L   D0
+               ADD.L   A0,D0
+;
+               RTS
+;
+;
+INC_LOOP_ST    ; IF IN LOW RESOLUTION MODE, USE AUTO-INCREMENT-TO-ZERO-CROSSING ROUTINE.  IF HIGH
+; RESOLUTION, INCREMENT BY WORDS.
+               TST     HI_LO_RES_FLAG       ;1 = HI RES
+               BEQ.S   INCLOOPST_10
+               ABS_LONG
+               JMP     INCR_PARAMETER       ; IF HIGH RES, THEN INC AS NORMAL
+               ABS_SHORT
+INCLOOPST_10
+               ABS_LONG
+               JSR     GET_PROP_BLK_PTR
+               ABS_SHORT
+               MOVE.L  S_LOOP_START(A0,D0),A1   ;START OF 0 XING SEARCH
+               MOVE.L  S_LOOP_END(A0,D0),A3     ;LIMIT OF SEARCH
+               SUBQ.L  #1,A3
+               MOVE    S_LOOP_TYPE(A0,D0),D5
+               CLR     DI_TEMP_1_B
+               BSR     INC_TO_ZERO
+               ABS_LONG
+INCLOOPST_11   JMP     STORE_PARAMETER      ;GO ABOUT STORAGE
+               ABS_SHORT
+;
+;
+DEC_LOOP_ST    ; REMARKABLY LIKE THE ABOVE ROUTINE.
+               TST     HI_LO_RES_FLAG       ;1 = HI RES
+               BEQ.S   DECLOOPST_10
+               ABS_LONG
+               JMP     DECR_PARAMETER       ; IF HIGH RES, THEN DEC AS NORMAL
+               ABS_SHORT
+DECLOOPST_10
+               ABS_LONG
+               JSR     GET_PROP_BLK_PTR
+               ABS_SHORT
+               MOVE.L  S_LOOP_START(A0,D0),A1
+               MOVE.L  S_START(A0,D0),A3
+               MOVE    S_LOOP_TYPE(A0,D0),D5
+               CLR     DI_TEMP_1_B
+               BSR     DEC_TO_ZERO
+               ABS_LONG
+DECLOOPST_11   JSR     STORE_PARAMETER      ;GO ABOUT STORAGE
+               ABS_SHORT
+;
+;
+LOOP_START_LIMITS      ; SET UP EDITABLE LIMITS FOR LOOP START - LOWER IS THE SAMPLE START, END IS
+; THE LOOP END - 1.
+               ABS_LONG
+               JSR     GET_PROP_BLK_PTR     ;A0->CURRENT SOUND BLOCK, D0=OFFESET TO SUBBLOCK
+               ABS_SHORT
+               MOVE.L  S_START(A0,D0),PARAM_LO_LIM    ;LOWER LIMIT IS SOUND START
+               MOVE.L  S_LOOP_END(A0,D0),PARAM_HI_LIM
+               SUBQ.L  #1,PARAM_HI_LIM      ;UPPER LIMIT IS LOOP END - 1.
+               RTS
+;
+;
+;
+LOOP_END_ACCESS        ; POINT AT CORRECT LOOP END VALUE, FOR THE GIVEN SUBBLOCK.  ALSO SET UP
+; THE DISPLAY OFFSET.
+               ABS_LONG
+               JSR     GET_PROP_BLK_PTR     ;WILL RET W/ A0-> SOUNDBLOCK, D0=OFFSET TO SUBBLOCK
+               ABS_SHORT
+               MOVE.L  S_BEGIN(A0),DISPLAY_OFFSET     ;REF ALL DISPLAYS TO THE BEGINNING ADDRESS
+;
+;16MAR               EXT.L   D0
+;16MAR               ADD.L   A0,D0
+;16MAR               ADD.L   #S_LOOP_END,D0
+               ADD     #S_LOOP_END,D0
+               EXT.L   D0
+               ADD.L   A0,D0
+;
+               RTS
+;
+;
+INC_LOOP_END   ; IF IN LOW RESOLUTION MODE, USE AUTO-INCREMENT-TO-ZERO-CROSSING ROUTINE.  IF HIGH
+; RESOLUTION, INCREMENT BY WORDS.
+               TST     HI_LO_RES_FLAG       ;1 = HI RES
+               BEQ.S   INCLOOPEND_10
+               ABS_LONG
+               JMP     INCR_PARAMETER       ; IF HIGH RES, THEN INC AS NORMAL
+               ABS_SHORT
+INCLOOPEND_10
+               ABS_LONG
+               JSR     GET_PROP_BLK_PTR
+               ABS_SHORT
+               MOVE.L  S_LOOP_END(A0,D0),A1 ;START OF 0 XING SEARCH
+               MOVE.L  S_END(A0,D0),A3      ;LIMIT OF SEARCH
+               MOVE    S_LOOP_TYPE(A0,D0),D5
+               BTST    #14,D5
+               BNE.S   INCLOOPEND_11
+               MOVE    #1,DI_TEMP_1_B           ;SUBTRACT 1 FROM END POINT OF UNIDIRECTIONAL LOOPS
+               BRA.S   INCLOOPEND_12
+INCLOOPEND_11  CLR     DI_TEMP_1_B
+INCLOOPEND_12  BSR.S   INC_TO_ZERO
+               ABS_LONG
+INCLOOPEND_13  JMP     STORE_PARAMETER      ;GO ABOUT STORAGE
+               ABS_SHORT
+;
+;
+DEC_LOOP_END   ; REMARKABLY LIKE THE ABOVE ROUTINE.
+               TST     HI_LO_RES_FLAG       ;1 = HI RES
+               BEQ.S   DECLOOPEND_10
+               ABS_LONG
+               JMP     DECR_PARAMETER       ; IF HIGH RES, THEN DEC AS NORMAL
+               ABS_SHORT
+DECLOOPEND_10
+               ABS_LONG
+               JSR     GET_PROP_BLK_PTR
+               ABS_SHORT
+               MOVE.L  S_LOOP_END(A0,D0),A1 ;START OF 0 XING SEARCH
+               MOVE.L  S_LOOP_START(A0,D0),A3 ;LIMIT OF SEARCH
+               ADDQ.L  #1,A3
+               MOVE    S_LOOP_TYPE(A0,D0),D5
+               BTST    #14,D5
+               BNE.S   DECLOOPEND_11
+               MOVE    #1,DI_TEMP_1_B           ;SUBTRACT 1 FROM END POINT OF UNIDIRECTIONAL LOOPS
+               BRA.S   DECLOOPEND_12
+DECLOOPEND_11  CLR     DI_TEMP_1_B
+DECLOOPEND_12  BSR     DEC_TO_ZERO
+               ABS_LONG
+DECLOOPEND_13  JSR     STORE_PARAMETER
+               ABS_SHORT
+;
+;
+LOOP_END_LIMITS        ; SET UP EDITABLE LIMITS FOR LOOP END - LOWER IS THE LOOP START + 1, UPPER
+; IS THE SOUND END.
+               ABS_LONG
+               JSR     GET_PROP_BLK_PTR     ;A0->CURRENT SOUND BLOCK, D0=OFFESET TO SUBBLOCK
+               ABS_SHORT
+               MOVE.L  S_END(A0,D0),PARAM_HI_LIM ;UPPER LIMIT IS SOUND END
+               MOVE.L  S_LOOP_START(A0,D0),PARAM_LO_LIM
+               ADDQ.L  #1,PARAM_LO_LIM      ;LOWER LIMIT IS LOOP START + 1.
+               RTS
+;
+;*********************************************************************************************************
+;
+;              AUTO LOOP POINT FINDER SUBROUTINES
+;
+;***************************************************************************************************
+;
+INC_TO_ZERO
+;ENTER WITH A1=STARTING ADDRESS OF SEARCH FOR THE POSITIVE SLOPE ZERO CROSSING
+;A3=LIMIT OF SEARCH
+;RETURNS WITH NEW LOOP ADDRESS IN PARAM_BUFFER.L
+;
+               BSR     STOP_THE_SEQUENCER   ;MAKE SURE SEQUENCER IS NOT RUNNING.
+               MOVEM.L D0/A0,-(A7)
+               MOVE    #2700H,SR            ;DISABLE INTERUPTS
+               MOVE.L  #80000H,D1           ;SET UP READ CHIP
+               MOVE.L  A1,D0
+               ABS_LONG
+               JSR     READ_UPWARD
+               ABS_SHORT
+INC_TO_0_00    CLR     D2                   ;SET UPWARD DIRECTION FLAG
+               CLR     D4
+               BSR     FILL_BUFF            ;FILL UP SAMPLE BUFFER FOR START OF SEARCH
+               TST     D4                   ;CHECK FOR LIMIT REACHED WHILE FILLING BUFFER
+               BNE.S   INC_TO_0_EXIT
+               BTST    #14,D5               ;CHECK FOR BIDIRECTIONAL LOOP
+               BNE     STEP_TO_PEAK
+               MOVE.L  #7FFFFFFFH,D0        ;SET SUM TO POSITIVE SO WE SKIP PEAK SEARCH
+               BSR     READ_TILL_NEG        ;READ SAMPLES UNTIL WE SEE NEGATIVE AVERAGE VALUE
+               TST     D4                   ;IF SET MEANS WE COULD NOT FIND NEGATIVE SAMPLES
+               BNE.S   INC_TO_0_EXIT
+               BSR     READ_TILL_POS        ;READ TILL WE FIND THE POSITIVE ZERO CROSSING
+               TST     D4
+               BNE.S   INC_TO_0_EXIT        ;COULDNT FIND ONE
+               MOVE    #WASTELAND,A2        ;FIND THE HIGHEST ZERO XING IN BUFFER
+               MOVEQ   #06,D7
+INC_TO_0_0     MOVE    (A2)+,D2             ;GET DATA FROM BUFFER
+               BPL.S   INC_TO_0_1           ;LOOK FOR A POSITIVE SAMPLE
+               DBRA    D7,INC_TO_0_0
+INC_TO_0_1     MOVE    (A2)+,D2
+               BMI.S   INC_TO_0_2           ;NOW LOOK FOR NEXT NEG SAMPLE TO FIND 0 XING
+               DBRA    D7,INC_TO_0_1
+INC_TO_0_2     MOVEQ   #08,D6               ;A1=ZERO XING ADDRESS
+               SUB     D7,D6
+               SUBA     D6,A1
+INC_TO_0_EXIT  CMP.L   A1,A3
+               BEQ.S   INC_TO_0_EX_1
+               SUB     DI_TEMP_1_B,A1           ;SUBTRACT ONE FROM END POINT OF UNIDIRECTIONAL LOOPS
+INC_TO_0_EX_1  MOVE.L  A1,PARAM_BUFFER
+               MOVE    #2000H,SR
+               BSET    #7,MISC_OUT_STAT
+               ABS_LONG
+               MOVE.B  MISC_OUT_STAT,MISC_OUT   ;GO BACK TO 4 CHIP DAISY
+               ABS_SHORT
+               MOVEM.L  (A7)+,D0/A0
+               RTS
+;
+;
+;
+DEC_TO_ZERO
+;ENTER WITH A1=STARTING ADDRESS OF SEARCH FOR THE POSITIVE SLOPE ZERO CROSSING
+;A3=LIMIT OF SEARCH
+;RETURNS WITH NEW LOOP ADDRESS IN PARAM_BUFFER.L
+;
+               BSR     STOP_THE_SEQUENCER   ;MAKE SURE SEQUENCER IS NOT RUNNING.
+               MOVEM.L D0/A0,-(A7)
+               MOVE    #2700H,SR
+               CLR.L   D0                   ;SET UP READ CHIP
+               MOVE.L  A1,D1
+               ABS_LONG
+               JSR     READ_DOWNWARD
+               ABS_SHORT
+               ST      D2                   ;SET DOWNWARD DIRECTION FLAG
+               CLR     D4
+               BSR     FILL_BUFF            ;FILL UP SAMPLE BUFFER FOR START OF SEARCH
+               TST     D4                   ;CHECK FOR LIMIT REACHED WHILE FILLING BUFFER
+               BNE.S   DEC_TO_0_EXIT
+               BTST    #14,D5               ;CHECK FOR BIRECTIONAL LOOP
+               BNE.S   STEP_TO_PEAK
+               MOVE.L  #7FFFFFFFH,D0        ;SET SUM TO POSITIVE SO WE SKIP PEAK SEARCH
+               BSR.S   READ_TILL_POS        ;READ SAMPLES UNTIL WE SEE POSITIVE AVERAGE VALUE
+               TST     D4                   ;IF SET MEANS WE COULD NOT FIND NEGATIVE SAMPLES
+               BNE.S   DEC_TO_0_EXIT
+               BSR.S   READ_TILL_NEG        ;READ TILL WE FIND THE NEGATIVE ZERO CROSSING
+               TST     D4
+               BNE.S   DEC_TO_0_EXIT         ;COULDNT FIND ONE
+               MOVE    #WASTELAND,A2         ;FIND THE HIGHEST ZERO XING IN BUFFER
+               MOVEQ   #06,D7
+               ADDA    #14,A2
+DEC_TO_0_0     MOVE    -(A2),D2             ;GET DATA FROM BUFFER
+               BPL.S   DEC_TO_0_1           ;LOOK FOR A NEGATIVE SAMPLE
+               DBRA    D7,DEC_TO_0_0
+DEC_TO_0_1     MOVE    -(A2),D2
+               BMI.S   DEC_TO_0_2           ;NOW LOOK FOR NEXT POS SAMPLE TO FIND 0 XING
+               DBRA    D7,DEC_TO_0_1
+DEC_TO_0_2     ADDA    D7,A1                ;A1=ZERO XING ADDRESS
+DEC_TO_0_EXIT  BRA     INC_TO_0_EXIT
+;
+;
+;*******************************************************************
+STEP_TO_PEAK   CMP.L   A1,A3                ;CHECK SEARCH LIMIT
+               BEQ     INC_TO_0_EXIT
+               MOVE.L  A1,A4
+               BSR     SAMPLE_READ
+               BSR.S   SUM_BUFF
+               TST.L   D3                   ;SEE IF FIRST SAMPLE IS NEGATIVE
+               BMI.S   STEP_TO_PEAK_1
+               BSR.S   READ_TILL_NEG        ;SEARCH FOR NEGATIVE SUM
+               TST     D4                   ;SEE IF LIMIT RE4ACHED
+               BNE     INC_TO_0_EXIT
+STEP_TO_PEAK_1 BSR.S   READ_TILL_POS        ;SEARCH FOR POSITIVE SUM
+               TST     D4                   ;SEE IF LIMIT REACHED
+               BNE     INC_TO_0_EXIT
+               MOVE.L  #80000000H,D0
+               BSR.S   READ_TILL_NEG        ;SEARCH FOR NEGATIVE SUM
+               TST     D4                   ;SEE IF LIMIT REACHED
+               BNE     INC_TO_0_EXIT
+               MOVE.L  A4,A1                ;STORE PEAK ADDRESS
+               BRA     INC_TO_0_EXIT
+;
+READ_TILL_POS
+;READS SAMPLE POINTED TO BY A1 AND PLACES IN 15 BYTE BUFFER.
+;INC/DEC A1 AND COMPARES A1 AGAINST SEARCH LIMIT.
+;EXIT WITH D3=SUM OF 15 BYTES IN BUFFER,D4=SET=SEARCH LIMIT REACHED
+;
+               CMP.L   A1,A3                ;SEE IF SEARCH LIMIT IS REACHED
+               BEQ.S   READ_POS_EXIT        ;IF SO GET OUT
+               BSR     SAMPLE_READ          ;GET SAMPLE AND PLACE IN BUFFER
+               BSR.S   SUM_BUFF             ;IF NOT SUM UP THE BUFFER
+               TST.L   D3                   ;SEE IF POS OR NEG SUM
+               BLE.S   READ_TILL_POS        ;IF NEGATIVE KEEP SEARCHING
+               CLR     D4                   ;CLEAR LIMIT FLAG
+READ_POS_DONE  RTS
+READ_POS_EXIT  ST      D4                   ;SET LIMIT REACHED FLAG
+               RTS
+;
+;
+READ_TILL_NEG
+;SAME AS ABOVE ONLY WERE LOOKING FOR A NEGATIVE SUM
+;
+               CMP.L   A1,A3                ;SEE IF LIMIT REACHED
+               BEQ.S   READ_NEG_EXIT
+               BSR.S   SAMPLE_READ          ;GET SAMPLE AND PLACE IN BUFFER
+               BSR.S   SUM_BUFF
+               TST.L   D3                   ;SEE IF SUM IS NEGATIVE
+               BGE.S   READ_TILL_NEG        ;KEEP GOING UNTIL NEGATIVE
+               CLR     D4                   ;CLEAR LIMIT FLAG
+READ_NEG_DONE  RTS
+READ_NEG_EXIT  ST      D4
+               RTS
+;
+SUM_BUFF
+;SUM THE 7 BYTES IN LOOP_BUFF
+;EXIT D3=SUM
+;
+               MOVEQ   #06,D7
+               MOVE    #WASTELAND,A2        ;POINT TO BUFFER
+               CLR.L   D3
+SUM_BUFF_1     MOVE    (A2)+,D6              ;SUM UP THE BUFFER
+               EXT.L   D6
+               ADD.L   D6,D3
+               DBRA    D7,SUM_BUFF_1
+;
+               CMP.L   D0,D3                ;COMPARE NEW SUM TO MAX SUM
+               BLT.S   SUM_UP_X
+               MOVE    #WASTELAND,A2        ;FIND MOST POSITIVE VALUE IN BUFFER
+               MOVE.L  D3,D0                ;D0= NEW MAXIMUM SUM
+               MOVEQ   #06,D7
+               MOVE    #8000H,D1
+               TST     D2
+               BNE.S   SUM_DOWN             ;CHECK DIRECTION OF SEARCH
+;
+SUM_UP_1       CMP     (A2)+,D1             ;FIND ADDRESS OF GREATEST SAMPLE
+               BGT.S   SUM_UP_2
+               MOVE    -2(A2),D1            ;SAVE NEW PEAK VALUE
+               MOVEQ   #07,D6
+               SUB     D7,D6                ;SAVE OFFSET TO PEAK VALUE ADDRESS
+               MOVE.L  A1,A4
+               SUBA    D6,A4
+SUM_UP_2       DBRA    D7,SUM_UP_1
+SUM_UP_X       RTS
+;
+SUM_DOWN       CMP     (A2)+,D1
+               BGT.S   SUM_DOWN_2
+               MOVE    -2(A2),D1            ;SAVE NEW PEAK VALUE
+               MOVEQ   #07,D6
+               SUB     D7,D6
+               MOVE.L  A1,A4
+               ADDA    D6,A4
+SUM_DOWN_2     DBRA    D7,SUM_DOWN
+SUM_DOWN_X     RTS
+;
+;
+SAMPLE_READ
+;READS BYTE POINTED TO BY A1. UPDATES A1 DEPENDING ON DIRECTION OF SEARCH.
+;PLACES DATA BYTE IN LOOP_BUFF FIFO.
+;
+               MOVE    #WASTELAND,A2     ;MOVE UP WORDS 0-6  TO 1-7
+SAMP_READ_0    ADD     #12,A2
+               MOVEQ   #05,D7
+SAMP_READ_1    MOVE    -(A2),2(A2)
+               DBRA    D7,SAMP_READ_1
+               ABS_LONG
+               MOVE    RD_SAM_RAM,(A2)      ;SAVE DATA WORD IN LOOP_BUFF
+               ABS_SHORT
+               TST     D2                   ;CHECK DIRECTION OF SEARCH
+               BEQ.S   SAMP_READ_2
+               SUBQ.L  #2,A1                ;DECREMENT ADDRESS OF SAMPLE
+SAMP_READ_2    ADDQ.L  #1,A1                ;INCREMENT ADDRESS OF SAMPLE
+               RTS                          ;RETURN WITH A1=NEW SAMPLE ADDRESS
+;
+FILL_BUFF
+;FILLS LOOP_BUFF(0-6) WITH DATA FROM  SAMPLE STARTING AT A1
+;
+               MOVE    #WASTELAND,A2
+               MOVEQ   #05,D7
+               ADDA    #12,A2
+FILL_BUFF_1    CMP.L   A1,A3                ;SEE IF SEARCH LIMIT HAS BEEN REACHED
+               BEQ.S   FILL_BUFF_X          ;SPLIT IF SO
+               TST     D2                   ;CHECK DIRECTION OF SEARCH
+               BNE.S   FILL_BUFF_2
+               ADDQ.L  #2,A1                ;IF UP ADD 1 TO ADDRESS
+FILL_BUFF_2    SUBQ.L  #1,A1                ;IF DOWN SUBTRACT 1 FROM ADDRESS
+               NOP
+               NOP
+               NOP
+               NOP
+               ABS_LONG
+FILL_BUFF_3    MOVE    RD_SAM_RAM,-(A2)
+               ABS_SHORT
+               DBRA    D7,FILL_BUFF_1
+               RTS
+FILL_BUFF_X    ST      D4                   ;SET LIMIT REACHED FLAG
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;              LOOP TYPE SUBFUNCTION
+;
+LOOP_TYPE_SUB
+               ASC     "LOOP TYPE   #   "
+               ASC     "                "
+;
+;SOUND NUMBER FIELD
+;
+               DC.B    13
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CURRENT_SOUND
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    31
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+;
+;
+;ALT PARAM FIELD - NOTE THAT THIS IS A NO-EDIT FIELD
+;
+               DC.B    15
+               DC.B    1
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+DIR_PTR
+               DC.W    ALT_PARAM_FLAG
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    ALT_PARAM_STRING
+               DC.W    FIELD_END
+;
+;LOOP TYPE FIELD
+;
+               DC.B    16
+               DC.B    16
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+SET_PTR
+               DC.L    LOOP_TYPE_ACCESS
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    LOOP_TYPE_STRINGS
+               DC.W    EDIT+HI_LIMIT
+               DC.W    4
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+ED_VEC
+               DC.L    REMASK_LOOP_TYPE
+               DC.W    SUBFUN_END
+;
+;
+LOOP_TYPE_STRINGS
+               ASC     "    LOOP OFF    "
+               ASC     "SUSTAIN  --> -->"
+               ASC     "SUSTAIN   <---> "
+               ASC     "RELEASE  --> -->"
+               ASC     "RELEASE   <---> "
+;
+;
+MASK_TO_NUM_TBL
+               HEX     0,0,0,0,0,0,0,0,1,3,1,3,2,4,2,4
+;
+NUM_TO_MASK_TBL
+               HEX     0,80,0C0,90,0D0
+;
+;
+LOOP_TYPE_ACCESS       ; GOTTA POINT THE CODE TO A DUMMY VARIABLE, AND PRELOAD THAT VARAIBLE WITH
+; A NUMBER FROM 0 TO 3, BASED ON THE BITS IN S_LOOP_TYPE.  S_LOOP_TYPE IS REMASKED IN ED_VEC.
+; GIVEN THE VARIOUS STATES, THE VARIABLE IS: 0 =     LOOP OFF     = 0xmx mmmm
+;       (x = don't care)                     1 = FORWARD  SUSTAIN = 10m0 mmmm
+;                                            2 = BACK/FOR SUSTAIN = 11m0
+;       (m = masked out initially)           2 = FORWARD  RELEASE = 10m1 mmmm
+;                                            3 = BACK/FOR RELEASE = 11m1 mmmm
+; WE MASK OUT NONSENSE BITS, AND ROTATE THOSE REMAINING DOWN INTO A TABLE OFFSET TO CONVERT TO
+; 0->4.
+               ABS_LONG
+               JSR     GET_PROP_BLK_PTR     ;POINT TO CURRENT SOUND BLOCK
+               ABS_SHORT
+               MOVE.B  S_LOOP_TYPE(A0,D0),D0     ;GET THE BITS
+               ANDI    #00D0H,D0            ;MASK OUR IRRELEVANT BITS
+               LSR     #3,D0                ;ROTATE INTO AN OFFSET: 000a b0c0
+               MOVE.L  #MASK_TO_NUM_TBL,A0
+               MOVE    0(A0,D0),DI_TEMP_1_B  ;LOAD UP
+;
+               MOVE.L  #DI_TEMP_1_B,D0      ;POINT TO IT FOR OUR MASTER
+               RTS
+;
+;
+REMASK_LOOP_TYPE       ; WELL, BUNKIES, WE HAVE A 0->4 NUMBER.  GOTTA CONVERT BACK INTO A PROPER
+;MASK, AND MASK IT IN.
+               MOVE.L  D1,-(A7)
+;
+               MOVE    DI_TEMP_1_B,D0       ;GET VALUE
+               LSL     #1,D0                ;ROTATE INTO A TABLE OFFSET
+               MOVE.L  #NUM_TO_MASK_TBL,A0
+               MOVE    0(A0,D0),D1          ;SAVE MASK
+;
+               ABS_LONG
+               JSR     GET_PROP_BLK_PTR     ;POINT TO ACTIVE SUBBLOCK
+               ABS_SHORT
+               AND.B   #020H,S_LOOP_TYPE(A0,D0)  ;MASK OUT OLD STATUS BITS
+               OR.B    D1,S_LOOP_TYPE(A0,D0)     ;MASK ON NEW BITS
+;
+               MOVE.L  (A7)+,D1
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             CROSSFADE LOOPING SCREEN
+;
+XFADE_SUB
+               ASC     "XFADE LOOP: #   "
+               ASC     "           (   )"
+;
+;SOUND NUMBER FIELD
+;
+               DC.B    13
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CURRENT_SOUND
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    31
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    EDIT+ENTR_VEC
+               DC.L    INS_XFADE_LEN
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+;
+;ALT PARAM FIELD - NOTE THAT THIS IS A NO-EDIT FIELD
+;
+               DC.B    15
+               DC.B    1
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+DIR_PTR
+               DC.W    ALT_PARAM_FLAG
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    ALT_PARAM_STRING
+               DC.W    FIELD_END
+;
+;LOOP POINT/TYPE TO XFADE
+;
+               DC.B    16
+               DC.B    10
+               DC.W    ACCESS+SET_PTR
+               DC.L    SET_XFADE_TYPE
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    XFADE_TYPES
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    2
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    EDIT+ENTR_VEC
+               DC.L    INS_XFADE_LEN
+               DC.W    EDIT+ED_VEC
+               DC.L    MOD_X_LOOP_TYPES
+               DC.W    FIELD_END
+;
+;LINEAR/EQUAL POWER FIELD
+;
+               DC.B    28
+               DC.B    3
+               DC.W    ACCESS+SET_PTR
+               DC.L    ACCESS_XFADE_TYPE
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    LIN_EQU_STRINGS
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    1
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    EDIT+ENTR_VEC
+               DC.L    INS_XFADE_LEN
+               DC.W    SUBFUN_END
+;
+;
+XFADE_LEN_SUB  ASC     "  XFADE LENGTH  "
+               ASC     "                "
+;
+               DC.B    20
+               DC.B    6
+               DC.W    ACCESS+LONG
+               DC.W    ACCESS+SET_PTR
+               DC.L    ACC_XFADE_LEN
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    XFADE_LIMITS
+               DC.W    EDIT+ENTR_VEC
+               DC.L    DO_XFADE_LOOP
+               DC.W    SUBFUN_END
+;
+;
+XFADE_TYPES
+               ASC     " FORWARDS "
+               ASC     "BI (START)"
+               ASC     " BI (END) "
+;
+XFADING_SCREEN
+               ASC     " NOW PERFORMING "
+               ASC     " THE  CROSSFADE "
+;
+SORRY_CHARLIE_SCREEN
+               ASC     "CANNOT CROSSFADE"
+               ASC     " -  NOT SAMPLED "
+;
+XFADE_TRG      ASC     "CANNOT CROSSFADE"
+               ASC     "    TRIGGER     "
+;
+LIN_EQU_STRINGS
+               ASC     "LINEQU"
+;
+;
+;
+ACCESS_XFADE_TYPE
+               ANDI.B  #1,DI_TEMP_5_B       ;VALUE RANGE IS 0->1 - LIMIT OFF!
+               MOVE.L  #DI_TEMP_5_B,D0
+               RTS
+;
+;
+SET_XFADE_TYPE         ; POINT TO DUMMY VARIABLE (DI_TEMP_1_B).  ALSO SET UP DEFAULT VALUE, BASED
+; ON ACTUAL LOOP TYPE.
+               ABS_LONG
+               JSR     GET_PROP_BLK_PTR     ;POINT TO CURRENT SOUND
+               ABS_SHORT
+               CLR     DI_TEMP_1_B
+               BTST    #6,S_LOOP_TYPE(A0,D0)     ;SEE CURRENT LOOP - UNI OR BIDIRECT
+               BEQ.S   KNIFE_1
+               ADDQ.B  #1,DI_TEMP_1_B
+KNIFE_1
+               MOVE.L  #DI_TEMP_1_B,D0
+               RTS
+;
+;
+MOD_X_LOOP_TYPES       ; IF USER EDITS LOOP TYPE HERE, DO IT IN THE SOUND, TOO.
+               ABS_LONG
+               JSR     GET_PROP_BLK_PTR
+               ABS_SHORT
+               BCLR    #6,S_LOOP_TYPE(A0,D0)     ;RESET TO FORWARDS
+               TST.B   DI_TEMP_1_B               ; ACTUALLY BACK/FOR?
+               BEQ.S   HAIRY_LOOP                ;    IF NOT, KEEP
+               BSET    #6,S_LOOP_TYPE(A0,D0)     ;         ELSE, CHANGE TO BACK/FOR
+HAIRY_LOOP
+               RTS
+;
+;
+INS_XFADE_LEN  MOVE.L  #XFADE_LEN_SUB,CUR_SUB_BLOCK
+               ST      SUBFUN_INSTALL
+               RTS
+;
+ACC_XFADE_LEN  CLR.L   XFADE_LEN
+               MOVE.L  #XFADE_LEN,D0
+               RTS
+;***************************************************************************
+XFADE_LIMITS
+               MOVEM.L D0-D4/A0-A1,-(A7)
+               ABS_LONG
+               JSR     SET_ENTER_FLASH
+               JSR     GET_PROP_BLK_PTR
+               ABS_SHORT                        ;DETERMIN XFADE LOOP LIMITS
+               MOVE.B  DI_TEMP_1_B,D1
+               BEQ.S   FORWARD_LIMIT
+               CMPI.B  #1,D1
+               BEQ.S   BISTART_LIMIT
+               BRA.S   BIEND_LIMIT
+;
+;
+FORWARD_LIMIT  MOVE.L  S_LOOP_START(A0,D0),D1     ;GET LOOP START
+               SUB.L   S_START(A0,D0),D1          ;D1= A SECTION OF XFADE
+               MOVE.L  S_LOOP_END(A0,D0),D2
+               SUB.L   S_LOOP_START(A0,D0),D2     ;D2=LENGTH OF LOOP
+               LSR.L   #1,D2                      ;DIVIDE BY 2 TO GET LENGTH OF B AND C SECTIONS
+               CMP.L   D1,D2
+               BCS.S   FORWARD_LIM_1              ;SEE WHICH IS SHORTEST
+               MOVE.L  D1,D2
+FORWARD_LIM_1  MOVE.L  S_END(A0,D0),D1            ;D2=SHORTEST SECTION
+               SUB.L   S_LOOP_END(A0,D0),D1       ;D1=LENGTH OF D SECTION
+               CMP.L   D1,D2
+               BCS.S   FORWARD_LIM_2
+               MOVE.L  D1,D2
+FORWARD_LIM_2  MOVE.L  D2,PARAM_HI_LIM
+               MOVEM.L (A7)+,D0-D4/A0-A1
+               RTS
+;
+BISTART_LIMIT  MOVE.L  S_LOOP_START(A0,D0),D1
+               SUB.L   S_START(A0,D0),D1        ;D1=LENGTH OF A SECTION
+               MOVE.L  S_LOOP_END(A0,D0),D2
+               SUB.L   S_LOOP_START(A0,D0),D2   ;D2=LENGTH OF LOOP
+               LSR.L   #1,D2                    ;DIVIDED BY 2
+               CMP.L   D1,D2                    ;SEE WHICH IS SHORTEST
+               BLE.S   BISTART_LIM_1
+               MOVE.L  D1,D2                    ;D2=XFADE LENGTH
+BISTART_LIM_1  MOVE.L  D2,PARAM_HI_LIM
+               MOVEM.L (A7)+,D0-D4/A0-A1
+               RTS
+;
+BIEND_LIMIT    MOVE.L  S_END(A0,D0),D1
+               SUB.L   S_LOOP_END(A0,D0),D1     ;D1= LENGTH OF A SECTION
+               MOVE.L  S_LOOP_END(A0,D0),D2
+               SUB.L   S_LOOP_START(A0,D0),D2   ;D2=LOOP LENGTH
+               LSR.L   #1,D2                    ;DIVIDED BY 2
+               CMP.L   D1,D2
+               BLE.S   BIEND_LIM_1              ;SEE WHICH IS SHORTEST
+               MOVE.L  D1,D2
+BIEND_LIM_1    MOVE.L  D2,PARAM_HI_LIM
+               MOVEM.L (A7)+,D0-D4/A0-A1
+               RTS
+;
+;
+DO_XFADE_LOOP          ; ENTER WAS HIT - DO XFADE LOOP.  FIRST, SCALE THE WHOLE FUCKER DOWN BY
+; .707 TO AVOID CLIPPING - SCALE FROM BEGINNING TO FINISH, TO AVOID WEIRD ABBERATIONS (USER MAY
+; BE PLAYING WITH START/END TO LIMIT CROSSFADE RANGE).  THEN, "PRESERVER - DO!".
+;
+               BSR     STOP_THE_SEQUENCER   ;MAKE SURE SEQUENCER IS NOT RUNNING.
+               ABS_LONG
+               JSR     GET_PROP_BLK_PTR        ;POINT TO CURRENT BLOCK
+               ABS_SHORT
+               BTST    #SAMPLED_BIT,S_STATUS(A0) ;ONLY DO THIS ON A REAL SOUND
+               BEQ     SUCKER_NOT_SAMPLED
+               MOVE.L  S_BEGIN(A0),D1           ;SEE IF A TRIGGER SOUND
+               CMP.L   #7FFFFH,D1
+               BEQ     XFADE_BUT_TRG            ;DONT CROSSFADE IF A TRIGGER
+;
+               ABS_LONG
+               JSR     SOLID_ENTER          ;(KEEP ENTER UP WHILE DOING THIS)
+               ABS_SHORT
+               MOVE.L  #XFADING_SCREEN,A1
+;01SEP               ABS_LONG
+;01SEP               JSR     DISP_SCREEN
+;01SEP               ABS_SHORT
+               CALL    LCD_FUNS,DSP_SCRN
+;
+               TST.B   DI_TEMP_5_B          ;TEST TO LOAD UP SCALING FACTORS (LINEAR OR EQUAL POWER)
+               BNE.S   DIS_IS_EQUAL_POWER
+DIS_IS_LINEAR
+               MOVE    #8000H,BG_TEMP_1_B
+               MOVE    #8000H,BG_TEMP_3_B
+               BRA.S   GET_ON_WITH_IT_SCOTT
+DIS_IS_EQUAL_POWER
+               MOVE    #0B333H,BG_TEMP_1_B
+               MOVE    #4CCCH,BG_TEMP_3_B
+GET_ON_WITH_IT_SCOTT
+;
+               ABS_LONG
+               JSR     GET_PROP_BLK_PTR     ;POINT TO CURRENT SOUND AND SUBBLOCK
+               ABS_SHORT
+;
+               MOVE    #2700H,SR
+               MOVE    BG_TEMP_3_B,D2        ;SEE IF LINEAR OR EQUAL POWER XFADE
+               BMI.S   DO_XFADE_1            ;IF LINEAR WE DONT NEED TO SCALE DOWN THE SAMPLE BY .7
+;
+               MOVEM.L D0-D1/A0,-(A7)          ;SAVE REGS
+               MOVE.L  S_FINISH(A0),D1    ;GET START FOR SCALING
+               MOVE.L  S_BEGIN(A0),D0
+               MOVE    #7,DI_TEMP_1_B       ;SCALE FACTOR =0.7
+               ABS_LONG
+               JSR     SCALE_010            ;SCALE SAMPLE TO 0.7
+               ABS_SHORT
+               MOVEM.L (A7)+,D0-D1/A0
+;
+DO_XFADE_1     MOVE    #2700H,SR            ;DISABLE INTERRUPTS
+               ABS_LONG
+               JSR     SOLID_ENTER
+               ABS_SHORT
+               MOVE.B  DI_TEMP_1_B,D1
+               BEQ.S   FORWARD_XFADE
+               CMPI.B  #1,D1
+               BEQ     BIDIRECT_START_XFADE
+               BRA     BIDIRECT_END_XFADE
+;
+;
+;=---------------------=--------------------=-------------------------------------
+; -                  -   -                -
+;   -              -       -            -
+;  A  -          - B         - C      -   D
+;       -      -               -    -
+;         -  -                   --  .707
+;          -- .707              -  -
+;        -    -               -      -
+;  C   -        -  D        -  A       -  B
+;    -            -       -              -
+;  -                -   -                  -
+;-                    -                      -
+;---------------------------------------------------------------------------------
+;(    A    )(   B    )(    C     )(    D     )
+;
+;
+;****************************************************************************************************
+FORWARD_XFADE
+;
+;
+               MOVE.L  XFADE_LEN,D2               ;FIND SHORTEST OF 4 SECTIONS OF XFADE
+               MOVE.L  D2,A6                      ;D2=LENGTH OF SHORTEST SECTION. SAVE IN A6
+               TST.L   D2
+               BEQ     FINE_XFADE                 ;DONT DO A ZERO LENGTH XFADE
+LOOP_AC        MOVE.L  S_LOOP_START(A0,D0),D3
+               SUB.L   D2,D3                      ;D3=START OF A SECTION OF XFADE
+               ADDQ.L  #1,D3
+               MOVE.L  S_LOOP_END(A0,D0),D4
+               SUB.L   D2,D4                      ;D4=START OF C SECTION OF XFADE
+               ADDQ.L  #1,D4
+               SUB.L   A1,A1                      ;SET A/C SECTION XFADE FLAG FOR LOOP_X SUBROUTINE
+               BSR.S   LOOP_X                     ;CROSS FADE A AND C SECTIONS OF LOOP
+;
+LOOP_BD        MOVE.L  S_LOOP_END(A0,D0),D3
+               ADD.L   D2,D3                      ;D3=END OF D SECTION OF XFADE
+               SUBQ.L  #1,D3
+               MOVE.L  S_LOOP_START(A0,D0),D4
+               ADD.L   D2,D4                      ;D4=END OF B SECTION OF XFADE
+               SUBQ.L  #1,D4
+               MOVE    #0FFFFH,A1
+               BSR.S   LOOP_X                     ;LETS CROSS FADE IT
+               BRA     FINE_XFADE
+;
+;*******************************************************************************************************
+;
+;FORWARDS ONLY XFADE SUBROUTINE
+;
+;*******************************************************************************************************
+;
+LOOP_X         MOVEM.L D0-D2/A0,-(A7)
+               CLR.L   D5                         ;D5=POSITION COUNTER
+               LSR.L   #2,D2                      ;SHIFT XFADE LENGTH TO MAKE SURE ITS <= 16 BITS
+LOOP_X_0       MOVE    A1,D6
+               BNE.S   LOOP_X_1
+               MOVE.L  #80000H,D1
+               MOVE.L  D3,D0
+;
+               ABS_LONG
+               JSR     WRITE_UPWARD               ;FOR A/C SECTION DIRECTION IS UP
+               JSR     READ_UPWARD
+               BRA.S   LOOP_X_10
+LOOP_X_1       MOVE.L  D3,D1
+               CLR.L   D0
+               JSR     WRITE_DOWNWARD             ;FOR B/D SECTION DIRECTION IS DOWN
+               JSR     READ_DOWNWARD
+               ABS_SHORT
+;
+LOOP_X_10      BSR     XFADE_1                    ;XFADE IT
+;
+               MOVE    A1,D6
+               BNE.S   LOOP_X_3
+               MOVE.L  D4,D0
+               MOVE.L  #80000H,D1
+               ABS_LONG
+               JSR     READ_UPWARD
+               ABS_SHORT
+               BRA.S   LOOP_X_30
+LOOP_X_3       MOVE.L  D4,D1
+               CLR.L   D0
+               ABS_LONG
+               JSR     READ_DOWNWARD
+               ABS_SHORT
+LOOP_X_30      BSR     XFADE_2
+;
+LOOP_X_39      MOVE    A1,D6                    ;CHECK DIRECTION FLAG
+               BNE.S   LOOP_X_4
+               MOVE.L  D4,D0
+               MOVE.L  #80000H,D1
+               ABS_LONG
+               JSR     WRITE_UPWARD
+               ABS_SHORT
+               BRA.S   LOOP_X_40
+LOOP_X_4       MOVE.L  D4,D1
+               CLR.L   D0
+               ABS_LONG
+               JSR     WRITE_DOWNWARD
+               ABS_SHORT
+LOOP_X_40      BSR     XFADE_3                  ;XFADE IT
+;
+               MOVE    A1,D6
+               BNE.S   LOOP_X_5
+               ADD.L   #400H,D3                 ;BUMP UP POINTERS FOR NEXT 1K
+               ADD.L   #400H,D4
+               BRA     LOOP_X_0
+LOOP_X_5       SUB.L   #400H,D3                 ;BUMP DOWN POINTERS FOR NEXT 1K
+               SUB.L   #400H,D4
+LOOP_X_50      BRA     LOOP_X_0                 ;DO IT AGAIN
+;
+;
+;
+;
+;******************************************************************************************
+BIDIRECT_START_XFADE
+;
+               MOVE.L  XFADE_LEN,D2
+               MOVE.L  D2,A6                    ;SAVE XFADE LENGTH
+               TST.L   D2
+               BEQ.S   FINE_XFADE               ;DONT DO A ZERO LENGTH XFADE
+               MOVE.L  S_LOOP_START(A0,D0),D4   ;D4=LOOP POINT ADDRESS TO FADE AROUND
+               BSR.S   BF_XFADE
+               BRA.S   FINE_XFADE
+;
+;
+;**********************************************************************************************
+BIDIRECT_END_XFADE
+;
+               MOVE.L  XFADE_LEN,D2
+               MOVE.L  D2,A6
+               TST.L   D2
+               BEQ.S   FINE_XFADE               ;DONT DO A ZERO LENGTH XFADE
+               MOVE.L  S_LOOP_END(A0,D0),D4     ;D4=LOOP POINT TO XFADE AROUND
+               BSR.S   BF_XFADE
+;
+;******************************************************************************************
+;EXIT POINT FOR ALL XFADE SUBROUTINES
+;
+;*******************************************************************************************
+FINE_XFADE
+               MOVE    #2000H,SR            ;ENABLE  INTERRUPTS
+               BSET    #7,MISC_OUT_STAT
+               ABS_LONG
+               MOVE.B  MISC_OUT_STAT,MISC_OUT
+               ABS_SHORT                    ;4 CHIP DAISY
+               MOVE.L  #XFADE_SUB,CUR_SUB_BLOCK
+               ST      SUBFUN_INSTALL
+               BSR     WIPE_OUT_ENTER
+               RTS
+;
+;********************************************************************************
+;
+; BACKWARDS FORWARDS XFADE SUBROUTINE
+;
+;********************************************************************************
+;
+BF_XFADE       MOVEM.L D0-D2/A0,-(A7)
+               CLR.L   D5                       ;INITIALIZE POSITION POINTER
+               MOVE.L  D4,D3
+               SUB.L   D2,D3                    ;D3= START OF A SECTION
+               ADDQ.L  #1,D3
+               ADD.L   D2,D4                    ;D4=END OF B SECTION
+               SUBQ.L  #1,D4
+               MOVE.L  D2,A6                    ;SAVE XFADE LENGTH
+BF_XF_0        MOVE.L  D3,D0                    ;SETUP READ AND WRITE CHIPS
+               MOVE.L  #80000H,D1
+;
+               ABS_LONG
+;
+               JSR     READ_UPWARD              ;SET TO READ FROM A SECTION
+               JSR     WRITE_UPWARD             ;SET TO WRITE TO A SECTION
+               BSR.S   XFADE_1
+;
+               MOVE.L  D4,D1                    ;SETUP TO READ FROM B SECTION
+               CLR.L   D0
+               JSR     READ_DOWNWARD
+               BSR.S   XFADE_2                  ;XFADE IT
+;
+               MOVE.L  D4,D1
+               CLR.L   D0
+               JSR     WRITE_DOWNWARD           ;SETUP TO WRITE BSECTION
+               BSR     XFADE_3                  ;XFADE IT
+;
+               ABS_SHORT
+;
+               ADD.L   #400H,D3                 ;UP DATE POINTERS FOR NEXT 1K
+               SUB.L   #400H,D4
+               BRA     BF_XF_0                  ;DO IT AGAIN
+;
+;
+;******************************************************************************************
+;
+;ROUTINES THAT ACTUALLY READ AND CROSS FADE THE DATA
+;
+;*******************************************************************************************
+;
+XFADE_1        MOVE.L  #WASTELAND,A4              ;SET UP SCRATCH BUFFERS
+               MOVE.L  #WASTELAND_2,A5
+               MOVE    #3FFH,D7                   ;1K COUNTER
+               BSR     WAIT_DAISY                 ;DELAY FOR CHIPS ON FIRST READ
+XFADE_12       ABS_LONG
+               MOVE    RD_SAM_RAM,D0              ;GET DATA
+               ABS_SHORT
+               MOVE.L  D5,D6
+               LSR.L   #2,D6                      ;MAKE SURE <OR= 16 BITS
+               MULU    BG_TEMP_1_B,D6             ;SCALE BY .7P/X  OR .5P/X
+               DIVU    D2,D6
+               LSR     #1,D6
+               MULS    D0,D6
+               LSL.L   #1,D6
+               SWAP    D6                         ;GET INTO 16 BITS
+               MOVE    D6,(A4)+                   ;SAVE IN WASTELAND
+               MOVE.L  D5,D6                      ;SCALE A SECTION BY 1-.3P/X  OR 1-.5P/X
+               LSR.L   #2,D6
+               MULU    BG_TEMP_3_B,D6
+               DIVU    D2,D6
+               MOVE    #0FFFFH,D1
+               SUB     D6,D1
+               LSR     #1,D1
+               MULS    D0,D1
+               LSL.L   #1,D1
+               SWAP    D1
+               MOVE    D1,(A5)+                   ;SAVE IN WASTELAND_2
+               ADDQ.L  #1,D5                      ;INCREMENT POSITION
+               DBRA    D7,XFADE_12                ;DO 1K
+;
+               SUB.L   #400H,D5
+               RTS
+;
+;
+XFADE_2        MOVE.L  #WASTELAND,A4
+               MOVE.L  #WASTELAND_2,A5
+               MOVE    #3FFH,D7
+               BSR     WAIT_DAISY
+XFADE_21       CMP.L   A6,D5                    ;SEE IF WERE DONE READING C SECTION
+               BEQ     XFADE_22                 ;IF SO THEN WRITE TO C SECTION
+               ABS_LONG
+               MOVE    RD_SAM_RAM,D0            ;GET DATA BYTE
+               ABS_SHORT
+               MOVE.L  D5,D6                    ;POSITION COUNTER
+               LSR.L   #2,D6                    ;MAKE SURE ITS LESS THAN 16 BITS
+               MULU    BG_TEMP_3_B,D6           ;SCALE C SECTION BY 1-.3P/X  OR 1-.5P/X
+               DIVU    D2,D6
+               MOVE    #0FFFFH,D1
+               SUB     D6,D1
+               LSR     #1,D1
+               MULS    D0,D1
+               LSL.L   #1,D1
+               SWAP    D1
+               ADD     D1,(A4)+                 ;ADD C SECTION TO A SECTION
+               MOVE.L  D5,D6
+               LSR.L   #2,D6
+               MULU    BG_TEMP_1_B,D6           ;SCALE C SECTION BY .7P/X  OR .5P/X
+               DIVU    D2,D6
+               LSR     #1,D6
+               MULS    D0,D6
+               LSL.L   #1,D6
+               SWAP    D6
+               ADD     (A5)+,D6                 ;ADD TO A SECTION SCALED BY 1-.3P/X OR 1-.5P/X
+               ABS_LONG
+               MOVE    D6,WR_SAM_RAM            ;AND SAVE IN A SECTION OF X FADE
+               ABS_SHORT
+               ADDQ.L  #1,D5                    ;INCREMENT POSITION COUNTER
+               DBRA    D7,XFADE_21
+;
+               SUB.L   #400H,D5                 ;CORRECT POSITION COUNTER
+               RTS
+;
+XFADE_22       SUB.L   #3FFH,D5                 ;ADJUST POSITION POINTER
+               EXT.L   D7
+               ADD.L   D7,D5
+               RTS                              ;AND RETURN
+;
+;
+XFADE_3        MOVE    #3FFH,D7                 ;SET UP 1K LOOP
+               MOVE.L  #WASTELAND,A4
+               ADD.L   #0,D5
+XFADE_31
+               BSR     WAIT_DAISY               ;WAIT FOR CHIP
+               CMP.L   D5,A6                    ;SEE IF WERE DONE
+               BEQ.S   XFADE_DONE               ;EXIT IF SO
+               ABS_LONG
+               MOVE    (A4)+,WR_SAM_RAM         ;WRITE TO C SECTION
+               ABS_SHORT
+               ADDQ.L  #1,D5                    ;INCREMENT POSITION COUNTER
+               DBRA    D7,XFADE_31
+               RTS
+;
+XFADE_DONE     ADDQ.L  #4,A7                    ;POP OFF RETURN ADDRESS
+               MOVEM.L (A7)+,D0-D2/A0           ;RESTORE REGISTERS
+               RTS                              ;AND GET OUT OF THE WHOLE THING
+;
+;
+SUCKER_NOT_SAMPLED     ; SOUND NOT SAMPLED - TELL USER, STALL UNTIL S/HE TAKES FURTHER ACTION
+               ABS_LONG
+               JSR     SOLID_ENTER
+               ABS_SHORT
+               MOVE.L  #SORRY_CHARLIE_SCREEN,A1
+SUCKER_NOT_1
+;01SEP               JSR     DISP_SCREEN
+               CALL    LCD_FUNS,DSP_SCRN
+               ABS_LONG
+               JMP     USER_STALL
+;
+XFADE_BUT_TRG  LEA     XFADE_TRG,A1
+               ABS_SHORT
+               BRA     SUCKER_NOT_1
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;              SOUND PLAYBACK DIRECTION SUBFUNCTION
+;
+DIRECTION_SUB
+               ASC     "DIRECTION   #   "
+               ASC     "                "
+;
+;SOUND NUMBER FIELD
+;
+               DC.B    13
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CURRENT_SOUND
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    31
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+;
+;
+;ALT PARAM FIELD - NOTE THAT THIS IS A NO-EDIT FIELD
+;
+               DC.B    15
+               DC.B    1
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+DIR_PTR
+               DC.W    ALT_PARAM_FLAG
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    ALT_PARAM_STRING
+               DC.W    FIELD_END
+;
+;FORWARD/REVERSE FIELD
+;
+               DC.B    20
+               DC.B    7
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+SET_PTR
+               DC.L    DIRECTION_ACCESS
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    DIRECTION_STRINGS
+               DC.W    EDIT+HI_LIMIT
+               DC.W    1
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+ED_VEC
+               DC.L    CHANGE_DIRECTION
+               DC.W    SUBFUN_END
+;
+;
+DIRECTION_STRINGS
+               ASC     "FORWARD"
+               ASC     "REVERSE"
+;
+;
+; SET UP AUX_ED_PTR_1 AS A DUMMY VARIABLE FOR FOR/REV.
+; PRE-LOAD IT AS A 0-1 VALUE PER THE CORRECT SOUND CONTROL BIT FLAG.
+; EDITS TO THE DUMMY VARIABLE WILL ALSO SET BIT FLAG CORRECTLY.
+;
+DIRECTION_ACCESS
+               ABS_LONG
+               JSR     GET_PROP_BLK_PTR     ;POINT TO CURRENT SUBBLOCK
+               ABS_SHORT
+               CLR     AUX_ED_PTR_1         ;START CLEAN ON DUMMY VARIABLE
+               BTST    #5,S_LOOP_TYPE(A0,D0)     ;WHICH WAY ARE WE GOING?
+               BEQ.S   HAMMER_9             ; (CLEAR MEANS FORWARDS)
+               ADDQ    #1,AUX_ED_PTR_1
+HAMMER_9
+               MOVE.L  #AUX_ED_PTR_1,D0     ;MASTER WANTS TO KNOW WHERE WE'RE KEEPING THIS.
+               RTS
+;
+;
+; HERE, TAKE EDITED 0/1 DUMMY VALUE, AND PROPERLY MASK SOUND CONTROL BIT FLAG:
+;
+CHANGE_DIRECTION
+               ABS_LONG
+               JSR     GET_PROP_BLK_PTR     ;POINT TO CURRENT SUBBLOCK
+               ABS_SHORT
+               BCLR    #5,S_LOOP_TYPE(A0,D0)     ;CLEAR IT FOR STARTERS
+               TST     AUX_ED_PTR_1         ;FORWARDS (0) OR BACKWARDS (1)?
+               BEQ.S   HAMMER_10
+               BSET    #5,S_LOOP_TYPE(A0,D0)
+HAMMER_10
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;              VELOCITY START POINT SUBFUNCTION
+;
+VEL_START_SUB
+               ASC     " VELOCITY START "
+               ASC     "    %       #   "
+;
+;VALUE FIELD
+;
+               DC.B    16
+               DC.B    3
+               DC.W    ACCESS+SET_PTR
+               DC.L    VEL_START_PTR
+               DC.W    ACCESS+SIGNED
+               DC.W    EDIT+LO_LIMIT
+               DC.W    -99
+               DC.W    EDIT+ED_VEC
+               DC.L    SET_START_VEL_FLAG
+               DC.W    FIELD_END
+;
+;SOUND NUMBER FIELD
+;
+               DC.B    29
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CURRENT_SOUND
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    31
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+;
+;
+;ALT PARAM FIELD - NOTE THAT THIS IS A NO-EDIT FIELD
+;
+               DC.B    31
+               DC.B    1
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+DIR_PTR
+               DC.W    ALT_PARAM_FLAG
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    ALT_PARAM_STRING
+               DC.W    SUBFUN_END
+;
+;
+; POINT TO CORRECT VARIABLE TO ALTER.
+;
+VEL_START_PTR
+               ABS_LONG
+               JSR     GET_PROP_BLK_PTR     ;POINT TO CORRECT SUBBLOCK
+               ABS_SHORT
+               LEA     S_VEL_START(A0,D0),A0
+               MOVE.L  A0,D0
+               RTS
+;
+;
+; SET OR CLEAR BIT FLAG IN S_VEL_LIST ACCORDING TO WHETHER NEW VELOCITY
+; SENSITIVITY SETTING IS ZERO OR SOMETHING OTHER THAN -
+; AFFECTS VOICE INIT PATH WHEN THIS SOUND IS PLAYED.
+;
+SET_START_VEL_FLAG
+               ABS_LONG
+               JSR     GET_PROP_BLK_PTR     ;POINT TO CURRENT SOUND, SUB-BLOCK.
+               ABS_SHORT
+               LEA     0(A0,D0),A0
+               MOVE    #START_VEL_BIT,D0    ;LOAD BIT MASK FOR PLAYBACK START-POINT VEL INIT.
+               TST     PARAM_BUFFER         ;DID WE JUST SET ZERO VELOCITY SENSITIVITY?
+               BNE.S   SSV_FLAG_60          ;BRANCH IF NOT - SET BIT.
+               NOT     D0                   ;ELSE, CLEAR BIT TO SKIP VEL INIT CODE FOR THIS PARAM.
+               AND     D0,S_VEL_LIST(A0)
+               BRA.S   SSV_FLAG_EXIT
+SSV_FLAG_60
+               OR      D0,S_VEL_LIST(A0)    ;SET BIT TO USE VEL INIT CODE FOR THIS PARAM.
+SSV_FLAG_EXIT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+

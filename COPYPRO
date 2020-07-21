@@ -1,0 +1,283 @@
+********************************************************************************
+********************************************************************************
+********************************************************************************
+****                                                                        ****
+****   Name:           copypro                                              ****
+****   Description:    routines for software copy protection                ****
+****                   no assumptions about location                        ****
+****                                                                        ****
+****     Created by Matthew S. Isaacson for PointSource - 1990              ****
+****                                                                        ****
+********************************************************************************
+********************************************************************************
+********************************************************************************
+;
+;
+       .aword
+;
+       include trapdefs      ; system function access definitions.
+;
+       include lcd_funs      ; lcd/screen_buffer system function defs.
+;
+;
+;
+;
+       .export _capture_cp_key
+       .export _copypro_check
+;
+;
+       .import REAL_LONG_TIME
+       .import copypro_key
+;
+;
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;
+; copy protection version 440pro00
+;
+; here's a bunch of notes written prior to developing the code:
+;
+; decodes a16-a5 = 1...1 as enable.
+; thus, responds to addresses 1ffe0-1ffff (odd only, since ls-driven).
+; enable is used for both output enable and clock.
+; simple 4-stage shift register with a1 as input.
+; production version will use final shift reg output to drive d0 -
+; test version has preceding stages driving d3-d1 for visibility.
+;
+; structure copy pro as a function call which returns go or no-go.
+; this can be inserted wherever appropriate - eg, only in-line with
+; protected software features, provided timing constraints are met
+; - or can be a simple one time only test.
+;
+; basic strategy:  derive a random 16-bit number somehow.  use
+; successive rotates of this number, or it with ffe1h, combine with
+; 00010000h, read from resulting address, roxr the resulting byte
+; ie, move ls bit into x flag, roxr the resulting bit into a 16-bit
+; temp register.  the first four reads are garbage, serve only to
+; prime the shift register.  once the loop has been iterated 16
+; times or more, ror.w #3,tempreg should cause temp reg to match
+; seed number if sync is correct (the copy pro shift register
+; produces a four-bit shift, but the effective shift is decreased
+; by one because the data input is fed from bit 1 of the seed
+; value, rather than bit 0).  alternatively, eight iterations
+; should be adequate to fully probe shift reg for existence - use
+; masking of operands to narrow the comparison to defined bits.
+;
+; for added obscurity - read from a wide range of addresses, use
+; only those which are in the known copy pro range.  note that the
+; whole copy pro circuit can be relocated to any other 32-byte
+; section by simply changing the qualifying address pattern encoded
+; into the pal.  however, disassembly of the copy pro routine once
+; it is located will always reveal the method - only the hardware
+; itself is an obstacle at that point, so don't go too far with
+; obscurity.  assume that no one will attempt this, and hope for
+; the best.
+;
+; how about this?  user's first keystroke causes real_time to be
+; logged, for random effect.  on the first detection of real_time
+; rollover following this event, test is done using logged value.
+;
+;
+;
+;
+; here's a few notes at implementation time:
+;
+; system implemented essentially as outlined above.
+; initially, copypro_key.l is zero (from power-up memory clear).
+; REAL_LONG_TIME.L is captured upon user's first function key stroke
+; into copypro_key.l, by our routine capture_cp_key.
+; copypro_check is called periodically in background rotation.
+; when copypro_key.l is non-zero and non-negative, copypro_check watches for
+; the ms word of REAL_LONG_TIME to be different from that of copypro_key -
+; this imposes a random delay of up to about one minute from the
+; user's first keystroke.
+; at this time, the ls word of copypro_key.l is fed to copypro_test
+; for use as a random key to exercise the copy protection hardware.
+; copypro_test checks for the presence of this hardware and returns a code
+; indicating its presence or absence.
+; if present, the ms byte of copypro_key.l is set to 0ffh -
+; this disables further checking by short-circuiting copypro_check.
+; if absent, a message is displayed and an infinite loop is entered.
+;
+;
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; capture the value of REAL_LONG_TIME.L into copypro_key.l,
+; if this has not already been done.
+; we are called by the function switch branch of the switch handler.
+; all registers are preserved.
+;
+;
+_capture_cp_key
+;
+       tst.l   copypro_key        ; have we already been through this?
+       bne.s   capcpk_z0          ; exit if yes.
+       move.l  REAL_LONG_TIME,copypro_key   ; else, capture the moment.
+;
+capcpk_z0
+;
+       rts
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; check to see if a copy protection test is in order.
+; if so, execute it and act upon results.
+; failed test results in permanent hangup in this routine.
+; routine is called periodically from the highest level of background rotation,
+; thus we are not overly protective of registers - if we return at all.
+;
+;
+_copypro_check
+;
+       move.l  copypro_key,d0     ; what's our status?
+       ble.s   cpchk_z0           ; quickest exit - already passed the test,
+                                  ; if ms bit is set, or haven't yet captured
+                                  ; time of user's first function switch hit,
+                                  ; if entire value is still zero.
+;
+       swap    d0                 ; else, look at time ms word -
+       cmp.w   REAL_LONG_TIME,d0  ; has it changed since then?
+       beq.s   cpchk_z0           ; exit if not - no action yet.
+;
+                                  ; let's do it:
+       swap    d0                 ; use time tag ls word as key,
+       bsr.s   copypro_test       ; obtain result in z flag -
+       bne.s   cpchk_80           ; if false, we failed - go hang up.
+       st      copypro_key        ; else, disable further testing and exit.
+       bra.s   cpchk_z0
+;
+cpchk_80
+       lea.l   violation_screen(pc),a1      ; deliver the bad news.
+       CALL    LCD_FUNS,DSP_ENCD_SCRN
+cpchk_x0
+       bra     cpchk_x0                     ; stik 'n' stay.
+;
+cpchk_z0
+;
+cpchk_exit
+       rts
+;
+;
+;
+;      dc.b    "Copy protection "    .... this is the template ....
+;      dc.b    "   violation!   "    .... for the following .......
+;
+;      dc.b    "violation found!"    .... for the following .......
+;
+;      dc.b    "This software is"    .... this is the template ....
+;      dc.b    "an illegal copy!"    .... for the following .......
+;
+;      dc.b    "illegally copied"    .... for the following .......
+;
+violation_screen
+;
+       dc.l    "This"^0a5a5a5a5h
+       dc.l    " sof"^0a5a5a5a5h
+       dc.l    "twar"^0a5a5a5a5h
+       dc.l    "e is"^0a5a5a5a5h
+       dc.l    "an i"^0a5a5a5a5h
+       dc.l    "lleg"^0a5a5a5a5h
+       dc.l    "al c"^0a5a5a5a5h
+       dc.l    "opy!"^0a5a5a5a5h
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; do the dreaded test.
+; a test key value is passed to us in d0.w.
+; we squish it through the copy pro dealie,
+; and decide if we like what comes out.
+; if we like it, we return z flag true -
+; otherwise, we return z flag false.
+; registers are destroyed, make no assumptions.
+;
+;
+copypro_test
+;
+       moveq   #20,d1             ; shift loop iteration count -
+                                  ; minimum of 16 times to fill result reg,
+                                  ; more iterations okay.
+       moveq   #1,d2              ; create hardware address ms word.
+       swap    d2
+;
+cptst_40
+       move.w  d0,d2              ; make working copy of (rotated) seed.
+       ori.w   #0ffe1h,d2         ; set bits to create address ls word.
+       movea.l d2,a0              ; read from this address -
+       move.b  (a0),d3            ; gets us the output of copy pro hardware,
+                                  ; while feeding in a new bit via a1.
+       roxr.b  #1,d3              ; extract the newly obtained bit,
+       roxr.w  #1,d4              ; shift it into result register.
+       ror.w   #1,d0              ; rotate the seed value correspondingly.
+       dbra    d1,cptst_40        ; repeat for specified iteration count.
+;
+                                  ; all iterations done:
+       ror.w   #3,d4              ; rotate result reg to sync it with seed -
+                                  ; by 3, because seed feeds from bit 1, not 0.
+       cmp.w   d0,d4              ; match sets z flag, mismatch clears z flag -
+                                  ; this is our return result.
+;
+cptst_z0
+;
+       rts
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+

@@ -1,0 +1,1206 @@
+               INCLUDE HPFIXUPS
+               TITLE "SAMPLING MODULE"
+***************************************************************************************************
+***************************************************************************************************
+***                                                                                             ***
+***           SAMPLE - GAH, WHAT A COMPLEX BITCH THIS IS                                        ***
+***                                                                                             ***
+***************************************************************************************************
+***************************************************************************************************
+;
+NEG_EXT        EQU     0FFFFFF00H      ;USE IN MOVEQ INSTRUCTIONS WHERE ARG IS
+                                       ;80H OR LARGER - HP XASM DOES NOT HANDLE
+                                       ;SIGN-EXTEND CORRECTLY.  COSMETIC, KEEPS
+                                       ;ACTUAL BYTE VALUE CLEARER.
+;
+               INCLUDE EQUATES         ;HDW ADDR AND CONSTANT DEFS, ABS_SHORT DIRECTIVE.
+;
+               INCLUDE S_BLK_EQU       ;SOUND CONTROL BLOCK DEFINITIONS.
+;
+               GLB     SAMPLE_SET_UP
+;
+;26NOV               EXTERNAL  S_BLOCK_SIZE,S_STATUS,S_RATE
+;26NOV               EXTERNAL  S_LOOP_START,S_LOOP_END
+               EXTERNAL  V_CTRL_ADDR,V_PRIO_TIME,V_ACTIVE_SUB,V_VCA_VECTOR,V_VCF_VECTOR
+;26NOV               EXTERNAL  S_START,S_END,S_COMMON_SIZE,S_SUB_SIZE,S_BEGIN,S_FINISH
+;
+               EXTERNAL WRITE_UPWARD,VCA_OFF,VCF_OFF,VOICE_TABLE
+;
+               EXTERNAL  CURRENT_SOUND,S_BLK_00,MISC_OUT_STAT,WASTELAND,LED_OUT_STAT
+               EXTERNAL  BG_TEMP_1_B,BG_TEMP_3_B
+;04MAR               EXTERNAL  SMPTE_NOW_HR,SMPTE_NOW_MN,SMPTE_NOW_SC,SMPTE_NOW_FR
+               EXTERNAL  BG_TEMP_5_B,BG_TEMP_7_B,BG_TEMP_8_B,BG_TEMP_9_B,BG_TEMP_10_B
+               EXTERNAL  PAD_CTRL_STAT,PAD_VALUE,POT_VALUE,CONVERT_DEST
+               EXTERNAL  L4_TEMP_1_B
+;12FEB               EXTERNAL  L4_TEMP_2_B,L4_TEMP_7_B
+;
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             SOME EXPLANATION IS IN ORDER.  AS AN OVERVIEW, WE SAMPLE FROM THE ADC TO THE SAMPLE
+;              RAM.  ONE CHIP IS SET READING BEHIND THE ONE THAT IS WRITING, SO THAT WHAT IS GOING
+;              ON IS AUDIBLE.  THE 8 KIT/BAND LEDS SERVE AS A Vu METER, EACH ONE REPRESENTING ONE
+;              BIT (TOP 8) - THEREFORE, 6 db.  THE PARAMETER SLIDER IS USED FOR SETTING THE TRIGGER
+;              THRESHOLD.  CROSSING THE THRESHOLD IS INDICATED BY THE TOP 3 LEDS ACROSS THE MACHINE
+;              GOING ON.  SAMPLING IS ARMED BY HITTING THE ENTER SWITCH (AFTER WHICH, ITS LED GOES
+;              ON SOLID).  SAMPLE RATE MAY BE CHANGED IN THIS STATE BY USING THE LEFT CURSOR, 0, AND
+;              RIGHT CURSOR CONTROLS.  MASTER VOLUME IS MAINTAINED.  RECORD FORCES SAMPLING TO START.
+;              ANY OTHER SWITCH KICKS US OUT.
+;
+;             WE EXIST IN THREE STATES - BEFORE ARMING, AFTER ARMING BUT BEFORE CROSSING THE
+;              THRESHOLD, AND ACTUALLY SAMPLING.  EACH HAS A DIFFERENT SET OF ACTIONS; THEREFORE,
+;              DIFFERENT ROUTINES - NAMELY:
+;
+;             PRE-SAMPLING - UPDATE S/Hs, READ MASTER VOLUME & PARAMETER POTS (LATTER BEING THRESHOLD),
+;              DISPLAY Vu METER, FLASH IF OVER THRESHOLD, CHECK FOR SAMPLE RATE CHANGES, CHECK FOR
+;              ARMING TO SAMPLE, WRITE TO PRE-SAMPLE BUFFER, RECORD STARTS SAMPLING, ABORT ON OTHER KEYS.
+;
+;             ARMED - UPDATE S/Hs, DISPLAY Vu METER, FLASH IF OVER THRESHOLD, START SAMPLING IF RECORD
+;              HIT OR THRESHOLD CROSSES, WRITE TO PRE-SAMPLE BUFFER, ABORT ON ILLEGAL KEYS.
+;
+;             SAMPLING - UPDATE S/Hs, DISPLAY Vu METER, COUNT NUMBER OF PEAK VALUES (POSSIBLE
+;              CLIPS), WRITE TO SAMPLE MEMORY.
+;
+;             WRITTEN LINEARLY, SINCE SAMPLING IS VERY TIME-CRITICAL (ie. AT 41.667 KHz, WE HAVE
+;              ONLY 24 usec BETWEEN SAMPLES).  SINCE WE HAVE TO UPDATE THE S/Hs EVERY SO OFTEN,
+;              READ THE POTS, AND SET THE DISPLAY, EVERY 128 SAMPLES WE SPOOL OUT AND DO OUR
+;              SPECIAL ROUTINES.  ALSO HAVE TO SPACE POT READS OUT FAR ENOUGH TO ALLOW TIME TO
+;              FINISH CONVERSION.
+;
+;             THIS THING TRASHES VIRTUALLY ALL REGISTERS.  RETURNS WITH D0.B = 0FFH IF WE SAMPLED
+;              OR = 00H IF WE ABORTED, AND D5.L = NUMBER OF SAMPLES CLIPPED (IF SAMPLED).
+;
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+SAMPLE_SET_UP
+               MOVE    #2700H,SR            ;BLOCK ALL INTS - WE WILL BE  V E R Y  BUSY
+;
+               MOVEQ   #7,D0                ;SLAM ALL VOICES SHUT
+SLAM_EM_SHUT
+               MOVE    D0,A0                ;D0=VOICE WE'RE WORKING ON - TURN INTO AN OFFSET
+               ADD     A0,A0
+               MOVE    VOICE_TABLE(A0),A0   ;POINT TO CORRECT VOICE BLOCK
+               MOVE.L  V_CTRL_ADDR(A0),A1   ;NOW A1 => S/H GROUP FOR THIS VOICE
+               MOVE    #0,2(A1)             ;SLAM THE VCA DOWN
+               CLR     V_PRIO_TIME(A0)      ;DISABLE PRIORITY VECTORS
+               MOVE    V_ACTIVE_SUB(A0),A1  ;NOW A1 => ACTIVE VOICE SUB-BLOCK
+               MOVE    #VCA_OFF,V_VCA_VECTOR(A1) ;DISABLE NORMAL VECTORS
+               MOVE    #VCF_OFF,V_VCF_VECTOR(A1)
+               DBRA    D0,SLAM_EM_SHUT      ; (DO ALL 8 VOICES)
+;
+               MOVE    CURRENT_SOUND,D2     ;LOAD UP CURRENT SOUND NUMBER - IS OUR TARGET
+               MULU    #S_BLOCK_SIZE,D2     ;LOOK AT PARAMS TO FIND WHERE IT FITS
+               MOVE    D2,A6
+               ADD     #S_BLK_00,A6         ;NOW A6 => SOUND BLOCK
+;
+               MOVE.B  S_RATE(A6),D2        ;PREP PLAYBACK & SAMPLING RATE & INPUT FILTER
+               EXT     D2
+               EXT.L   D2
+               ASL     #2,D2                ;(WANNA JUMP TO CORRECT ROUTINE)
+               MOVE.L  SAMP_RATE_JMP(PC,D2),A0
+               JMP     (A0)
+;
+SAMP_RATE_JMP
+               DC.L    SAMP_RATE_16
+               DC.L    SAMP_RATE_31
+               DC.L    SAMP_RATE_42
+;
+SAMP_TRANS_TBL
+               HEX     018,00C,07
+;
+SAMP_RATE_16
+               MOVE.B  #0FEH,PITCHHI+CHIP1  ;CHANGE MONITOR PITCH
+               MOVE.B  #0,PITCHLO+CHIP1
+;
+               MOVEQ   #0,D2                ;S_RATE & FILTER SELECT
+               MOVE    #20H,D4              ;CLOCK DIVIDE
+               BRA.S   CHANGE_SAMP_RATE
+;
+SAMP_RATE_31
+               MOVE.B  #0FFH,PITCHHI+CHIP1  ;CHANGE MONITOR PITCH
+               MOVE.B  #0,PITCHLO+CHIP1
+;
+               MOVEQ   #1,D2                ;S_RATE & FILTER SELECT
+               MOVE    #10H,D4              ;CLOCK DIVIDE
+               BRA.S   CHANGE_SAMP_RATE
+;
+SAMP_RATE_42
+               MOVE.B  #0FFH,PITCHHI+CHIP1  ;CHANGE MONITOR PITCH
+               MOVE.B  #40H,PITCHLO+CHIP1
+;
+               MOVEQ   #2,D2                ;S_RATE_ & FILTER SELECT
+               MOVEQ   #0CH,D4              ;CLOCK DIVIDE
+;
+;              FALL INTO CHANGE_SAMP_RATE
+;
+CHANGE_SAMP_RATE
+               MOVE.B  #10001100B,CHIP1+MISC    ;JAM PITCH & ADDRESS, LOOP ON
+;
+               MOVE.B  D2,S_RATE(A6)        ;SAVE NEW SAMPLE RATE
+;
+               ANDI.B  #0FCH,MISC_OUT_STAT  ;MASK ON NEW INPUT FILTER SELECT
+               OR.B    D2,MISC_OUT_STAT
+               MOVE.B  MISC_OUT_STAT,MISC_OUT
+;
+               MOVE.B  #10010110B,COUNTER_CTRL   ;PREP COUNTER
+               MOVE.B  D4,COUNTER_2         ;WRITE NEW DIVIDE VALUE
+;
+;29OCT               MOVE    #SAMP_TRANS_TBL,A2   ;COMPUTE TUNE TABLE OFFSET (16KHz=24, 31KHz=12, 42KHz=7)
+;29OCT               ASL     #1,D2
+;29OCT               MOVE    0(A2,D2),D4
+;29OCT               MOVE    D4,S_RATE_TRANS(A6)
+;
+               MOVE.B  #80H,CHIP1+MISC      ;UNJAM PITCH, LOOP ON
+WARM_START
+               MOVE.L  S_BEGIN(A6),D0       ;LOAD UP SAMPLE END POINTS
+               MOVE.L  S_FINISH(A6),D1
+;
+               MOVE.L  D1,BG_TEMP_7_B          ;TEMP SAVE OF END ADDRESS, TO BE DOWNLOADED LATER
+               OR.B    #80H,BG_TEMP_8_B        ;MASK ON RIGHT ADDRESS BIT
+;
+               ADD.L   #1022,D0             ;ADD PRE-SAMPLE BUFFER SIZE TO BEGIN ADDR
+                                            ; (NOTE 1K-1, SO 1K SAMPLE SIZE DOESN'T BLOW US UP)
+               BCLR    #7,MISC_OUT_STAT     ;SET UP 2-CHANNEL DAISY CHAIN
+               MOVE.B  MISC_OUT_STAT,MISC_OUT
+               MOVE.L  #CHIP2,A0            ;SET CHIP 2 TO WRITE UPWARD
+               BSR     PREP_FOR_SAMPLE
+               MOVE.L  #CHIP1,A0            ;SET UP CHIP 1 TO TRAIL RIGHT BEHIND US
+               BSR     PREP_FOR_SAMPLE
+;
+               MOVE    #WASTELAND,A1        ;BEFORE SAMPLING ACTUALLY STARTS, PRE-SAMPLE INTO A 1K
+               MOVE    #0,D3                ; CIRCULAR BUFFER.
+;
+               CLR     D7                   ;CLEAR REGISTERS WE WILL BE USING
+               CLR     D6
+               MOVEQ   #-1,D5
+               SUB.L   D0,D1                ;CREATE SAMPLE LENGTH
+               MOVE    LED_OUT_STAT,D0      ;GET IMAGE OF LEDS
+               MOVE    D0,BG_TEMP_1_B          ; (SAVE ORIGINAL COPY FOR RESTORATION LATER)
+;
+               MOVE.B  #10011000B,MISC+CHIP1     ;JAM ADDRESS, SINGLE STEP ON READ CHIP - WANT TO
+;
+; COPY OUT FIRST TWO SAMPLES.  IF WE DON'T ACTUALLY SAMPLE, HAVE TO REPLACE THEM (WILL BE WRITING
+; TO THESE 2 SAMPLES FOR OUR PRE-SAMPLE MONITOR LOOP).
+;
+;881025               REPT    16
+               .FOR COUNT = 1,16
+               NOP                          ;(PAUSE FOR CHIP TO DOWNLOAD NEW STATE)
+               .ENDFOR
+
+               MOVE.B  #10010000B,MISC+CHIP1     ;UNJAM ADDRESS (NOW AT LEFT BOUNDRY)
+HUGGING_1
+               TST     SWITCH_INPUT         ;SYNCHRONIZE TO SAMP CLOCK TO MAKE SURE READS ARE SPACED ENUF
+               BPL     HUGGING_1
+               TST     SAMPLE_ADC           ;(CLEAR OUT ADC EOC)
+               MOVE    RD_SAM_RAM,BG_TEMP_3_B  ;FOIRST WORD
+HUGGING_2
+               TST     SWITCH_INPUT         ;..AGAIN...!
+               BPL     HUGGING_2
+               TST     SAMPLE_ADC
+               MOVE    RD_SAM_RAM,BG_TEMP_5_B  ;SERCOND WORD (NOW POINTING TO 1st AGAIN - 2 SAMP LOOP)
+;
+; KEEP PLAYBACK CHIP PARKED ON 1st WORD UNTIL READ GETS AHEAD.
+;
+PRE_S_100
+               TST     SWITCH_INPUT         ;GET THE WRITE CHIP AHEAD OF US IN 2-BYTE LOOP
+               BPL     PRE_S_100
+;
+               MOVE    SAMPLE_ADC,D4
+               MOVE    D4,WR_SAM_RAM       ;WRITE VALUE
+PRE_S_101
+               TST     SWITCH_INPUT         ;ADC END-OF-CONVERSION ON TOP BIT OF SWITCH_INPUT
+               BPL     PRE_S_101            ; (LOOP UNTIL NEW SAMPLE READY)
+;
+               MOVE    SAMPLE_ADC,D4
+               MOVE    D4,WR_SAM_RAM
+;
+               MOVE.B  #80H,MISC(A0)        ;FINALLY - LET MONITOR CHIP CLOCK ON ITS OWN FOR
+; PLAYBACK (SAMPLE AND PLAYBACK RATES SHOULD BE MATCHED)
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;              TO REVIEW THE REGISTER USEAGE:
+;
+;              D0 = LED MASK                D1 = SAMPLE COUNT-DOWN
+;              D2 = free use                D3 = PRE-SAMPLE BUFFER POINTER
+;              D4 = LATEST SAMPLE RCVed     D5 = TRIGGER THRESHOLD
+;              D6 = MAX SAMPLE VALUE MASK   D7 = SAMPLE SERVICING LOOP COUNT
+;
+;              A1 => PRE-SAMPLE BUFFER      A6 => CURRENT SOUND BLOCK
+;
+;             NOW, WE START PRE-SAMPLING.  THE CUSTOM CHIPS ARE JAMMED AT THE START OF THE SAPLE
+;              LOCATION.  WE ARE SAMPLING INTO THE PRE-BUFFER.  KEEPING TRACK OF MAX VALUE, FOR Vu
+;              DISPLAY.  MONITORING CHANGES IN THRESHOLD & SAMPLE RATE.  KEEPING UP S/Hs FOR VOICE
+;              0 (OUR MONITOR VOICE) AND MASTER VOLUME.  LOOKING FOR ORDER TO EITHER ARM OR TO ABORT.
+;
+TOP_O_PRE_SAMP
+               CLR     D5                   ;START WITH A CLEAN SLATE ON THRESHOLD
+               MOVE.B  READ_CTRL,D5         ;READ PARAMETER SLIDER AS THRESHOLD
+               LSR.B   #1,D5                ;ROTATE SO THAT MAX VALUE = 7FH (MAX SAMPLE = 7FF0H).
+;
+               EXT     D5                   ; CLEAN UP - WILL BE SQUARING LATER
+;
+               TST     SELECT_CTRL+4        ;START MASTER VOLUME POT CONVERSION
+PRE_SAMP_LOOP
+PRE_S_1
+               TST     SWITCH_INPUT         ;ADC END-OF-CONVERSION ON TOP BIT OF SWITCH_INPUT
+               BPL     PRE_S_1              ; (LOOP UNTIL NEW SAMPLE READY)
+;
+               MOVE    SAMPLE_ADC,D4        ;READ MOST RECENT VALUE
+               MOVE    D4,WR_SAM_RAM       ;WRITE VALUE (NOTE - JAMMED AT THIS ADDRESS; NOT SAMPLING YET)
+               MOVE    D4,0(A1,D3)          ; ALSO WRITE SAMPLE TO PRE-SAMPLE BUFFER
+;
+               BPL.S   PRE_S_2              ;NEXT - REMOVE SIGN
+               EORI    #0FFF0H,D4
+PRE_S_2
+               EXT.L   D4
+               ADD.L   D4,D6                ;ADD IN SAMPLE VALUE, FOR RUNNING AVERAGE
+;
+               ADDQ    #2,D3                ;INC & WRAP PRE_SAMP_BUFF POINTER
+               ANDI    #7FFH,D3
+               ADDQ    #1,D7                ;INC NUMBER OF SAMPLE WE'RE ON
+               ANDI    #7FH,D7
+               BNE     PRE_SAMP_LOOP        ; EVERY 128th SAMPLE, SPOOL OUT TO DO SPECIAL FUNCTIONS
+                                            ;    ELSE, KEEP DOIN' SIMPLE STUFF
+;
+PRE_SPECIAL_FUNC       ;NEED TO READ NEW THRESHOLD & MASTER VOLUME, PLUS SEE IF WE ARE ARMED YET
+;ALSO NOTE THAT THE ADC NEEDS OVER 200 usec TO CONVERT, SO WE GOTTA DO AT LEAST 9 SAMPLES (9 * 24
+;usec, AT 42 KHz) BETWEEN STARTING THE PARAMETER SLIDER CONVERSION AND READING IT.
+;
+               MOVE.B  READ_CTRL,D4         ;READ MASTER VOLUME (CONVERSION STARTED EARLIER)
+               ASL     #8,D4                ; ROTATE INTO A RIGHTOUS VALUE
+               MOVE    D4,VOLUME_OUT
+;12FEB               MOVE    D4,L4_TEMP_7_B       ;  KEEP COPY OF VOLUME, FOR DURING TRESHOLD STUFF
+               MOVE    D4,L4_TEMP_1_B+6     ;  KEEP COPY OF VOLUME, FOR DURING TRESHOLD STUFF
+               TST     SELECT_CTRL+2        ;START A READ OF THE PARAMETER SLIDER (FOR THRESHOLD)
+;
+PRE_S_11
+               TST     SWITCH_INPUT         ;ADC END-OF-CONVERSION ON TOP BIT OF SWITCH_INPUT
+               BPL     PRE_S_11             ; (LOOP UNTIL NEW SAMPLE READY)
+;
+               MOVE    SAMPLE_ADC,D4        ;READ MOST RECENT VALUE
+               MOVE    D4,WR_SAM_RAM       ;WRITE VALUE (NOTE - JAMMED AT THIS ADDRESS; NOT SAMPLING YET)
+               MOVE    D4,0(A1,D3)          ; ALSO WRITE SAMPLE TO PRE-SAMPLE BUFFER
+;
+               BPL.S   PRE_S_21             ;NEXT - REMOVE SIGN
+               EORI    #0FFF0H,D4
+PRE_S_21
+               EXT.L   D4
+               ADD.L   D4,D6                ;ADD IN VALUE FOR AVERAGING
+;
+               ADDQ    #2,D3                ;INC & WRAP PRE_SAMP_BUFF POINTER
+               ANDI    #7FFH,D3
+               ADDQ    #1,D7                ;INC NUMBER OF SAMPLE WE'RE ON
+               ANDI    #7FH,D7
+;
+               MOVE    #0FFF0H,VCF_0        ;KEEP VCF WIDE OPEN FOR MONITORING
+;
+               MULU    D5,D5                ;SQUARE THRESH TO MATCH 'EXPONENIAL' PEAK MASK WE'RE CREATING
+;
+;
+PRE_S_12
+               TST     SWITCH_INPUT         ;ADC END-OF-CONVERSION ON TOP BIT OF SWITCH_INPUT
+               BPL     PRE_S_12             ; (LOOP UNTIL NEW SAMPLE READY)
+;
+               MOVE    SAMPLE_ADC,D4        ;READ MOST RECENT VALUE
+               MOVE    D4,WR_SAM_RAM       ;WRITE VALUE (NOTE - JAMMED AT THIS ADDRESS; NOT SAMPLING YET)
+               MOVE    D4,0(A1,D3)          ; ALSO WRITE SAMPLE TO PRE-SAMPLE BUFFER
+;
+               BPL.S   PRE_S_22             ;NEXT - REMOVE SIGN
+               EORI    #0FFF0H,D4
+PRE_S_22
+               EXT.L   D4
+               ADD.L   D4,D6                ;ADD IN VALUE FOR AVERAGING
+;
+               ADDQ    #2,D3                ;INC & WRAP PRE_SAMP_BUFF POINTER
+               ANDI    #7FFH,D3
+               ADDQ    #1,D7                ;INC NUMBER OF SAMPLE WE'RE ON
+               ANDI    #7FH,D7
+;
+               TST.B   SWITCH_INPUT+1       ;LOOK FOR ILLEGAL SWITCH HITS - THEY ABORT US
+               BNE     ABORT_SAMPLING       ;(THESE ARE THE FUNCTION-SELECT SWITCHES).
+               TST.B   SWITCH_INPUT+3
+               BNE     ABORT_SAMPLING
+               TST.B   SWITCH_INPUT+5
+               BNE     ABORT_SAMPLING
+;
+PRE_S_13
+               TST     SWITCH_INPUT         ;ADC END-OF-CONVERSION ON TOP BIT OF SWITCH_INPUT
+               BPL     PRE_S_13             ; (LOOP UNTIL NEW SAMPLE READY)
+;
+               MOVE    SAMPLE_ADC,D4        ;READ MOST RECENT VALUE
+               MOVE    D4,WR_SAM_RAM       ;WRITE VALUE (NOTE - JAMMED AT THIS ADDRESS; NOT SAMPLING YET)
+               MOVE    D4,0(A1,D3)          ; ALSO WRITE SAMPLE TO PRE-SAMPLE BUFFER
+;
+               BPL.S   PRE_S_23             ;NEXT - REMOVE SIGN
+               EORI    #0FFF0H,D4
+PRE_S_23
+               EXT.L   D4
+               ADD.L   D4,D6                ;ADD IN VALUE FOR AVERAGING
+;
+               ADDQ    #2,D3                ;INC & WRAP PRE_SAMP_BUFF POINTER
+               ANDI    #7FFH,D3
+               ADDQ    #1,D7                ;INC NUMBER OF SAMPLE WE'RE ON
+               ANDI    #7FH,D7
+;
+               MOVE    #0FFF0H,VCA_0        ;KEEP MONITOR CHANNEL VCA OPEN
+;
+               LSR     #7,D5                ; (FINISH PREPPING THRESHOLD FOR COMPARE)
+;
+;
+PRE_S_14
+               TST     SWITCH_INPUT         ;ADC END-OF-CONVERSION ON TOP BIT OF SWITCH_INPUT
+               BPL     PRE_S_14             ; (LOOP UNTIL NEW SAMPLE READY)
+;
+               MOVE    SAMPLE_ADC,D4        ;READ MOST RECENT VALUE
+               MOVE    D4,WR_SAM_RAM       ;WRITE VALUE (NOTE - JAMMED AT THIS ADDRESS; NOT SAMPLING YET)
+               MOVE    D4,0(A1,D3)          ; ALSO WRITE SAMPLE TO PRE-SAMPLE BUFFER
+;
+               BPL.S   PRE_S_24             ;NEXT - REMOVE SIGN
+               EORI    #0FFF0H,D4
+PRE_S_24
+               EXT.L   D4
+               ADD.L   D4,D6                ;ADD IN VALUE FOR AVERAGING
+;
+               ADDQ    #2,D3                ;INC & WRAP PRE_SAMP_BUFF POINTER
+               ANDI    #7FFH,D3
+               ADDQ    #1,D7                ;INC NUMBER OF SAMPLE WE'RE ON
+               ANDI    #7FH,D7
+;
+               TST.B   SWITCH_INPUT+7       ;LOOKING ONWARD FOR ILLEGAL SWITCHES (ABORT ON THEM)
+               BNE     ABORT_SAMPLING       ;(THOSE WERE DECIMAL KEYPAD 1-8).
+               MOVE    SWITCH_INPUT+10,D4   ;ONLY LEGAL TARE TRANS SWITCH IS RECORD - FORCES SAMPLING
+               BCLR    #1,D4                ; TO BEGIN.
+               BNE     START_SAMPLING
+               TST.B   D4
+               BNE     ABORT_SAMPLING
+               TST.B   SWITCH_INPUT+13      ;(TEMPO, KIT, ALT PARAMS, AUTOREPEAT).
+               BNE     ABORT_SAMPLING
+;
+PRE_S_15
+               TST     SWITCH_INPUT         ;ADC END-OF-CONVERSION ON TOP BIT OF SWITCH_INPUT
+               BPL     PRE_S_15             ; (LOOP UNTIL NEW SAMPLE READY)
+;
+               MOVE    SAMPLE_ADC,D4        ;READ MOST RECENT VALUE
+               MOVE    D4,WR_SAM_RAM       ;WRITE VALUE (NOTE - JAMMED AT THIS ADDRESS; NOT SAMPLING YET)
+               MOVE    D4,0(A1,D3)          ; ALSO WRITE SAMPLE TO PRE-SAMPLE BUFFER
+;
+               BPL.S   PRE_S_25             ;NEXT - REMOVE SIGN
+               EORI    #0FFF0H,D4
+PRE_S_25
+               EXT.L   D4
+               ADD.L   D4,D6                ;ADD IN VALUE FOR AVERAGING
+;
+               ADDQ    #2,D3                ;INC & WRAP PRE_SAMP_BUFF POINTER
+               ANDI    #7FFH,D3
+               ADDQ    #1,D7                ;INC NUMBER OF SAMPLE WE'RE ON
+               ANDI    #7FH,D7
+;
+               SWAP    D6                   ;MAX VALUE x 127 TRIES = IS 3F7810.  MAKE xx xx xx FF
+               MOVE    D6,D2                ;SAVE OFF A BIT FOR MASKING BACK IN TO FILL BOTTOM OF DISPLAY
+               ROL.L   #1,D6
+               OR      D2,D6
+               ROL.L   #1,D6
+               OR      D2,D6
+;
+               ROXL.B  #1,D6                ;ROTATE BACKWARDS INTO DISPLAY LEDS
+               ROXR.B  #1,D0                ; (ROTATING OFF TOP OF PEAK, INTO 8 KIT/BANK LED LOCATIONS)
+               ROXL.B  #1,D6
+               ROXR.B  #1,D0
+               ROXL.B  #1,D6
+               ROXR.B  #1,D0
+               ROXL.B  #1,D6
+               ROXR.B  #1,D0                ;(PAUSE AT HALF-WAY POINT TO DO ANOTHER SAMPLE)
+;
+;
+PRE_S_16
+               TST     SWITCH_INPUT         ;ADC END-OF-CONVERSION ON TOP BIT OF SWITCH_INPUT
+               BPL     PRE_S_16             ; (LOOP UNTIL NEW SAMPLE READY)
+;
+               MOVE    SAMPLE_ADC,D4        ;READ MOST RECENT VALUE
+               MOVE    D4,WR_SAM_RAM       ;WRITE VALUE (NOTE - JAMMED AT THIS ADDRESS; NOT SAMPLING YET)
+               MOVE    D4,0(A1,D3)          ; ALSO WRITE SAMPLE TO PRE-SAMPLE BUFFER
+;
+               BPL.S   PRE_S_26             ;NEXT - REMOVE SIGN
+               EORI    #0FFF0H,D4
+PRE_S_26
+               ADDQ    #2,D3                ;INC & WRAP PRE_SAMP_BUFF POINTER
+               ANDI    #7FFH,D3
+               ADDQ    #1,D7                ;INC NUMBER OF SAMPLE WE'RE ON
+               ANDI    #7FH,D7
+;
+               ROXL.B  #1,D6                ;FINISH ROTATING PEAK VALUE INTO KIT/BANK LEDS
+               ROXR.B  #1,D0
+               ROXL.B  #1,D6
+               ROXR.B  #1,D0
+               ROXL.B  #1,D6
+               ROXR.B  #1,D0
+               ROXL.B  #1,D6
+               ROXR.B  #1,D0
+;
+;\\\\\\\\\\
+;05DEC               MOVE.B  D5,L4_TEMP_1_B
+;05DEC               MOVE.B  D6,L4_TEMP_2_B
+;//////////
+               CMP.B   D5,D6                ;SEE IF MEASURED PEAK CROSSED THRESHOLD
+               BCS.S   NO_CROSS             ;    IF NOT, LEAVE TOP LEDs BLANK
+               ORI     #700H,D0             ;         ELSE, MASK TOP LEDs ON AS THRESHOLD INDICATOR
+NO_CROSS
+               CLR.L   D6                   ;RESET PEAK VALUE REGISTER
+;
+PRE_S_17
+               TST     SWITCH_INPUT         ;ADC END-OF-CONVERSION ON TOP BIT OF SWITCH_INPUT
+               BPL     PRE_S_17             ; (LOOP UNTIL NEW SAMPLE READY)
+;
+               MOVE    SAMPLE_ADC,D4        ;READ MOST RECENT VALUE
+               MOVE    D4,WR_SAM_RAM       ;WRITE VALUE (NOTE - JAMMED AT THIS ADDRESS; NOT SAMPLING YET)
+               MOVE    D4,0(A1,D3)          ; ALSO WRITE SAMPLE TO PRE-SAMPLE BUFFER
+;
+               BPL.S   PRE_S_27             ;NEXT - REMOVE SIGN
+               EORI    #0FFF0H,D4
+PRE_S_27
+               EXT.L   D4
+               ADD.L   D4,D6                ;ADD IN VAL FOR AVERAGING
+;
+               ADDQ    #2,D3                ;INC & WRAP PRE_SAMP_BUFF POINTER
+               ANDI    #7FFH,D3
+               ADDQ    #1,D7                ;INC NUMBER OF SAMPLE WE'RE ON
+               ANDI    #7FH,D7
+;
+               MOVE    D0,D2                ;UPDATE LEDs
+               NOT     D2                   ;HARDWARE REQUIRES US TO INVERT
+               MOVE    D2,LED_OUTPUT        ;DISPLAY UPDATED LEDS
+;881025               ANDI    #.NT.500H,D0         ;CLEAR OUT LED MASK THAT INDICATES THRESHOLD CROSSED
+               ANDI    #~500H,D0            ;CLEAR OUT LED MASK THAT INDICATES THRESHOLD CROSSED
+;
+PRE_S_18
+               TST     SWITCH_INPUT         ;ADC END-OF-CONVERSION ON TOP BIT OF SWITCH_INPUT
+               BPL     PRE_S_18             ; (LOOP UNTIL NEW SAMPLE READY)
+;
+               MOVE    SAMPLE_ADC,D4        ;READ MOST RECENT VALUE
+               MOVE    D4,WR_SAM_RAM       ;WRITE VALUE (NOTE - JAMMED AT THIS ADDRESS; NOT SAMPLING YET)
+               MOVE    D4,0(A1,D3)          ; ALSO WRITE SAMPLE TO PRE-SAMPLE BUFFER
+;
+               BPL.S   PRE_S_28             ;NEXT - REMOVE SIGN
+               EORI    #0FFF0H,D4
+PRE_S_28
+               EXT.L   D4
+               ADD.L   D4,D6                ;ADD IN VALUE FOR AVERAGING
+;
+               ADDQ    #2,D3                ;INC & WRAP PRE_SAMP_BUFF POINTER
+               ANDI    #7FFH,D3
+               ADDQ    #1,D7                ;INC NUMBER OF SAMPLE WE'RE ON
+               ANDI    #7FH,D7
+;
+               MOVE    #8000H,PAN_0         ;KEEP UP PAN S/H (CENTERED)
+;
+PRE_S_19
+               TST     SWITCH_INPUT         ;ADC END-OF-CONVERSION ON TOP BIT OF SWITCH_INPUT
+               BPL     PRE_S_19             ; (LOOP UNTIL NEW SAMPLE READY)
+;
+               MOVE    SAMPLE_ADC,D4        ;READ MOST RECENT VALUE
+               MOVE    D4,WR_SAM_RAM       ;WRITE VALUE (NOTE - JAMMED AT THIS ADDRESS; NOT SAMPLING YET)
+               MOVE    D4,0(A1,D3)          ; ALSO WRITE SAMPLE TO PRE-SAMPLE BUFFER
+;
+               BPL.S   PRE_S_29             ;NEXT - REMOVE SIGN
+               EORI    #0FFF0H,D4
+PRE_S_29
+               EXT.L   D4
+               ADD.L   D4,D6                ;ADD IN VALUE FOR AVERAGING
+;
+               ADDQ    #2,D3                ;INC & WRAP PRE_SAMP_BUFF POINTER
+               ANDI    #7FFH,D3
+               ADDQ    #1,D7                ;INC NUMBER OF SAMPLE WE'RE ON
+               ANDI    #7FH,D7
+;
+               MOVE    SWITCH_INPUT+8,D4    ;NOW - CHECK OUT ACTION SWITCHES!
+               BTST    #3,D4                ;CURSOR RIGHT MEANS 42 KHz SAMPLE RATE
+               BNE     SAMP_RATE_42
+               BTST    #0,D4                ;0 MEANS 31 KHz SAMPLE RATE
+               BNE     SAMP_RATE_31
+               BTST    #2,D4                ;CURSOR LEFT MEANS 16 KHz SAMPLE RATE
+               BNE     SAMP_RATE_16
+               BTST    #7,D4                ;ENTER MEANS ARM SAMPLING
+               BEQ     TOP_O_PRE_SAMP       ; (IF NOT DEPRESSED, MERELY CONTINUE)
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;AT THIS POINT IN LIFE, SAMPLING BE ARMED
+;
+;
+ARMED_FOR_BATTLE
+               MOVE    #7FH,D5              ;CLEANOUT OLD THRESHOLD COMPARE
+               CLR.L   D6                   ;START WITH CLEAN SAMPLE-AVERAGING SLATE
+               BSET    #11,D0               ;SET ENTER LED ON AS INDICATOR
+;
+               MOVE.B  READ_CTRL,D4         ;RESTART PARAMETER POT/THRESHOLD READ
+               TST     SELECT_CTRL+2
+ARMED_LOOP
+ARM_S_1
+               TST     SWITCH_INPUT         ;ADC END-OF-CONVERSION ON TOP BIT OF SWITCH_INPUT
+               BPL     ARM_S_1              ; (LOOP UNTIL NEW SAMPLE READY)
+;
+               MOVE    SAMPLE_ADC,D4        ;READ MOST RECENT VALUE
+               MOVE    D4,WR_SAM_RAM       ;WRITE VALUE (NOTE - JAMMED AT THIS ADDRESS; NOT SAMPLING YET)
+               MOVE    D4,0(A1,D3)          ; ALSO WRITE SAMPLE TO PRE-SAMPLE BUFFER
+;
+               BPL.S   ARM_S_2              ;NEXT - REMOVE SIGN
+               EORI    #0FFF0H,D4
+ARM_S_2
+               EXT.L   D4
+               ADD.L   D4,D6                ;ADD IN VALUE - WILL AVERAGE THESE 128 SAMPLES
+;
+               ADDQ    #2,D3                ;INC & WRAP PRE_SAMP_BUFF POINTER
+               ANDI    #7FFH,D3
+               ADDQ    #1,D7                ;INC NUMBER OF SAMPLE WE'RE ON
+               ANDI    #7FH,D7
+               BNE     ARMED_LOOP           ; EVERY 128th SAMPLE, SPOOL OUT TO DO SPECIAL FUNCTIONS
+                                            ;    ELSE, KEEP DOIN' SIMPLE STUFF
+;
+ARMED_SPEC_FUNC        ;NEED TO KEEP DISPLAYING THRESHOLD CROSSING AND Vu METER.  ENTER BUTTON OR
+;CROSSING THRESHOLD STARTS SAMPLING.  ANY OTHER BUTTON ABORTS.  KEEP UP MONITOR VOICE VCA, VCF, AND
+;PAN, BUT SERVICE ONLY THRESHOLD SLIDER (FORGET MASTER VOL AT THIS POINT).
+;
+ARM_S_11
+;12FEB               MOVE    L4_TEMP_7_B,VOLUME_OUT    ;KEEP UP MAIN VCA
+               MOVE    L4_TEMP_1_B+6,VOLUME_OUT  ;KEEP UP MAIN VCA
+;
+               TST     SWITCH_INPUT         ;ADC END-OF-CONVERSION ON TOP BIT OF SWITCH_INPUT
+               BPL     ARM_S_11             ; (LOOP UNTIL NEW SAMPLE READY)
+;
+               MOVE    SAMPLE_ADC,D4        ;READ MOST RECENT VALUE
+               MOVE    D4,WR_SAM_RAM       ;WRITE VALUE (NOTE - JAMMED AT THIS ADDRESS; NOT SAMPLING YET)
+               MOVE    D4,0(A1,D3)          ; ALSO WRITE SAMPLE TO PRE-SAMPLE BUFFER
+;
+               BPL.S   ARM_S_21             ;NEXT - REMOVE SIGN
+               EORI    #0FFF0H,D4
+ARM_S_21
+               EXT.L   D4
+               ADD.L   D4,D6                ;ADD IN VAL FOR AVERAGE
+;
+               ADDQ    #2,D3                ;INC & WRAP ARM_SAMP_BUFF POINTER
+               ANDI    #7FFH,D3
+               ADDQ    #1,D7                ;INC NUMBER OF SAMPLE WE'RE ON
+               ANDI    #7FH,D7
+;
+               MOVE    #0FFF0H,VCF_0        ;KEEP VCF WIDE OPEN FOR MONITORING
+;
+               MULU    D5,D5                ; (GOTTA SQUARE TO MATCH PEAK MASK'S EXPONENTIAL CURVE)
+;
+;
+ARM_S_12
+               TST     SWITCH_INPUT         ;ADC END-OF-CONVERSION ON TOP BIT OF SWITCH_INPUT
+               BPL     ARM_S_12             ; (LOOP UNTIL NEW SAMPLE READY)
+;
+               MOVE    SAMPLE_ADC,D4        ;READ MOST RECENT VALUE
+               MOVE    D4,WR_SAM_RAM       ;WRITE VALUE (NOTE - JAMMED AT THIS ADDRESS; NOT SAMPLING YET)
+               MOVE    D4,0(A1,D3)          ; ALSO WRITE SAMPLE TO PRE-SAMPLE BUFFER
+;
+               BPL.S   ARM_S_22             ;NEXT - REMOVE SIGN
+               EORI    #0FFF0H,D4
+ARM_S_22
+               EXT.L   D4
+               ADD.L   D4,D6                ;ADD IN
+;
+               ADDQ    #2,D3                ;INC & WRAP ARM_SAMP_BUFF POINTER
+               ANDI    #7FFH,D3
+               ADDQ    #1,D7                ;INC NUMBER OF SAMPLE WE'RE ON
+               ANDI    #7FH,D7
+;
+               TST.B   SWITCH_INPUT+1       ;LOOK FOR ILLEGAL SWITCH HITS - THEY ABORT US
+               BNE     ABORT_SAMPLING       ;(THESE ARE THE FUNCTION-SELECT SWITCHES).
+               TST.B   SWITCH_INPUT+3
+               BNE     ABORT_SAMPLING
+               TST.B   SWITCH_INPUT+5
+               BNE     ABORT_SAMPLING
+;
+ARM_S_13
+               TST     SWITCH_INPUT         ;ADC END-OF-CONVERSION ON TOP BIT OF SWITCH_INPUT
+               BPL     ARM_S_13             ; (LOOP UNTIL NEW SAMPLE READY)
+;
+               MOVE    SAMPLE_ADC,D4        ;READ MOST RECENT VALUE
+               MOVE    D4,WR_SAM_RAM       ;WRITE VALUE (NOTE - JAMMED AT THIS ADDRESS; NOT SAMPLING YET)
+               MOVE    D4,0(A1,D3)          ; ALSO WRITE SAMPLE TO PRE-SAMPLE BUFFER
+;
+               BPL.S   ARM_S_23             ;NEXT - REMOVE SIGN
+               EORI    #0FFF0H,D4
+ARM_S_23
+               EXT.L   D4
+               ADD.L   D4,D6                ;YEAH, ADD IN TO AVEARGE
+;
+               ADDQ    #2,D3                ;INC & WRAP ARM_SAMP_BUFF POINTER
+               ANDI    #7FFH,D3
+               ADDQ    #1,D7                ;INC NUMBER OF SAMPLE WE'RE ON
+               ANDI    #7FH,D7
+;
+               MOVE    #0FFF0H,VCA_0        ;KEEP MONITOR CHANNEL VCA OPEN
+;
+               LSR     #7,D5                ;FINISH PREPPING THRESHOLD FO COMPARE
+;
+;
+ARM_S_14
+               TST     SWITCH_INPUT         ;ADC END-OF-CONVERSION ON TOP BIT OF SWITCH_INPUT
+               BPL     ARM_S_14             ; (LOOP UNTIL NEW SAMPLE READY)
+;
+               MOVE    SAMPLE_ADC,D4        ;READ MOST RECENT VALUE
+               MOVE    D4,WR_SAM_RAM       ;WRITE VALUE (NOTE - JAMMED AT THIS ADDRESS; NOT SAMPLING YET)
+               MOVE    D4,0(A1,D3)          ; ALSO WRITE SAMPLE TO PRE-SAMPLE BUFFER
+;
+               BPL.S   ARM_S_24             ;NEXT - REMOVE SIGN
+               EORI    #0FFF0H,D4
+ARM_S_24
+               EXT.L   D4
+               ADD.L   D4,D6                ;ADD IN VAL FOR AVENGING
+;
+               ADDQ    #2,D3                ;INC & WRAP ARM_SAMP_BUFF POINTER
+               ANDI    #7FFH,D3
+               ADDQ    #1,D7                ;INC NUMBER OF SAMPLE WE'RE ON
+               ANDI    #7FH,D7
+;
+               TST.B   SWITCH_INPUT+7       ;LOOKING ONWARD FOR ILLEGAL SWITCHES (ABORT ON THEM)
+               BNE     ABORT_SAMPLING       ;(THOSE WERE DECIMAL KEYPAD 1-8).
+               MOVE    SWITCH_INPUT+10,D4   ;ONLY LEGAL TAPE TRANS SWITCH IS RECORD - FORCES SAMPLING
+               BCLR    #1,D4                ; TO BEGIN.
+               TST.B   D4
+               BNE     ABORT_SAMPLING
+               TST.B   SWITCH_INPUT+13      ;(TEMPO, KIT, ALT PARAMS, AUTOREPEAT).
+               BNE     ABORT_SAMPLING
+;
+ARM_S_15
+               TST     SWITCH_INPUT         ;ADC END-OF-CONVERSION ON TOP BIT OF SWITCH_INPUT
+               BPL     ARM_S_15             ; (LOOP UNTIL NEW SAMPLE READY)
+;
+               MOVE    SAMPLE_ADC,D4        ;READ MOST RECENT VALUE
+               MOVE    D4,WR_SAM_RAM       ;WRITE VALUE (NOTE - JAMMED AT THIS ADDRESS; NOT SAMPLING YET)
+               MOVE    D4,0(A1,D3)          ; ALSO WRITE SAMPLE TO PRE-SAMPLE BUFFER
+;
+               BPL.S   ARM_S_25             ;NEXT - REMOVE SIGN
+               EORI    #0FFF0H,D4
+ARM_S_25
+               EXT.L   D4
+               ADD.L   D4,D6                ;ADD IN TOWARDS COMMON GOAL OF AVERAGE
+;
+               ADDQ    #2,D3                ;INC & WRAP ARM_SAMP_BUFF POINTER
+               ANDI    #7FFH,D3
+               ADDQ    #1,D7                ;INC NUMBER OF SAMPLE WE'RE ON
+               ANDI    #7FH,D7
+;
+               SWAP    D6                   ;GET ACTION INTO LOWER BYTE, ROTATE BACKWARDS INTO DISPLAY
+               MOVE    D6,D2                ;SAVE OFF A BIT FOR MASKING BASK IN
+               ROL.L   #1,D6
+               OR      D2,D6
+               ROL.L   #1,D6
+               OR      D2,D6
+;
+               ROXL.B  #1,D6                ;MUST ROTATE VALUE BACKWARDS FOR A LED MASK
+               ROXR.B  #1,D0                ; (ROTATING OFF TOP OF PEAK, INTO 8 KIT/BANK LED LOCATIONS)
+               ROXL.B  #1,D6
+               ROXR.B  #1,D0
+               ROXL.B  #1,D6
+               ROXR.B  #1,D0
+               ROXL.B  #1,D6
+               ROXR.B  #1,D0                ;(PAUSE AT HALF-WAY POINT TO DO ANOTHER SAMPLE)
+;
+ARM_S_16
+               TST     SWITCH_INPUT         ;ADC END-OF-CONVERSION ON TOP BIT OF SWITCH_INPUT
+               BPL     ARM_S_16             ; (LOOP UNTIL NEW SAMPLE READY)
+;
+               MOVE    SAMPLE_ADC,D4        ;READ MOST RECENT VALUE
+               MOVE    D4,WR_SAM_RAM       ;WRITE VALUE (NOTE - JAMMED AT THIS ADDRESS; NOT SAMPLING YET)
+               MOVE    D4,0(A1,D3)          ; ALSO WRITE SAMPLE TO PRE-SAMPLE BUFFER
+;
+               BPL.S   ARM_S_26             ;NEXT - REMOVE SIGN
+               EORI    #0FFF0H,D4
+ARM_S_26
+               ADDQ    #2,D3                ;INC & WRAP ARM_SAMP_BUFF POINTER
+               ANDI    #7FFH,D3
+               ADDQ    #1,D7                ;INC NUMBER OF SAMPLE WE'RE ON
+               ANDI    #7FH,D7
+;
+               ROXL.B  #1,D6                ;FINISH ROTATING PEAK VALUE INTO KIT/BANK LEDS
+               ROXR.B  #1,D0
+               ROXL.B  #1,D6
+               ROXR.B  #1,D0
+               ROXL.B  #1,D6
+               ROXR.B  #1,D0
+               ROXL.B  #1,D6
+               ROXR.B  #1,D0
+;
+;\\\\\\\\\\
+               MOVE.B  D5,L4_TEMP_1_B
+;12FEB               MOVE.B  D6,L4_TEMP_2_B
+               MOVE.B  D6,L4_TEMP_1_B+1
+;//////////
+               CMP.B   D5,D6                ;SEE IF MEASURED PEAK CROSSED THRESHOLD
+               BCC     START_SAMPLING       ;    IF YES, TIME TO FLY!!!!
+;
+               CLR.L   D6                   ;RESET PEAK VALUE REGISTER
+;
+ARM_S_17
+               TST     SWITCH_INPUT         ;ADC END-OF-CONVERSION ON TOP BIT OF SWITCH_INPUT
+               BPL     ARM_S_17             ; (LOOP UNTIL NEW SAMPLE READY)
+;
+               MOVE    SAMPLE_ADC,D4        ;READ MOST RECENT VALUE
+               MOVE    D4,WR_SAM_RAM       ;WRITE VALUE (NOTE - JAMMED AT THIS ADDRESS; NOT SAMPLING YET)
+               MOVE    D4,0(A1,D3)          ; ALSO WRITE SAMPLE TO PRE-SAMPLE BUFFER
+;
+               BPL.S   ARM_S_27             ;NEXT - REMOVE SIGN
+               EORI    #0FFF0H,D4
+ARM_S_27
+               EXT.L   D4
+               ADD.L   D4,D6                ;RESTART RUNNING AVERAGE
+;
+               ADDQ    #2,D3                ;INC & WRAP ARM_SAMP_BUFF POINTER
+               ANDI    #7FFH,D3
+               ADDQ    #1,D7                ;INC NUMBER OF SAMPLE WE'RE ON
+               ANDI    #7FH,D7
+;
+               MOVE    D0,D2
+               NOT     D2
+               MOVE    D2,LED_OUTPUT        ;DISPLAY UPDATED LEDS
+;881025               ANDI    #.NT.600H,D0         ;CLEAR OUT LED MASK THAT INDICATES THRESHOLD CROSSED
+               ANDI    #~600H,D0            ;CLEAR OUT LED MASK THAT INDICATES THRESHOLD CROSSED
+;
+ARM_S_18
+               TST     SWITCH_INPUT         ;ADC END-OF-CONVERSION ON TOP BIT OF SWITCH_INPUT
+               BPL     ARM_S_18             ; (LOOP UNTIL NEW SAMPLE READY)
+;
+               MOVE    SAMPLE_ADC,D4        ;READ MOST RECENT VALUE
+               MOVE    D4,WR_SAM_RAM       ;WRITE VALUE (NOTE - JAMMED AT THIS ADDRESS; NOT SAMPLING YET)
+               MOVE    D4,0(A1,D3)          ; ALSO WRITE SAMPLE TO PRE-SAMPLE BUFFER
+;
+               BPL.S   ARM_S_28             ;NEXT - REMOVE SIGN
+               EORI    #0FFF0H,D4
+ARM_S_28
+               EXT.L   D4
+               ADD.L   D4,D6
+;
+               ADDQ    #2,D3                ;INC & WRAP ARM_SAMP_BUFF POINTER
+               ANDI    #7FFH,D3
+               ADDQ    #1,D7                ;INC NUMBER OF SAMPLE WE'RE ON
+               ANDI    #7FH,D7
+;
+               MOVE    #8000H,PAN_0         ;KEEP UP PAN S/H (CENTERED)
+;
+ARM_S_19
+               TST     SWITCH_INPUT         ;ADC END-OF-CONVERSION ON TOP BIT OF SWITCH_INPUT
+               BPL     ARM_S_19             ; (LOOP UNTIL NEW SAMPLE READY)
+;
+               MOVE    SAMPLE_ADC,D4        ;READ MOST RECENT VALUE
+               MOVE    D4,WR_SAM_RAM       ;WRITE VALUE (NOTE - JAMMED AT THIS ADDRESS; NOT SAMPLING YET)
+               MOVE    D4,0(A1,D3)          ; ALSO WRITE SAMPLE TO PRE-SAMPLE BUFFER
+;
+               BPL.S   ARM_S_29             ;NEXT - REMOVE SIGN
+               EORI    #0FFF0H,D4
+ARM_S_29
+               EXT.L   D4
+               ADD.L   D4,D6                ;ADD IN TO AVERAGE
+;
+               ADDQ    #2,D3                ;INC & WRAP ARM_SAMP_BUFF POINTER
+               ANDI    #7FFH,D3
+               ADDQ    #1,D7                ;INC NUMBER OF SAMPLE WE'RE ON
+               ANDI    #7FH,D7
+;
+               MOVE    SWITCH_INPUT+10,D4   ;ONLY LEGAL TAPE TRANS SWITCH IS RECORD - FORCES SAMPLING
+               BTST    #1,D4                ; TO BEGIN.
+               BNE.S   START_SAMPLING       ; (IF NOT DEPRESSED, MERELY CONTINUE)
+;
+               MOVE.B  READ_CTRL,D5         ;KEEP UP PARAMETER POT/THRESHOLD READ
+               LSR.B   #1,D5
+               EXT     D5
+               TST     SELECT_CTRL+2
+;
+               BRA     ARMED_LOOP
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;AT THIS POINT IN LIFE, SAMPLING BE STARTED!!!!!!!!!
+;
+START_SAMPLING
+               MOVE.B  #10011000B,CHIP2+MISC     ;JAM ADDRESS ON WRITE CHIP, TO MAKE SURE AT START
+;
+               CLR.L   D5                   ;WILL USE THRESHOLD REGISTER NOW TO COUNT SAMPLES CLIPPED
+               ORI     #8F00H,D0            ;FLASH UPPER LEDS ON TO INDICATE WE BE STARTED; ALSO  REC
+               MOVE    D0,D2                ; & ENTER LEDS.
+               NOT     D2
+               MOVE    D2,LED_OUTPUT
+;
+               MOVE.B  BG_TEMP_8_B,ADDRHI+CHIP2     ;DOWNLOAD NEW END ADDRESS - EFFECTIVELY OPENS UP LOOP
+               MOVE.B  BG_TEMP_9_B,ADDRMID+CHIP2    ;DOWNLOAD NEW END ADDRESS - EFFECTIVELY OPENS UP LOOP
+               MOVE.B  BG_TEMP_10_B,ADDRLO+CHIP2    ;DOWNLOAD NEW END ADDRESS - EFFECTIVELY OPENS UP LOOP
+;
+               MOVE.B  #10010000B,CHIP2+MISC     ;FREE UP WRITE CHIP
+;
+; DO A COUPLE OF WRITES, TO GET THE WRITE CHIP IN FRONT OF THE READ CHIP
+GOING_S_01
+               TST     SWITCH_INPUT         ;SEE IF ADC END-OF-CONVERSION IS SET
+               BPL     GOING_S_01           ;    WAIT UNTIL IT IS DONE
+               MOVE    SAMPLE_ADC,D4        ;READ MOST RECENT SAMPLE
+               MOVE    D4,WR_SAM_RAM       ; WRITE TO RAM
+;
+               BPL     REMOV_SIGN_01        ;REMOVE SIGN, FOR Vu READING
+               EORI    #0FFF0H,D4
+REMOV_SIGN_01
+               EXT.L   D4
+               MOVE.L  D4,D6                ;START ADDING UP  - AVERAGE VALUE EVERY 128 SAMPS
+               CMPI    #7FF0H,D4            ; CHECK FOR A MAXIMUM EXCURSION
+               BNE     NO_CLIP_01
+               ADDQ.L  #1,D5                ; D5 ACTS AS A RUNNING COUNT OF SAMPLES PEAKED
+NO_CLIP_01
+               SUBQ.L  #1,D1                ;IF THAT WAS THE LAST SAMPLE, WE'RE DONE!!!!
+               BEQ     DONE_SAMPLING
+               ADDQ    #1,D7                ;    ELSE, KEEP GOING.  INC MINI-LOOP COUNT
+               ANDI    #7FH,D7              ;EVERY 128th SAMPLE, WE WANT TO SPOOL OUT TO KEEP UP S/Hs, ETC
+               BEQ.S   RELEASE_MONITOR
+               BRA     GOING_S_01
+;
+RELEASE_MONITOR
+               MOVE.B  BG_TEMP_8_B,ADDRHI+CHIP1     ;DOWNLOAD NEW END ADDRESS - EFFECTIVELY OPENS UP LOOP
+               MOVE.B  BG_TEMP_9_B,ADDRMID+CHIP1    ;DOWNLOAD NEW END ADDRESS - EFFECTIVELY OPENS UP LOOP
+               MOVE.B  BG_TEMP_10_B,ADDRLO+CHIP1    ;DOWNLOAD NEW END ADDRESS - EFFECTIVELY OPENS UP LOOP
+;
+SAMPLING_LOOP
+GOING_S_1
+               TST     SWITCH_INPUT         ;SEE IF ADC END-OF-CONVERSION IS SET
+               BPL     GOING_S_1            ;    WAIT UNTIL IT IS DONE
+               MOVE    SAMPLE_ADC,D4        ;READ MOST RECENT SAMPLE
+               MOVE    D4,WR_SAM_RAM       ; WRITE TO RAM
+;
+               BPL     REMOV_SIGN_1         ;REMOVE SIGN, FOR Vu READING
+               EORI    #0FFF0H,D4
+REMOV_SIGN_1
+               EXT.L   D4
+               ADD.L   D4,D6                ;ADD UP VALUES OVER 128 SAMPS - AVERAGE IS DISPLAYED
+               CMPI    #7FF0H,D4            ; CHECK FOR A MAXIMUM EXCURSION
+               BNE     NO_CLIP_1
+               ADDQ.L  #1,D5                ; D5 ACTS AS A RUNNING COUNT OF SAMPLES PEAKED
+NO_CLIP_1
+               SUBQ.L  #1,D1                ;IF THAT WAS THE LAST SAMPLE, WE'RE DONE!!!!
+               BEQ     DONE_SAMPLING
+               ADDQ    #1,D7                ;    ELSE, KEEP GOING.  INC MINI-LOOP COUNT
+               ANDI    #7FH,D7              ;EVERY 128th SAMPLE, WE WANT TO SPOOL OUT TO KEEP UP S/Hs, ETC
+               BNE     SAMPLING_LOOP        ;    (ELSE, KEEP SOING SIMPLE STUFF)
+;
+               MOVE    #0FFF0H,VCF_0        ;KEEP UP MONITOR CHANNEL VCF
+;
+GOING_S_11
+               TST     SWITCH_INPUT         ;SEE IF ADC END-OF-CONVERSION IS SET
+               BPL     GOING_S_11           ;    WAIT UNTIL IT IS DONE
+               MOVE    SAMPLE_ADC,D4        ;READ MOST RECENT SAMPLE
+               MOVE    D4,WR_SAM_RAM       ; WRITE TO RAM
+;
+               BPL.S   REMOV_SIGN_11        ;REMOVE SIGN, FOR Vu READING
+               EORI    #0FFF0H,D4
+REMOV_SIGN_11
+               EXT.L   D4
+               ADD.L   D4,D6                ;ADD TO AVERAGE
+               CMPI    #7FF0H,D4            ; CHECK FOR A MAXIMUM EXCURSION
+               BNE.S   NO_CLIP_11
+               ADDQ.L  #1,D5                ; D5 ACTS AS A RUNNING COUNT OF SAMPLES PEAKED
+NO_CLIP_11
+               SUBQ.L  #1,D1                ;IF THAT WAS THE LAST SAMPLE, WE'RE DONE!!!!
+               BEQ     DONE_SAMPLING
+               ADDQ    #1,D7                ;    ELSE, KEEP GOING.  INC MINI-LOOP COUNT
+               ANDI    #7FH,D7              ;EVERY 128th SAMPLE, WE WANT TO SPOOL OUT TO KEEP UP S/Hs, ETC
+;
+               SWAP    D6                   ;7FF x 127 = 3F7810.  SWAP TO 7810 003F
+               MOVE    D6,D2
+               ROL.L   #1,D6                ;ROTATE UP TO xxxx FF??
+               OR      D2,D6
+               ROL.L   #1,D6
+               OR      D2,D6
+               ROXL.B  #1,D6                ;MUST ROTATE VALUE BACKWARDS FOR A LED MASK
+               ROXR.B  #1,D0                ; (ROTATING OFF TOP OF PEAK, INTO 8 KIT/BANK LED LOCATIONS)
+               ROXL.B  #1,D6
+               ROXR.B  #1,D0
+               ROXL.B  #1,D6
+               ROXR.B  #1,D0
+               ROXL.B  #1,D6
+               ROXR.B  #1,D0                ;(PAUSE AT HALF-WAY POINT TO DO ANOTHER SAMPLE)
+;
+GOING_S_13
+               TST     SWITCH_INPUT         ;SEE IF ADC END-OF-CONVERSION IS SET
+               BPL     GOING_S_13           ;    WAIT UNTIL IT IS DONE
+               MOVE    SAMPLE_ADC,D4        ;READ MOST RECENT SAMPLE
+               MOVE    D4,WR_SAM_RAM       ; WRITE TO RAM
+;
+               BPL.S   REMOV_SIGN_13        ;REMOVE SIGN, FOR Vu READING
+               EORI    #0FFF0H,D4
+REMOV_SIGN_13
+               CMPI    #7FF0H,D4            ; CHECK FOR A MAXIMUM EXCURSION
+               BNE.S   NO_CLIP_13
+               ADDQ.L  #1,D5                ; D5 ACTS AS A RUNNING COUNT OF SAMPLES PEAKED
+NO_CLIP_13
+               SUBQ.L  #1,D1                ;IF THAT WAS THE LAST SAMPLE, WE'RE DONE!!!!
+               BEQ     DONE_SAMPLING
+               ADDQ    #1,D7                ;    ELSE, KEEP GOING.  INC MINI-LOOP COUNT
+               ANDI    #7FH,D7              ;EVERY 128th SAMPLE, WE WANT TO SPOOL OUT TO KEEP UP S/Hs, ETC
+;
+               ROXL.B   #1,D6                ;FINISH ROTATING PEAK VALUE INTO KIT/BANK LEDS
+               ROXR.B   #1,D0
+               ROXL.B   #1,D6
+               ROXR.B   #1,D0
+               ROXL.B   #1,D6
+               ROXR.B   #1,D0
+               ROXL.B   #1,D6
+               ROXR.B   #1,D0
+;
+               CLR.L   D6                   ;RESET PEAK VALUE REGISTER
+;
+GOING_S_12
+               TST     SWITCH_INPUT         ;SEE IF ADC END-OF-CONVERSION IS SET
+               BPL     GOING_S_12           ;    WAIT UNTIL IT IS DONE
+               MOVE    SAMPLE_ADC,D4        ;READ MOST RECENT SAMPLE
+               MOVE    D4,WR_SAM_RAM       ; WRITE TO RAM
+;
+               BPL.S   REMOV_SIGN_12        ;REMOVE SIGN, FOR PEAK DETECTION
+               EORI    #0FFF0H,D4
+REMOV_SIGN_12
+               EXT.L   D4
+               ADD.L   D4,D6                ;ADD IN TO RUNNING AVERAGE
+;
+               CMPI    #7FF0H,D4            ; CHECK FOR A MAXIMUM EXCURSION
+               BNE     NO_CLIP_12
+               ADDQ.L  #1,D5                ; D5 ACTS AS A RUNNING COUNT OF SAMPLES PEAKED
+NO_CLIP_12
+               SUBQ.L  #1,D1                ;IF THAT WAS THE LAST SAMPLE, WE'RE DONE!!!!
+               BEQ     DONE_SAMPLING
+               ADDQ    #1,D7                ;    ELSE, KEEP GOING.  INC MINI-LOOP COUNT
+               ANDI    #7FH,D7              ;EVERY 128th SAMPLE, WE WANT TO SPOOL OUT TO KEEP UP S/Hs, ETC
+;
+               MOVE    #0FFF0H,VCA_0        ;KEEP UP MONITOR CHANNEL VCA
+;
+GOING_S_14
+               TST     SWITCH_INPUT         ;SEE IF ADC END-OF-CONVERSION IS SET
+               BPL     GOING_S_14           ;    WAIT UNTIL IT IS DONE
+               MOVE    SAMPLE_ADC,D4        ;READ MOST RECENT SAMPLE
+               MOVE    D4,WR_SAM_RAM       ; WRITE TO RAM
+;
+               BPL.S   REMOV_SIGN_14        ;REMOVE SIGN, FOR Vu READING
+               EORI    #0FFF0H,D4
+REMOV_SIGN_14
+               EXT.L   D4
+               ADD.L   D4,D6                ;ADD IN VAL TO AVERAGE-BUILD
+               CMPI    #7FF0H,D4            ; CHECK FOR A MAXIMUM EXCURSION
+               BNE.S   NO_CLIP_14
+               ADDQ.L  #1,D5                ; D5 ACTS AS A RUNNING COUNT OF SAMPLES PEAKED
+NO_CLIP_14
+               SUBQ.L  #1,D1                ;IF THAT WAS THE LAST SAMPLE, WE'RE DONE!!!!
+               BEQ.S   DONE_SAMPLING
+               ADDQ    #1,D7                ;    ELSE, KEEP GOING.  INC MINI-LOOP COUNT
+               ANDI    #7FH,D7              ;EVERY 128th SAMPLE, WE WANT TO SPOOL OUT TO KEEP UP S/Hs, ETC
+;
+               MOVE    #8000H,PAN_0         ;KEEP MONITOR CHANNEL PAN CENTERED
+;
+GOING_S_15
+               TST     SWITCH_INPUT         ;SEE IF ADC END-OF-CONVERSION IS SET
+               BPL     GOING_S_15           ;    WAIT UNTIL IT IS DONE
+               MOVE    SAMPLE_ADC,D4        ;READ MOST RECENT SAMPLE
+               MOVE    D4,WR_SAM_RAM       ; WRITE TO RAM
+;
+               BPL.S   REMOV_SIGN_15        ;REMOVE SIGN, FOR Vu READING
+               EORI    #0FFF0H,D4
+REMOV_SIGN_15
+               EXT.L   D4
+               ADD.L   D4,D6
+               CMPI    #7FF0H,D4            ; CHECK FOR A MAXIMUM EXCURSION
+               BNE.S   NO_CLIP_15
+               ADDQ.L  #1,D5                ; D5 ACTS AS A RUNNING COUNT OF SAMPLES PEAKED
+NO_CLIP_15
+               SUBQ.L  #1,D1                ;IF THAT WAS THE LAST SAMPLE, WE'RE DONE!!!!
+               BEQ.S   DONE_SAMPLING
+               ADDQ    #1,D7                ;    ELSE, KEEP GOING.  INC MINI-LOOP COUNT
+               ANDI    #7FH,D7              ;EVERY 128th SAMPLE, WE WANT TO SPOOL OUT TO KEEP UP S/Hs, ETC
+;
+               MOVE    D0,D2
+               NOT     D2
+               MOVE    D2,LED_OUTPUT        ;DISPLAY NEW Vu READING
+               BRA     SAMPLING_LOOP        ;KEEP GOIN', BUNKIE!!!
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             THRU WITH SAMPLING - COPY PRE-SAMPLE BUFFER ONTO START OF SOUND, CALL SAMP INC/DEC
+;              ROUTINES TO MOVE START AND END POINTS IN TO ZERO-CROSSINGS.  FLAG SOUND  AS SAMPLED,
+;              NOT DELETED.
+;
+;             AT THIS POINT IN OUR LIFE, D3 -> LAST SAMPLE WRITTEN TO PRE-SAMPLE BUFFER, A1 -> TOP
+;              OF PRE-SAMPLE BUFFER, AND A6 -> CURRENT VOICE BLOCK.
+;
+;             NOTE - WE COPY ON 1023 (NOT 1024) WORDS FROM THE PRE-SAMPLE BUFFER.  REASON? 'CAUSE
+;              IF USER SPECIFIES A 1K SAMPLE, WE STILL ACTUALLY SAMPLE 1 WORD (SO AS TO NOT BOMB OUT).
+;
+DONE_SAMPLING
+               CLR     VCA_0                ;SHUT UP MONITOR VCA WHILST DOING THIS
+;
+               ADDQ    #2,D3                ;MOVE POINTER FROM LAST SAMPLE 2nd TO OLDEST SAMPLE
+                                            ; (REMEBER, THIS IS A CIRCULAR WORD BUFFER)
+               MOVE.L  S_BEGIN(A6),D0       ;SET UP BOUNDRIES IN SAMPLE MEMORY TO WRITE TO
+               MOVE.L  #1022,D1             ;WANT TO COPY 1023 SAMPLES (0->1022)
+               ADD.L   D0,D1
+               ABS_LONG
+               JSR     WRITE_UPWARD         ;SET UP CHIPS
+               ABS_SHORT
+;
+               MOVE.L  #1022,D1             ;SET UP COUNT-DOWN
+PRE_COPY_LOOP
+               MOVE    0(A1,D3),WR_SAM_RAM ;MOVE SAMPLE FROM BUFFER INTO SAMPLE MEMORY
+P_C_L_WAIT
+               TST     SWITCH_INPUT         ;BORROW THE SAMPLE CLOCK FOR OUR TIMEOUT 'FORE NEXT SAMPLE
+               BPL     P_C_L_WAIT
+               TST     SAMPLE_ADC           ;MUST CLEAR THIS SIGNAL EACH TIME IT OCCURS.
+               ADDQ    #2,D3                ;MOVE ON TO NEXT WORD
+               ANDI    #7FFH,D3             ; (WRAP AT 1 KWord BOUNDRY)
+               DBRA    D1,PRE_COPY_LOOP     ;DO ALL 1023 WORDS
+;
+;
+               OR.B    #11000000B,S_STATUS(A6)   ;MARK AS SAMPLED, NOT DELETED
+;
+               ST      D0                   ;SET FLAG TO INDICATE EXIT AFTER SAMPLING.
+               BRA.S   EXIT_SAMPLING        ;CLEER OUTA HEER.
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+;
+;
+;
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; PASS THIS WAY AFTER SAMPLING ABORT VIA SWITCH HIT -
+; RESTORE ORIGINAL DATA TO THE TWO SAMPLE MEMORY WORDS
+; WHICH WERE USED AS THE PRE-SAMPLING PLAYTHROUGH LOCATIONS.
+;
+ABORT_SAMPLING
+               MOVE.B  #10011000B,MISC+CHIP2     ;JAM ADDRESS, SINGLE STEP ON WRITE CHIP.
+;881025               REPT    16
+               .FOR COUNT = 1,16
+               NOP                               ;(PAUSE FOR CHIP TO DOWNLOAD NEW STATE)
+               .ENDFOR
+
+               MOVE.B  #10010000B,MISC+CHIP2     ;UNJAM ADDRESS (NOW AT LEFT BOUNDRY)
+HUGGING_01
+               TST     SWITCH_INPUT              ;SYNCHRONIZE TO SAMPLE CLOCK TO MAKE SURE
+               BPL     HUGGING_01                ;ENOUGH TIME IS LEFT BETWEEN WRITES.
+               TST     SAMPLE_ADC                ;(CLEAR OUT ADC EOC)
+               MOVE    BG_TEMP_3_B,WR_SAM_RAM    ;FURST WURD
+HUGGING_02
+               TST     SWITCH_INPUT              ;..AGAIN...!
+               BPL     HUGGING_02
+               TST     SAMPLE_ADC
+               MOVE    BG_TEMP_5_B,WR_SAM_RAM    ;SERCOND WERD
+;
+               CLR     D0                   ;FLAG THAT WE ABORTED WITHOUT SAMPLING,
+                                            ;FALL THROUGH INTO EXIT_SAMPLING.
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; FINAL WRAP-UP (WHETHER WE ACTUALLY SAMPLED OR NOT) -
+; MAKE SURE MONITOR VOICE IS TURNED OFF, RESTORE ORIGINAL LED STATE,
+; RESTORE 4-CHIP DAISY-CHAIN, PATCH UP REALTIME ADC READ SEQUENCE,
+; TURN INTERRUPTS BACK ON.
+; IMPORTANT - WE ENTER WITH RETURN INFO IN D0 AND D5, DON'T TOUCH 'EM.
+;
+EXIT_SAMPLING
+               BSET    #7,MISC_OUT_STAT          ;RESTORE 4-CHIP DAISY CHAIN.
+               MOVE.B  MISC_OUT_STAT,MISC_OUT
+               NOT     BG_TEMP_1_B               ;RESTORE ENTRY-TIME LEDs (INVERT STATUS FOR HDW).
+               MOVE    BG_TEMP_1_B,LED_OUTPUT
+               CLR     VCA_0                     ;MAKE SURE MONITOR-CHANNEL VCA IS CLAMPED SHUT.
+;
+;
+                                            ;SINCE WE NO DOUBT LAID WASTE TO THE REALTIME ADC READ
+                                            ;SEQUENCE, LET'S TRY TO PUT IT BACK THE WAY WE GOT IT:
+;
+               MOVE.B  PAD_CTRL_STAT,D1     ;FIRST, LET'S DISCHARGE TRIGGER-INPUT PEAK-HOLD.
+               AND.B   #0F7H,D1
+               MOVE.B  D1,PAD_CONTROL       ;NOW, WE'RE NOT GONNA BOTHER TELLING ANYONE ....
+               MOVE    #1000,D1             ;WE'LL JUST GIVE 'EM A MILLISECOND OR SO TO DIE OFF,
+EX_SAM_18
+               DBRA    D1,EX_SAM_18
+               MOVE.B  PAD_CTRL_STAT,PAD_CONTROL      ;AND THEN WE'LL COVER OUR TRACKS.
+;
+               MOVE    CONVERT_DEST,D1      ;THIS IS WHERE NEXT ADC CONVERSION WAS TO BE STORED.
+               CLR     D2                   ;SET UP ADC CHANNEL OFFSET FOR PADS CHANNEL,
+               MOVEQ   #7,D3                ;THEN TRY TO MATCH ONE OF THE EIGHT PAD_VALUE CELLS.
+               MOVE    #PAD_VALUE+1,D4      ;(ALL CONVERT DESTS ARE L.S.BYTES OF WORD LOCATIONS).
+EX_SAM_20
+               CMP     D4,D1
+               BEQ.S   EX_SAM_40            ;BRANCH IF MATCH, D2 HAS CORRECT ADC CHANNEL OFFSET.
+               ADDQ    #2,D4                ;ELSE, STEP TO NEXT PAD_VALUE CELL,
+               DBRA    D3,EX_SAM_20         ;IF ANY.
+;
+               ADDQ    #2,D2                ;NOT A PAD - TRY POTS, THEN.  THIS IS DATA POT CHANNEL.
+               MOVE    #POT_VALUE+1,D4
+               MOVEQ   #4,D3                ;OONNLLYY FFIIVVEE, TTHHIISS TTIIMMEE.
+EX_SAM_30
+               CMP     D4,D1
+               BEQ.S   EX_SAM_40            ;BRANCH IF MATCH, D2 HAS CORRECT ADC CHANNEL OFFSET.
+               ADDQ    #2,D2                ;ELSE, SET UP NEXT ADC CHANNEL OFFSET,
+               ADDQ    #2,D4                ;STEP TO NEXT POT_VALUE CELL,
+               DBRA    D3,EX_SAM_30         ;IF ANY -
+                                            ;IF NO MATCH, D2 HAS TRIGGER CHANNEL OFFSET -
+                                            ;ASSUME THIS IS WHAT WE WANT, USE IT.
+EX_SAM_40
+               MOVE.L  #SELECT_CTRL,A0      ;SET POINTER TO ADC CHANNEL BLOCK,
+               MOVE    #0,0(A0,D2)          ;START A READ OF THIS CHANNEL.
+               MOVE    #400,D2              ;NOW - HALF A MILLISECOND OR SO FOR READ TO COMPLETE,
+EX_SAM_50
+               DBRA    D2,EX_SAM_50         ;AND REALTIME SHOULD BE NONE THE WISER.
+;
+;
+               MOVE    #2000H,SR            ;UNBLOCK INTERRUPTS.
+               RTS                          ;BYE BYE - IT'S BEEN FUN-FUN ...!
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             SUBROUTINE TO SET UP CHIPS TO READ/WRITE UPWARD FROM D1 TO D2. A0->APROPOS CHIP.
+;
+PREP_FOR_SAMPLE
+               MOVE.B  #94H,MISC(A0)        ;SELECT CHANNEL 0, SINGLE STEP, LOOP ON, UNIDIRECTIONAL,
+                                            ; FORWARD DIRECTION, JAM PITCH
+               ADDQ.L  #1,D0                ;INC OUT RIGHT ADDRESS, FOR 2-WORD LOOP
+;
+               MOVE.L  D0,D6                ;HANDLE RIGHT-HAND (END) ADDRESS FIRST
+               SWAP    D6                   ; (NEED TO WRITE AS BYTES TO CHIP - ARG, 8-BIT WORLD)
+               OR.B    #80H,D6              ;  (SET BIT INDICATING RIGHT ADDRESS)
+               MOVE.B  D6,ADDRHI(A0)
+               MOVE.L  D0,D6
+               LSR     #8,D6                ;SET CHIPS ON TWO WORD LOOP
+               MOVE.B  D6,ADDRMID(A0)
+               MOVE.B  D0,ADDRLO(A0)
+;
+               SUBQ.L  #1,D0                ;KNOCK BACK TO START
+;
+               MOVE.L  D0,D6                ;NOW, SET UP LEFT-HAND (START) ADDRESS
+               SWAP    D6                   ; (AGAIN, WRITE AS BYTES)
+               MOVE.B  D6,ADDRHI(A0)
+               MOVE.L  D0,D6
+               LSR     #8,D6
+               MOVE.B  D6,ADDRMID(A0)
+               MOVE.B  D0,ADDRLO(A0)
+;
+               MOVE.B  #9CH,MISC(A0)        ;SELECT CHANNEL 0, SINGLE STEP, LOOP ON, UNIDIRECTIONAL,
+                                            ; FORWARD, JAM PITCH, JAM ADDR
+;881025               REPT    16                   ; (DELAY FOR CHIPS TO DIGEST THAT INFORMATION)
+               .FOR COUNT = 1,16
+               NOP
+               .ENDFOR
+;
+               MOVE.B  #10010000B,MISC(A0)  ;LOOP ON, SINGLE STEP (FACILITE TWO WORD LOOPING)
+;
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+

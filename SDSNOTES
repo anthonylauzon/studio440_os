@@ -1,0 +1,183 @@
+
+
+Manually-initiated sample dump EXEC vector steps:
+
+
+
+Lock ENTER LED on (off?)
+               Probably can do via flags, since background will remain in
+               normal execution (?)
+
+Determine whether sound exists -
+if not, post message and exit, using std method.
+
+STOP_THE_SEQUENCER (note - MIDI bufs are clear upon return).
+
+KILL_ALL_VOICES or whatever the appropriate routine is.
+
+Lock out all switches (via SWITCH_MASK - does it get footswitches?) -
+leave STOP switch active (icky, needs special test/branch in TRANSPOR, oh well).
+
+UNPLUG_ALL_EDITS and any other steps necessary to lock out subfunction state
+changes (or any others) originating from any source within the system:
+How to disable touchpads?
+               Probably via DUMP_IN_PROGRESS flag in PRO_PADS.
+What damage can 6803 do (on its own or via spurious message reception)?
+               Evidently none, as long as sequencer is fully stopped.
+Trigger input?
+Any background daemons?
+The list per BACKGROU:
+
+               Priority background:
+               PRO_PADS_ON
+               PRO_FTDPADS_ON
+               PRO_TRIGGER
+               PAD_ON_TRANSMIT
+               TRIG_TRANSMIT
+               PRO_PADS_OFF
+               PRO_FTPADS_OFF
+
+               Rotating background - too many to mention.
+
+The answer is probably to implement vectored background -
+since in truth we will want nothing going on other than MIDI receive,
+STOP switch sensing and timeout tracking.
+All of that other stuff can best be disabled by simply bypassing it.
+
+
+
+Set system-wide flag for DUMP_IN_PROGRESS or some such -
+this will wake up background routines for generation of output messages and
+monitoring of received messages, also will lock out anything we don't want
+to allow to happen for the duration, and finally will redefine the action of
+the STOP switch to allow it to be used for aborting a data transfer (this will
+be the only way out, apart from normal/CANCEL termination).
+
+Init variables as necessary to allow process to be handed off to background -
+minimum is a process-tracking variable which indicates to background routines
+what point the process is currently at (first value means "let's get started",
+prompting all other necessary initializations).
+Note that this variable can also be the DUMP_IN_PROGRESS flag, as long as
+it doesn't assume a value of zero at any time while dump is in progress.
+
+Realtime interrupt stays active at all times for timeout purposes.
+
+Upon manual/remote cancel or normal termination,
+after displaying the appropriate completion message, we clean up:
+
+               Switch off all DUMP_IN_PROGRESS flags
+               Restore normal sample hardware state
+               Unblock all switches
+               Reenable pads
+               Reenable 6803 as req'd
+               Reenable trig in as req'd
+
+
+
+
+
+
+
+
+Background process states:
+
+               Startup:
+               Init all vars
+               Init sample read hardware
+               Display initial "Sending ....  samples: xxxxxx" message.
+               Send dump header
+               Vars include:
+                       Number of sample words to transmit
+                       Packet number (for transmit)
+                       Default to open-loop mode
+                       MSG_RCVD = "none"
+                       (possibly nothing else, if no packet resend)
+
+               Initial timeout following dump header transmission.
+
+               Open-loop timeout following data packet transmit (20 msec).
+                                       - or -
+               Await closed-loop acknowledge following data packet transmit -
+               indefinite timeout, possibly with message after 2 sec.
+
+               Await ACK/CANCEL following receipt of WAIT message.
+
+
+MIDI receive is augmented to communicate with the rest of this background system
+via the MSG_RCVD flag (and optionally the received packet number).
+The various states described above are characterized by their responses to
+the possible messages which may be received.
+Receipt of spurious messages during any waiting period is indicated by a
+specific value which signals background to hang things up.
+
+Initial timeout is 2 sec.
+Receipt of ACK prior to end of timeout causes switchover to closed-loop mode -
+send a data packet, transition to closed-loop ACK wait state.
+If no ACK within 2 sec, we stay in open-loop mode -
+send a data packet, transition to open-loop timeout state.
+
+Open-loop timeout is 20 msec.
+All receive data is ignored in this state.
+When timeout elapses, send next packet.
+If more data remains to be sent, return to open-loop timeout state.
+Else, display normal completion message, restore normal system status, exit.
+
+Closed-loop wait has no timeout.
+However, could display "Awaiting reply" message after 1-2 seconds.
+ACK, NAK, WAIT, CANCEL are appropriate responses -
+receipt of any MIDI data not part of one of these messages is treated
+as a CANCEL.
+ACK prompts send of next data packet.
+If more data remains to be sent, return to closed-loop wait state.
+Else, display normal completion message, restore normal system status, exit.
+NAK is treated same as ACK - packet resend is not implemented at present.
+WAIT could prompt display of "Receiver pause" message,
+otherwise does not cause any state changes -
+response to handshaking messages is not altered, even though NAK would
+really be an inappropriate message to receive after a WAIT.
+CANCEL prompts display of "Receiver cancel" message, immed exit, etc.
+Any other receive data causes same action, possibly with different message
+such as "Invalid response".
+
+
+
+
+
+
+Other system cosiderations:
+
+MIDI sys ex rcv at present may do slightly different things depending upon
+MIDI IN routing.  This setting should not affect response to sample dump
+requests.
+
+Ideally, universal sys ex messages should be ignored if sequencer is running -
+they should neither be responded to nor recorded.
+However, since they are of limited size, they should not cause immediate
+problems if recorded (other than premature memory fill-up).
+Nevertheless they must trigger no system response while sequencer is running.
+Probably best not to record them either, to avoid problems which might occur
+when they are played back - look into this later.
+
+While not SDS_COMING_IN, SDS messages other than dump header or dump request
+should be ignored.
+Thus, if we CANCEL in response to an SDS dump header, and are therefore not
+in the SDS_COMING_IN state, received data packets will be ignored if they are
+sent (ie, if sender did not hear our CANCEL).
+
+Ideally, should lock MIDI receive and hard-flush receive buffer before starting,
+re-enable when (just before?) dump header goes out,
+to minimize chances of responding to last-minute spurious input -
+but don't lose too much sleep over this.
+At completion, must ensure that running status is cleared for both
+receive and transmit.
+Be careful with echo interruptions (but probably no need to be more careful
+than is currently done with, eg, sample editing or disk operations).
+
+
+
+OPTIONS:
+sample number control: local/remot
+
+
+
+

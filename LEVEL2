@@ -1,0 +1,184 @@
+               INCLUDE HPFIXUPS
+               TITLE "LEVEL 2 INT - 24 PPQN CLICK SERVICING"
+***************************************************************************************************
+***************************************************************************************************
+***                                                                                             ***
+***            LEVEL 2 INT - SERVICING THE 24 PPQN CLICK FROM THE 6803 TIMING CHIP             ***
+***                                                                                             ***
+***************************************************************************************************
+***************************************************************************************************
+;
+NEG_EXT        EQU     0FFFFFF00H      ;USE IN MOVEQ INSTRUCTIONS WHERE ARG IS
+                                       ;80H OR LARGER - HP XASM DOES NOT HANDLE
+                                       ;SIGN-EXTEND CORRECTLY.  COSMETIC, KEEPS
+                                       ;ACTUAL BYTE VALUE CLEARER.
+;
+               INCLUDE EQUATES         ;HDW ADDR AND CONSTANT DEFS, ABS_SHORT DIRECTIVE.
+;
+               GLB     LEVEL_2_INT
+;
+               EXTERNAL  V_CUE_LIST_FLAG
+               EXTERNAL  V_PRIO_VEC
+               EXTERNAL  V_PRIO_TIME
+               EXTERNAL  V_BLOCK_SIZE
+;
+               EXTERNAL  KILL_VOICE
+               EXTERNAL  REAL_TIME
+               EXTERNAL  LAST_CLICK_HIT
+               EXTERNAL  LAST_CLICK_LENGTH
+               EXTERNAL  NEXT_TIME
+               EXTERNAL  V_BLK_00
+               EXTERNAL  MA_XMIT_SEQ_TIME
+               EXTERNAL  MB_XMIT_SEQ_TIME
+               EXTERNAL  CLICKS_PENDING,CUR_TEMPO_USEC
+               EXTERNAL  MA_TIME_BUFF
+               EXTERNAL  MB_TIME_BUFF
+               EXTERNAL  MA_XMIT_SEQ_GATE,MB_XMIT_SEQ_GATE
+               EXTERNAL  LOAD_A_LIVE
+               EXTERNAL  LOAD_B_LIVE
+               EXTERNAL  XPORT_STATE
+               EXTERNAL  MIDI_MT_UART
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; GET A CLICK FROM THE TIMING CHIP.  PERFORM THE FOLLOWING CHORES:
+;
+; 1.      SAVE TIME THAT WE OCCURRED AND TIME SINCE LAST CLICK.
+; 2.      CALCULATE TIME WE EXPECT NEXT CLICK TO OCCUR, AND SAVE.
+; 3.      IF VOICES ARE STILL TIMING OUT TO FIRE (HAPPENS IF WE CAME
+;         EARLY), HURRY THEM UP.
+; 4a.     IF MIDI SEQUENCE BUFFERS ARE STILL TIMING OUT TO EMPTY (AGAIN,
+;         HAPPENS IF WE CAME EARLY), HURRY THEM UP TOO.
+; 4b.     IF MIDI SEQUENCE BUFFERS ARE TO BE DELAY-DUMPED, START TIMEOUT.
+;
+;
+;16MAY; WE ALSO PROTECT AGAINST AND HANDLE COLLISONS WITH OURSELF,
+;16MAY; AS WELL AS UNSTICKING LEVEL 3 SERVICE IF WE JAMMED IT UP.
+;
+; NO - AS TO THAT, WE ARE SUCH A SMALL (xx? USEC) AND INFREQUENT (EVERY 10 MSEC MAX)
+; INTERRUPT, THAT WE SIMPLY DISABLE EVERYBODY UNTIL WE'RE THROUGH -
+; HENCE, WE DON'T EVEN WORRY ABOUT COLLIDING WITH OURSELF.
+;
+; ENTERS EXPECTING AND LEAVES TRASHING NOTHING (LIKE EVERY GOOD INT SHOULD).
+;
+;
+;
+LEVEL_2_INT
+               TST     CLR_24_PPQN          ;CLEAR OUT INT LATCH (SO THAT WE MAY REOCCUR)
+                                       ;GOING FOR IT -
+               MOVEM.L D0/A0,-(A7)     ;SAVE REGISTERS WE WILL BE (AB)USING
+               MOVE    #2700H,SR       ;BLOCK ALL INTERRUPTS - WE'LL BE DONE IN A JIFFY.
+;
+;
+;
+; TASKS 1 & 2 - TIMEKEEPING.
+;
+L_2_1
+                                            ;RE-ENTER AT THIS POINT IF LEVEL 2 IS BACKLOGGED.
+               MOVE    REAL_TIME,D0         ;LOAD UP 'NOW' TIME
+               SUB     LAST_CLICK_HIT,D0    ;FIND DIFF BETWEEN LAST CLICK'S TIME AND NOW
+               MOVE    D0,LAST_CLICK_LENGTH ;THIS DIFF IS THE LENGTH OF THE LAST CLICK
+               MOVE    REAL_TIME,LAST_CLICK_HIT  ;'NOW TIME' IS NOW WHEN 'THE LAST CLICK' OCCURED
+               ADD     REAL_TIME,D0         ;'NOW' PLUS LENGTH OF LAST CLICK IS WHEN WE PROJECT THE NEXT
+                                             ;ONE TO HAPPEN.  THE SEQUENCE UNPARSER (WHICH ALSO UPDATES
+                                             ;THE TIMING CHIP) MAY CORRECT THIS LATER.
+               MOVE    D0,NEXT_TIME         ;SAVE PROJECTION OF WHEN NEXT CLICK WILL HIT
+
+               CMP     #64,LAST_CLICK_LENGTH ;SEE IF THAT LAST CLICK OVER 64 msec LONG BY TESTING
+                                             ;THE MSB FOR OVERFLOW - IF SO, STARTING FRESH (SLOWEST
+                                             ;TEMPO IS 40 BPM, ~62.5 msec/CLICK) - SET A FLAG THAT
+                                             ;PRO_CLICK WILL PICK UP WHEN DONE STUFFING THE BUFFER
+                                             ;FROM THIS FIRST CLICK, AND FORCE A DUMP IMMEDIATELY.
+               BCS.S   WAKEMAN_0            ;(AND THEN AGAIN, IF COOL, ES COOL...)
+;
+               MOVE    CUR_TEMPO_USEC,D0    ;ALSO, FUDGE WHEN 'LAST CLICK' HIT BASED ON CURRENT_TEMPO
+               LSR     #8,D0                ; (CONVERT TO 1.024 msec INTERVALS)
+               LSR     #2,D0
+               ADD     REAL_TIME,D0
+               MOVE    D0,NEXT_TIME
+WAKEMAN_0
+
+; TASK 3 - START LATE VOICES.
+
+               MOVEQ   #7,D0                ;NOW, SPEED UP START OF PENDING VOICES (IF NEEDED)
+               MOVE    #V_BLK_00,A0         ;POINT TO TOP OF VOICE BLOCK
+L_2_2
+               TST.B   V_CUE_LIST_FLAG(A0)  ;IF THIS VOICE BEING FIRED FROM THE CUE LIST
+               BNE.S   L_2_3                     ;THEN DO NOT HURRY UP OR SLOW DOWN
+               CMP     #KILL_VOICE,V_PRIO_VEC(A0)     ;DOES THIS VOICE'S PRIORITY VECTOR = KILL_VOICE?
+               BNE.S   L_2_3                               ;IF NOT, LEAVE ALONE
+               MOVE    #1,V_PRIO_TIME(A0)                  ;ELSE, CUT TIME TO START ON NEXT L_3 INT
+L_2_3
+               ADD     #V_BLOCK_SIZE,A0     ;INCREMENT TO NEXT VOICE BLOCK
+               DBRA    D0,L_2_2             ;CHECK ALL 8 VOICES
+
+; TASKS 4a & 4b - MAKE SURE MIDI BUFFERS GET DUMPED.
+; NOTE - BELOW CODE MARGINALLY OPTIMIZED EXPECTING
+; ADVANCED DUMPS MORE OFTEN THAN DELAYED DUMPS.
+
+;OKAY - NOW, REALLY.  IF A CLICK TIMING OUT (WHICH IS COOL - IS SUPPOSED TO RELEASE ABOUT WHEN WE
+; HIT, AND ANY UART DELAY WILL PUCH IT PAST US), BUT ONE ALSO BUFFERED (MEANING WAY BEHIND), THEN
+; FORCE CURRENT ONE AND LOAD UP PENDING ONE, TO CLEAR THE DECKS FOR THE ONE WE ARE ABOUT TO PREFETCH.
+               TST     MA_TIME_BUFF         ;IF NOT STACKED UP
+               BEQ.S   HABIT_1              ;    THEN COOL
+               TST.B   XPORT_STATE
+               BEQ.S   HABIT_00              ;IF TRANSPORT OFF DONT SEND CLOCK
+               BTST    #0,MIDI_MT_UART+1                      ;IS A UART MIDI CLOCK ENABLED
+               BEQ.S   HABIT_00
+               MOVE    #0F8H,D0
+               BSR     LOAD_A_LIVE
+HABIT_00       MOVE.B  #0B5H,UART_A_CONTROL                     ;ELSE, START SENDING
+               ADDQ    #1,MA_XMIT_SEQ_GATE                      ;AND INC CLICKS-WORTH ALLOWED TO DUMP
+               MOVE    MA_TIME_BUFF,MA_XMIT_SEQ_TIME            ;AND LOAD WHEN NEXT ONE OCCURS
+               CLR     MA_TIME_BUFF                             ;AND ANUL 'NEXT' TIME (WE JUST USED IT)
+HABIT_1
+               TST     MB_TIME_BUFF         ;IF B NOT STACKED UP
+               BEQ.S   HABIT_2              ;    THEN COOL
+               TST.B   XPORT_STATE
+               BEQ.S   HABIT_10              ;IF TRANSPORT OFF DONT SEND CLOCK
+               BTST    #1,MIDI_MT_UART+1                      ;IS A UART MIDI CLOCK ENABLED
+               BEQ.S   HABIT_10
+               MOVE    #0F8H,D0
+               BSR     LOAD_B_LIVE
+HABIT_10       MOVE.B  #0B5H,UART_B_CONTROL ;         ELSE, START SENDING
+               ADDQ    #1,MB_XMIT_SEQ_GATE  ;         AND INC CLICKS-WORTH ALLOWED TO DUMP
+               MOVE    MB_TIME_BUFF,MB_XMIT_SEQ_TIME  ;AND LOAD WHEN NEXT ONE OCCURS
+               CLR     MB_TIME_BUFF         ;         AND ANUL 'NEXT' TIME (WE JUST USED IT)
+HABIT_2
+;12DEC               TST     MA_XMIT_SEQ_TIME     ;IS BUFFER 'A' TIMING OUT TO DUMP?
+;12DEC               BEQ.S   L_2_4                ;    IF NOT, LET SLEEPING DOGS LIE...
+;12DEC               MOVE    MA_SEQ_ADVANCE,D0    ;         ELSE - ADVANCE OR DELAY DUMP?
+;12DEC               BGT.S   L_2_5                ;         IF DELAY, LOAD THAT AMOUNT OF DELAY NOW
+;12DEC               MOVEQ   #1,D0                ;              ELSE, FORCE DUMP AS SOON AS LEVEL_3 GETS THERE
+;12DECL_2_5
+;12DEC               MOVE    D0,MA_XMIT_SEQ_TIME
+;12DECL_2_4
+;12DEC
+;12DEC               TST     MB_XMIT_SEQ_TIME     ;IS BUFFER 'B' TIMING OUT TO DUMP?
+;12DEC               BEQ.S   L_2_6                ;    IF NOT, LET SLEEPING DOGS LIE...
+;12DEC               MOVE    MB_SEQ_ADVANCE,D0    ;         ELSE - ADVANCE OR DELAY DUMP?
+;12DEC               BGT.S   L_2_7                ;         IF DELAY, LOAD THAT AMOUNT OF DELAY NOW
+;12DEC               MOVEQ   #1,D0                ;              ELSE, FORCE DUMP AS SOON AS LEVEL_3 GETS THERE
+;12DECL_2_7
+;12DEC               MOVE    D0,MB_XMIT_SEQ_TIME
+;12DECL_2_6
+; WRAP UP & UNCOLLIDE.
+;
+;11JUN               BTST    #PAUSE_BIT,XPORT_STATE    ;IS SEQUENCER TRANSPORT IN "PAUSE" STATE?
+;11JUN               BNE.S   L_2_EXIT                  ;EXIT IF YES, DON'T LOG THIS CLOCK FOR SERVICING.
+;              NOT NEEDED - THE 6803 WILL NOT ECHO MIDI CLOCKS TO US IF
+;              IT HAS RECEIVED A MIDI "STOP" - AND OTHER MODES HAVE OTHER
+;              WAYS OF DEALING WITH LEFTOVER OR DUBIOUS CLOCK SERVICE REQUESTS ....
+;
+;
+               ADDQ    #1,CLICKS_PENDING         ;TELL BACKGROUND TO SERVICE A(NOTHER) CLOCK.
+
+L_2_EXIT
+               MOVEM.L (A7)+,D0/A0          ;UNSTACK REGISTERS SAVED BY LEVEL 2,
+;
+;11JUN               MOVE    #2000H,SR            ;RESTORE BOTTOM-RUNG PRIORITY LEVEL ....
+;              YA STONE BOZO!  RTE IS GONNA WALK RIGHT OVER THIS.
+;
+               RTE                          ;    ...AND SPLIT - WE DONE!
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA

@@ -1,0 +1,3181 @@
+               INCLUDE HPFIXUPS
+               TITLE "SEQFUNS2"
+***************************************************************************************************
+***************************************************************************************************
+***                                                                                             ***
+***            SEQFUNS2 - SUBFUNCTIONS UNDER "RECORD 2", "TIMING" FUNCTION SWITCHES             ***
+***                                                                                             ***
+***************************************************************************************************
+***************************************************************************************************
+;
+NEG_EXT        EQU     0FFFFFF00H      ;USE IN MOVEQ INSTRUCTIONS WHERE ARG IS
+                                       ;80H OR LARGER - HP XASM DOES NOT HANDLE
+                                       ;SIGN-EXTEND CORRECTLY.  COSMETIC, KEEPS
+                                       ;ACTUAL BYTE VALUE CLEARER.
+;
+                ABS_SHORT
+;
+               INCLUDE FIELD_EQU       ;SUBFUNCTION/FIELD BLOCK DEFINITIONS.
+               INCLUDE Q_BLK_EQU
+
+               GLB     RESET_PUNCHES,I_CALC_FPB
+               GLB     TEST_PIN_LIMITS,TEST_POUT_LIMITS
+
+               EXTERNAL  D_SEARCH_EDIT_BAR,ND_SEARCH_EDIT_BAR
+               EXTERNAL  SEQ_WRITE,SEQ1_DSTR_READ,SEQ_NDSTR_READ
+               EXTERNAL  SEQ_NDRD_SETUP
+               EXTERNAL  SEQ_CONSOLIDATE,SEQ_TURNAROUND,UPDATE_SEQ_SIZE
+               EXTERNAL  SOLID_ENTER,SET_ENTER_FLASH,USEC_TO_ALL
+               EXTERNAL  GET_CUR_SEQ_DIR
+               EXTERNAL  GET_SEQ_DIR_PTR
+               EXTERNAL  WORD_BIN_TO_BCD
+               EXTERNAL  WRITE_BCD_DIGITS
+               EXTERNAL  WRITE_STRING
+               EXTERNAL  WRITE_PARAM_VALUE
+               EXTERNAL  DISP_SCREEN
+               EXTERNAL  DISP_BUFFER,NOTHINGNESS
+               EXTERNAL  SEQ_RUNNING_TEST,STOP_THE_SEQUENCER
+               EXTERNAL  CLICKS_TO_COUNT_IN
+               EXTERNAL  SEQ_NDRD_EATER
+               EXTERNAL  BAR_MARKER_HANDLER
+               EXTERNAL  WRITE_PARAM_STRING
+               EXTERNAL  BAR_SF_LIMIT
+               EXTERNAL  BAR_ST_LIMIT
+               EXTERNAL  ACC_SFROM_BAR
+               EXTERNAL  ACC_STHRU_BAR
+               EXTERNAL  DELETE_SEQ
+               EXTERNAL  INSERT_SEQ
+               EXTERNAL  EXTRACT_SEQ
+               EXTERNAL  SRC_EMPTY_SCRN
+               EXTERNAL  DST_NOT_MT_SCRN
+               EXTERNAL  NULL_SEQ_TEST
+               EXTERNAL  USER_STALL,UPDATE_TIME_SIG
+
+
+               EXTERNAL  NOW_UART
+               EXTERNAL  EDIT_BEAT
+               EXTERNAL  NOW_NUMERATOR
+               EXTERNAL  EDIT_CLICK
+               EXTERNAL  DI_TEMP_3_B,DI_TEMP_4_B
+               EXTERNAL  DI_TEMP_5_B
+               EXTERNAL  TRACKS_MUTED
+               EXTERNAL  CLICKS_THIS_BAR
+               EXTERNAL  NEW_MUTE_TRACK
+               EXTERNAL  SMPTE_NOW_T_1,XPORT_STATE
+               EXTERNAL  EDIT_BAR
+               EXTERNAL  INIT_TEMPO_BPM
+               EXTERNAL  INIT_TEMPO_FPB
+               EXTERNAL  INIT_TEMPO_USEC
+               EXTERNAL  REF_TEMPO_USEC
+               EXTERNAL  CUR_TEMPO_USEC
+               EXTERNAL  SEQ_NDRD_PTR
+               EXTERNAL  NOW_SEQ_STATUS
+               EXTERNAL  SEQ1_DRD_PTR
+               EXTERNAL  DI_TEMP_7_B
+               EXTERNAL  SEQ_WR_PTR
+               EXTERNAL  TAP_DIV_FLAG,DI_TEMP_1_B
+               EXTERNAL  RAW_DENOMINATOR
+               EXTERNAL  PARAM_LO_LIM
+               EXTERNAL  CUR_SUB_BLOCK
+               EXTERNAL  SUBFUN_INSTALL
+               EXTERNAL  CURRENT_SEQUENCE,TAP_SLEW_AMOUNT
+               EXTERNAL  FORMER_SEQUENCE
+               EXTERNAL  PUNCH_OUT_BAR,PUNCH_IN_BAR
+               EXTERNAL  PARAM_HI_LIM
+               EXTERNAL  PUNCH_OUT_CLICK
+               EXTERNAL  PUNCH_IN_CLICK
+               EXTERNAL  TOTAL_BARS
+               EXTERNAL  BAR_OR_SMPTE_FLAG
+               EXTERNAL  RAW_CLOCK_IN
+               EXTERNAL  GO_TO_NEXT_FIELD
+               EXTERNAL  SMPTE_START_HR,SMPTE_START_BT,SMPTE_P_I_HR,SMPTE_P_I_BT
+               EXTERNAL  SMPTE_P_I_SC
+               EXTERNAL  SMPTE_P_I_FR
+               EXTERNAL  SMPTE_START_MN
+               EXTERNAL  SMPTE_P_I_MN
+               EXTERNAL  SMPTE_START_SC
+               EXTERNAL  SMPTE_START_FR
+               EXTERNAL  SMPTE_P_O_MN
+               EXTERNAL  SMPTE_P_O_SC
+               EXTERNAL  SMPTE_P_O_FR
+               EXTERNAL  SMPTE_P_O_HR
+               EXTERNAL  SMPTE_P_O_BT
+               EXTERNAL  SMPTE_NOW_TYPE
+               EXTERNAL  CUR_FLD_INDEX
+               EXTERNAL  NOW_LAST_BAR
+               EXTERNAL  STARTED_TAPPING
+               EXTERNAL  NOW_BAR
+               EXTERNAL  NOW_BEAT
+               EXTERNAL  CUR_TEMPO_BPM
+               EXTERNAL  SONG_EVENT
+               EXTERNAL  TO_SEQ_NUM
+               EXTERNAL  FROM_SEQ_NUM
+               EXTERNAL  FROM_TRACK_NUM
+               EXTERNAL  TO_TRACK_NUM
+               EXTERNAL  S_FROM_BAR
+               EXTERNAL  S_THRU_BAR
+               EXTERNAL  D_FROM_BAR
+               EXTERNAL  D_THRU_BAR
+               EXTERNAL  WL_FROM_BAR
+               EXTERNAL  WL_THRU_BAR
+               EXTERNAL  WL_FROM_SEQ
+               EXTERNAL  WL_TO_SEQ
+               EXTERNAL  SUB_FIRST_TIME
+               EXTERNAL  PENDING_MUTE
+               EXTERNAL  REAL_LONG_TIME,MUTE_OFF_TIMER
+               EXTERNAL  FORMER_MUTED
+               EXTERNAL  MA_SEQ_ADVANCE,MB_SEQ_ADVANCE
+;
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; FOR STARTERS, GLOBAL DECLARATIONS FOR THE SUBFUNCTION BLOCKS -
+; THEY'RE ACCESSED FROM SWITCHBOY MODULE:
+;
+                                            ;RECORD_2_GROUP.
+               GLB     PUNCH_IN_SUB
+               GLB     PUNCH_OUT_SUB
+               GLB     SMPTE_PIN_SUB
+               GLB     SMPTE_POUT_SUB
+;900621               GLB     WORK_LOOP_SUB
+;900621               GLB     WORKLOOP_SUB_3
+               GLB     MUTE_SUB
+                                            ;TIMING_GROUP.
+               GLB     TEMPO_CHANGE_SUB
+               GLB     RECORD_TAP_SUB
+               GLB     UH_UH_TAP_SUB
+               GLB     TAPPING_SUB
+               GLB     EDIT_TAP_SUB
+               GLB     UART_TIMING_SUB
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; THE SUBFUNCTION BLOCKS -
+; EACH BEGINS WITH THE DEFAULT SCREEN TEXT FOR THE SUBFUNCTION.
+;
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; RECORD_2_GROUP:
+;
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             PUNCH IN SUBFUNCTION.  CAN BE MOVED OUT OF SIDEWAYS TO A SMPTE VERSION.
+;
+PUNCH_IN_SUB
+               ASC     "PUNCH IN  SEQ.  "
+               ASC     "BAR:    CLICK:  "
+
+;SEQUENCE NOMBRE FIELD
+
+               DC.B    14
+               DC.B    2
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+SET_PTR
+               DC.L    SEQ_NUM_ACC
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+HI_LIMIT
+               DC.W    98
+               DC.W    FIELD_END
+
+;BAR FIELD
+
+               DC.B    20
+               DC.B    3
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    PUNCH_IN_BAR
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    LIMIT_PIN_BAR
+               DC.W    EDIT+LO_LIMIT
+               DC.W    1
+               DC.W    EDIT+ED_VEC
+               DC.L    LAST_BAR_CHEEK
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+
+;CLICK FIELD
+
+               DC.B    30
+               DC.B    2
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+SET_PTR
+               DC.L    PIN_ACCESS
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    LIMIT_PIN_CLICK
+               DC.W    EDIT+CURS_RGT
+               DC.L    PIN_BAR_TO_SMPTE
+               DC.W    SUBFUN_END
+
+
+SEQ_NUM_ACC
+               MOVE     CURRENT_SEQUENCE,D0     ;DONT LET SEQUENCE BE NULL
+               CMP      #99,D0
+               BNE.S    SEQ_NUM_ACC_1
+               CLR      CURRENT_SEQUENCE
+SEQ_NUM_ACC_1  MOVE.L   #CURRENT_SEQUENCE,D0
+               RTS
+
+LIMIT_PIN_BAR          ; LOWER LIMIT IS BAR NOMBRE, AS SET UP ABOVE.  UPPER LIMIT IS THE P-OUT BAR.
+; IF WE LAND ON SAME BAR AS THE PUNCH OUT, MAKE SURE OUR CLICK IS LEGAL.
+               MOVE    PUNCH_OUT_BAR,D0               ;SET UPPER LIMIT.
+               MOVE    D0,PARAM_HI_LIM
+
+               CMP     PUNCH_IN_BAR,D0      ;ARE WE THERE NOW?
+               BNE.S   PICTURES_1           ;    IF NOT, ES COOL
+
+               MOVE    PUNCH_OUT_CLICK,D0   ;         ELSE, MAKE SURE CLICK NOMBRE ES LEGAL
+               CMP     PUNCH_IN_CLICK,D0
+               BCC.S   PICTURES_1
+               MOVE    D0,PUNCH_IN_CLICK    ;(CORRECTION...
+               ST      SUBFUN_INSTALL       ;           ...AND REDISPLAY)
+PICTURES_1
+               RTS
+
+
+LAST_BAR_CHEEK ;IF WE BE IN THE LAST BAR, THEN NO CLICK OFFSET ALLOWED.
+               MOVE    PUNCH_IN_BAR,D0
+               CMP     TOTAL_BARS,D0
+               BNE.S   PICTURES_000
+               CLR     PUNCH_IN_CLICK
+               ST      SUBFUN_INSTALL       ;(REDISPLAY THIS CHANGE IN THE OOTHER FIELD)
+PICTURES_000
+               RTS
+
+
+PIN_ACCESS             ; SEE IF WE ARE REALLY SUPPOSED TO BE IN SMPTEish MODE,. WHILE SETTING POINTER.
+               MOVE.L  #PUNCH_IN_CLICK,D0   ;GET FRONT-WORK OUT OF THE WAY
+
+               TST.B   BAR_OR_SMPTE_FLAG    ;WELL - WHO's IT?
+               BNE.S   PICTURES_0           ;    IF SMPTE, INSTALL.
+               RTS                          ;         (ELSE, STAY PUT)
+
+
+PIN_BAR_TO_SMPTE       ; MOVE SIDEWAYS & INSTALL SMPTE VERSION OF US.
+               MOVE    RAW_CLOCK_IN,D0      ;THIS MOVE ALLOWED ONLY IF INTERNAL, MTC, OR MIDI CLOCK MODES
+               BEQ.S   PICTURES_0           ;0=INTERNAL
+               CMP     #5,D0                ;5=MTC
+               BEQ.S   PICTURES_0
+               CMP     #6,D0                ;6=SMPTE
+               BEQ.S   PICTURES_0
+                ABS_LONG
+               JMP     GO_TO_NEXT_FIELD
+                ABS_SHORT
+
+PICTURES_0
+               MOVE.L  #SMPTE_PIN_SUB,CUR_SUB_BLOCK   ;INSTALL SMPTE VERSION OF US
+               ST      SUBFUN_INSTALL       ;UPDATE DISPLAYS
+               ST      BAR_OR_SMPTE_FLAG    ;AFFIRM THAT WE BE SMPTE.
+               MOVE    #1,CUR_FLD_INDEX     ;MOVE TO HOUR PART OF THAT SCREAM (SCREEN).
+               RTS
+
+
+LIMIT_PIN_CLICK        ; UPPER LIMIT FOR CLICKS IS NUMBER OF CLICKS THE PUNCH-IN BAR.  UNLESS,
+; OF COURSE, IN SAME BAR AS PUNCH OUT - THIS HIS CLICK IS OUR UPPER LIMIT.  ALL LIMITED TO 99.
+               MOVE    PUNCH_IN_BAR,D0      ;OKAY - WHAT BAR ARE WE TALKING ABOUT?
+               CMP     PUNCH_OUT_BAR,D0     ; SAME BAR AS PUNCH OUT?
+               BNE.S   PICTURES_2           ;    IF NOT, SET LIMIT BASED ON CLICKS IN BAR
+               MOVE    PUNCH_OUT_CLICK,PARAM_HI_LIM   ;ELSE, OUT CLICK IS OUR  UPPER LIMIT.
+               RTS
+
+
+PICTURES_2
+               TST.B   XPORT_STATE          ;IF SEQUENCER RUNNING
+               BNE.S   PUCKER_1             ;    THEN DO NOT SEARCH THROUGH IT!!!!
+               MOVE    NOW_BAR,DI_TEMP_7_B  ;         ELSE, LOOK FOR CLICKS IN PUNCH IN BAR
+               MOVE    PUNCH_IN_BAR,NOW_BAR ;         (SAVE)
+               MOVEM.L D1-D7/A1-A6,-(A7)
+                ABS_LONG
+               JSR     UPDATE_TIME_SIG      ;FIRST - FIND THE NUMBER OF CLICKS IN THIS BAR
+                ABS_SHORT                   ; (RETURNS IN CLICKS_THIS_BAR)
+               MOVEM.L (A7)+,D1-D7/A1-A6
+               MOVE    DI_TEMP_7_B,NOW_BAR  ;(RESTORE NOW_BAR)
+PUCKER_1
+               MOVE    CLICKS_THIS_BAR+2,PARAM_HI_LIM   ;(AS IT SEZ...)
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             PUNCH OUT POINTS - JUST LIKE PUNCH IN, 'CEPT OUT.
+;
+PUNCH_OUT_SUB
+               ASC     "PUNCH OUT SEQ.  "
+               ASC     "BAR:    CLICK:  "
+
+;SEQUENCE NOMBRE FIELD
+
+               DC.B    14
+               DC.B    2
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+SET_PTR
+               DC.L    SEQ_NUM_ACC
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+HI_LIMIT
+               DC.W    98
+               DC.W    FIELD_END
+
+;BAR FIELD
+
+               DC.B    20
+               DC.B    3
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    PUNCH_OUT_BAR
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    LIMIT_POUT_BAR
+               DC.W    EDIT+ED_VEC
+               DC.L    LAST_BAR_CHECK
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+
+;CLICK FIELD
+
+               DC.B    30
+               DC.B    2
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+SET_PTR
+               DC.L    POUT_ACCESS
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    LIMIT_POUT_CLICK
+               DC.W    EDIT+CURS_RGT
+               DC.L    POUT_BAR_TO_SMPTE
+               DC.W    SUBFUN_END
+
+
+LIMIT_POUT_BAR         ; LOWER LIMIT IS PUNCH IN BAR, UPPER LIMIT IS TOTAL_BARS+1 (THERE, CLICKS = 0).
+; IF WE LAND ON SAME BAR AS THE PUNCH IN, MAKE SURE OUR CLICK IS LEGAL (> P-IN).
+               MOVE    TOTAL_BARS,PARAM_HI_LIM   ;SET UPPER LIMIT.
+               ADDQ    #1,PARAM_HI_LIM
+
+               MOVE    PUNCH_IN_BAR,D0      ;SET LOWER LIMIT.
+               MOVE    D0,PARAM_LO_LIM
+
+               CMP     PUNCH_OUT_BAR,D0     ;ARE WE IN THE PUNCH IN BAR NOW?
+               BNE.S   PICTURES_11          ;    IF NOT, ES COOL
+
+               MOVE    PUNCH_IN_CLICK,D0    ;         ELSE, MAKE SURE CLICK NOMBRE ES LEGAL
+               CMP     PUNCH_OUT_CLICK,D0
+               BLE.S   PICTURES_11
+               MOVE    D0,PUNCH_OUT_CLICK   ;(CORRECTION...
+               ST      SUBFUN_INSTALL       ;           ...AND REDISPLAY)
+PICTURES_11
+               RTS
+
+
+LAST_BAR_CHECK ;IF WE BE IN THE LAST BAR, THEN NO CLICK OFFSET ALLOWED.
+               MOVE    PUNCH_OUT_BAR,D0
+               CMP     TOTAL_BARS,D0
+               BNE.S   PICTURES_00
+               CLR     PUNCH_OUT_CLICK
+               ST      SUBFUN_INSTALL       ;(REDISPLAY THIS CHANGE IN THE OOTHER FIELD)
+PICTURES_00
+               RTS
+
+
+POUT_ACCESS            ; SEE IF WE ARE REALLY SUPPOSED TO BE IN SMPTEish MODE,. WHILE SETTING POINTER.
+               MOVE.L  #PUNCH_OUT_CLICK,D0  ;GET FRONT-WORK OUT OF THE WAY
+
+               TST.B   BAR_OR_SMPTE_FLAG    ;WELL - WHO's IT?
+               BNE.S   PICTURES_01          ;    IF SMPTE, INSTALL.
+               RTS                          ;         (ELSE, STAY PUT)
+
+
+POUT_BAR_TO_SMPTE       ; MOVE SIDEWAYS & INSTALL SMPTE VERSION OF US.
+               MOVE    RAW_CLOCK_IN,D0      ;THIS MOVE ALLOWED ONLY IF INTERNAL, MTC, OR MIDI CLOCK MODES
+               BEQ.S   PICTURES_01          ;0=INTERNAL
+               CMP     #5,D0                ;5=MTC
+               BEQ.S   PICTURES_01
+               CMP     #6,D0                ;6=SMPTE
+               BEQ.S   PICTURES_01
+                ABS_LONG
+               JMP     GO_TO_NEXT_FIELD
+                ABS_SHORT
+
+PICTURES_01
+               MOVE.L  #SMPTE_POUT_SUB,CUR_SUB_BLOCK  ;INSTALL SMPTE VERSION OF US
+               ST      SUBFUN_INSTALL       ;UPDATE DISPLAYS
+               ST      BAR_OR_SMPTE_FLAG    ;AFFIRM THAT WE BE SMPTE.
+               MOVE    #1,CUR_FLD_INDEX     ;POSITION CURSOR OVER HOUR.
+               RTS
+
+
+LIMIT_POUT_CLICK       ; UPPER LIMIT FOR CLICKS IS NUMBER OF CLICKS THIS PUNCH-OUT BAR.  IF
+; WE BE IN THE SAME BAR AS PUNCH IN, THEN HIS CLICK IS OUR LOWER LIMIT.  ALL LIMITED TO 99.
+               MOVE    PUNCH_OUT_BAR,D0     ;OKAY - WHAT BAR ARE WE TALKING ABOUT?
+               CMP     PUNCH_IN_BAR,D0      ; SAME BAR AS PUNCH IN?
+               BNE.S   PICTURES_21          ;    IF NOT, SET LIMIT BASED ON CLICKS IN BAR
+               MOVE    PUNCH_IN_CLICK,PARAM_LO_LIM    ;ELSE, OUT CLICK IS OUR  UPPER LIMIT.
+
+PICTURES_21
+               TST.B   XPORT_STATE          ;IF SEQUENCER RUNNING
+               BNE.S   PUCKER_21            ;    THEN DO NOT LOOK THRU SEQUENCE DATA!!!!
+               MOVE    NOW_BAR,DI_TEMP_7_B  ;         ELSE, LOOK FOR CLICKS IN PUNCH IN BAR
+               MOVE    PUNCH_OUT_BAR,D0     ;          (SAVE)
+               ADDQ    #1,NOW_LAST_BAR
+               CMP     NOW_LAST_BAR,D0      ;IF PUNCH OUT WAS BEYOND LAST BAR
+               BCS.S   POIU_1
+               CLR     PARAM_HI_LIM         ;    THEN PUNCH OUT CLICK MUST = 0.
+               RTS
+POIU_1
+               SUBQ    #1,NOW_LAST_BAR
+               MOVE    D0,NOW_BAR
+               MOVEM.L D1-D7/A1-A6,-(A7)
+                ABS_LONG
+               JSR     UPDATE_TIME_SIG      ;FIRST - FIND THE NUMBER OF CLICKS IN THIS BAR
+                ABS_SHORT                   ; (RETURNS IN CLICKS_THIS_BAR)
+               MOVEM.L (A7)+,D1-D7/A1-A6
+               MOVE    DI_TEMP_7_B,NOW_BAR
+PUCKER_21
+               MOVE    CLICKS_THIS_BAR+2,PARAM_HI_LIM   ;(AS IT SEZ...)
+               RTS
+
+
+RESET_PUNCHES
+               MOVE    #1,PUNCH_IN_BAR      ;PUNCH IN FROM VERY START
+               CLR     PUNCH_IN_CLICK
+               MOVE    NOW_LAST_BAR,PUNCH_OUT_BAR     ;PUNCH OUT AFTER LAST POSSIBLE BAR
+               ADDQ    #1,PUNCH_OUT_BAR
+               CLR     PUNCH_OUT_CLICK
+
+;;;;;;;        SF      BAR_OR_SMPTE_FLAG    ;REVERT TO USING BARS FOR PUNCH IN/OUT POINTS
+
+               MOVE.L  SMPTE_START_HR,SMPTE_P_I_HR    ;MAKE PUNCH_IN TIME = START TIME
+               MOVE.B  SMPTE_START_BT,SMPTE_P_I_BT
+
+               MOVE.L  #173B3B18H,SMPTE_P_O_HR   ;MAX OUT PUNCH-OUT TIME
+               MOVE.B  #4BH,SMPTE_P_O_BT
+
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             PUNCH IN POINTS - SMPTE VERSION
+;
+SMPTE_PIN_SUB
+               ASC     "PUNCH IN  SEQ.  "
+               ASC     "   :  :  :  :   "
+
+;SEQUENCE NOMBRE FIELD
+
+               DC.B    14
+               DC.B    2
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+SET_PTR
+               DC.L    SEQ_NUM_ACC
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+HI_LIMIT
+               DC.W    98
+               DC.W    FIELD_END
+
+;HOUR FIELD
+
+               DC.B    17
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    SMPTE_P_I_HR
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    PIN_HR_LIMIT
+               DC.W    EDIT+CURS_LFT
+               DC.L    PIN_SMPTE_TO_BAR
+               DC.W    EDIT+ED_VEC
+               DC.L    TEST_PIN_LIMITS
+               DC.W    FIELD_END
+
+;MINUTE FIELD
+
+               DC.B    20
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    SMPTE_P_I_MN
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+HI_LIMIT
+               DC.W    59
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    PIN_MN_LIMIT
+               DC.W    EDIT+ED_VEC
+               DC.L    DROP_CHECK_PIN
+               DC.W    FIELD_END
+
+;SECOND FIELD
+
+               DC.B    23
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    SMPTE_P_I_SC
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+HI_LIMIT
+               DC.W    59
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    PIN_SC_LIMIT
+               DC.W    EDIT+ED_VEC
+               DC.L    DROP_CHECK_PIN
+               DC.W    FIELD_END
+
+;FRAME FIELD
+
+               DC.B    26
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    SMPTE_P_I_FR
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    PIN_FRAME_LIMIT
+               DC.W    EDIT+ED_VEC
+               DC.L    DROP_CHECK_PIN
+               DC.W    FIELD_END
+
+;BIT FIELD
+
+               DC.B    29
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    SMPTE_P_I_BT
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    PIN_BIT_LIMIT
+               DC.W    EDIT+ED_VEC
+               DC.L    TEST_PIN_LIMITS
+               DC.W    SUBFUN_END
+
+
+PIN_SMPTE_TO_BAR       ; MOVE SIDEWAYS BACK INTO BAR SCREEN.
+               MOVE.L  #PUNCH_IN_SUB,CUR_SUB_BLOCK    ;INSTALL SMPTE VERSION OF US
+               ST      SUBFUN_INSTALL       ;UPDATE DISPLAYS
+               SF      BAR_OR_SMPTE_FLAG    ;DISAVOW THAT WE BE SMPTE.
+               MOVE    #2,CUR_FLD_INDEX     ;POSITION OVER CLICKOIDS.
+               RTS
+
+
+PIN_HR_LIMIT           ; LOWER LIMIT IS SMPTE START TIME.  UPPER LIMIT IS PUNCH OUR HOUR.
+               MOVE.B  SMPTE_START_HR,D0
+               EXT     D0
+               MOVE    D0,PARAM_LO_LIM
+               MOVE.B  SMPTE_P_O_HR,D0
+               EXT     D0
+               MOVE    D0,PARAM_HI_LIM
+               RTS
+
+
+PIN_MN_LIMIT           ; LOWER LIMIT IS SMPTE START TIME.  UPPER LIMIT IS PUNCH OUT TIME.
+               MOVE.B  SMPTE_START_HR,D0    ;IF 'TWEEN START & POUT, LEGAL
+               CMP.B   SMPTE_P_I_HR,D0
+               BNE.S   ASDF_1
+               MOVE.B  SMPTE_START_MN,D0
+               EXT     D0
+               MOVE    D0,PARAM_LO_LIM
+ASDF_1
+               MOVE.B  SMPTE_P_O_HR,D0
+               CMP.B   SMPTE_P_I_HR,D0
+               BNE.S   ASDF_2
+               EXT     D0
+               MOVE.B  D0,PARAM_HI_LIM
+ASDF_2
+               RTS
+
+
+PIN_SC_LIMIT           ; LOWER LIMIT IS SMPTE START TIME.  UPPER LIMIT IS PUNCH OUT TIME.
+               MOVE.B  SMPTE_START_HR,D0    ;ARE WE AGAINST THE START?
+               CMP.B   SMPTE_P_I_HR,D0
+               BNE.S   ASDF_3               ;    IF NOT, KEEP OLD DEFAULTS
+               MOVE.B  SMPTE_START_MN,D0
+               CMP.B   SMPTE_P_I_MN,D0
+               BNE.S   ASDF_3
+
+               MOVE.B  SMPTE_START_SC,D0    ;         ELSE, START IS LIMIT
+               EXT     D0
+               MOVE    D0,PARAM_LO_LIM
+ASDF_3
+               MOVE.B  SMPTE_P_O_HR,D0      ;ARE WE AGAINST THE P-OUT?
+               CMP.B   SMPTE_P_I_HR,D0
+               BNE.S   ASDF_4
+               MOVE.B  SMPTE_P_O_MN,D0
+               CMP.B   SMPTE_P_I_MN,D0
+               BNE.S   ASDF_4
+
+               MOVE.B  SMPTE_P_O_SC,D0
+               EXT     D0
+               MOVE.B  D0,PARAM_HI_LIM
+ASDF_4
+               RTS
+
+
+PIN_FRAME_LIMIT        ; UPPER LIMIT ON FRAME COUNT DEPENDS ON SMPTE MODE.  FORTUNATELY, ALREADY
+; CALCULATED.
+               MOVE.B  SMPTE_NOW_TYPE,D0
+               EXT     D0
+               BCLR    #7,D0                ;(CLEAR DROP FRAME BIT)
+               SUBQ    #1,D0
+               MOVE    D0,PARAM_HI_LIM
+; NOW, DO REMAINDER OF THE START/POUT CHECKING FOR LIMITS
+               MOVE.B  SMPTE_START_HR,D0    ;ARE WE AGAINST THE START?
+               CMP.B   SMPTE_P_I_HR,D0
+               BNE.S   ASDF_5               ;    IF NOT, KEEP OLD DEFAULTS
+               MOVE.B  SMPTE_START_MN,D0
+               CMP.B   SMPTE_P_I_MN,D0
+               BNE.S   ASDF_5
+               MOVE.B  SMPTE_START_SC,D0
+               CMP.B   SMPTE_P_I_SC,D0
+               BNE.S   ASDF_5
+
+               MOVE.B  SMPTE_START_FR,D0    ;         ELSE, START IS LIMIT
+               EXT     D0
+               MOVE    D0,PARAM_LO_LIM
+ASDF_5
+               MOVE.B  SMPTE_P_O_HR,D0      ;ARE WE AGAINST THE P-OUT?
+               CMP.B   SMPTE_P_I_HR,D0
+               BNE.S   ASDF_6
+               MOVE.B  SMPTE_P_O_MN,D0
+               CMP.B   SMPTE_P_I_MN,D0
+               BNE.S   ASDF_6
+               MOVE.B  SMPTE_P_O_SC,D0
+               CMP.B   SMPTE_P_I_MN,D0
+               BNE.S   ASDF_6
+
+               MOVE.B  SMPTE_P_O_FR,D0
+               EXT     D0
+               MOVE.B  D0,PARAM_HI_LIM
+ASDF_6
+               RTS
+
+
+PIN_BIT_LIMIT          ;TIRELESSLY, AS ABOVE....
+               MOVE.L  SMPTE_START_HR,D0    ;ARE WE AGAINST THE START?
+               CMP.L   SMPTE_P_I_HR,D0      ; (SINCE DOWN TO BITS, CAN CHECK HR/MN/SC/FR AS A LONG WORD)
+               BNE.S   ASDF_7               ;    IF NOT, KEEP OLD DEFAULTS
+
+               MOVE.B  SMPTE_START_BT,D0    ;         ELSE, START IS LIMIT
+               EXT     D0
+               MOVE    D0,PARAM_LO_LIM
+ASDF_7
+               MOVE.L  SMPTE_P_O_HR,D0      ;ARE WE AGAINST THE P-OUT?
+               CMP.L   SMPTE_P_I_HR,D0
+               BNE.S   ASDF_8
+
+               MOVE.B  SMPTE_P_O_BT,D0
+               EXT     D0
+               MOVE.B  D0,PARAM_HI_LIM
+ASDF_8
+               RTS
+
+
+DROP_CHECK_PIN         ; IF IN DROP-FRAME MODE, THE FIRST TWO FRAMES ARE DROPPED PER MINUTE
+; (EXCEPT FOR TENTH MINUTES).  CANNOT ALLOW ILLEGAL START TIMES EXIST.
+               BTST    #7,SMPTE_NOW_TYPE    ;DROP FRAME MODE?
+               BEQ.S   EXIT_DROP_PIN        ;    IF NOT, DON'T WORRY
+
+               TST.B   SMPTE_P_I_SC         ;IF NOT A MINUTE BOUNDRY, NO PROB!
+               BNE.S   EXIT_DROP_PIN
+
+               MOVE.B  SMPTE_P_I_MN,D0      ;LOAD UP MINUTE
+               AND.L   #0FFH,D0             ; (CLEAN UP)
+               ADD     #10,D0               ;   (AVOID ZERO DIVIDE ON MIN=0)
+               DIVU    #10,D0               ; SEE IF A TENTH MINUTE
+               SWAP    D0                   ;  (SEE THIS BY DIVIDING BY 10, AND LOOKING FOR REMAINDER)
+               TST     D0
+               BEQ.S   EXIT_DROP_PIN        ;    IF A TENTH MINUTE, ALLOWED TO SKIP ON
+
+               MOVE.B  SMPTE_P_I_FR,D0      ;         ELSE, SEE IF ILLEGAL (0,1) FRAME NOMBRE
+               CMP.B   #2,D0
+               BCC.S   EXIT_DROP_PIN
+               MOVE.B  #2,SMPTE_P_I_FR
+               ST      SUBFUN_INSTALL       ;HAVE CORRECTED FRAME NOMBRE & INITIATED A REDISPLAY
+
+EXIT_DROP_PIN          ;FALL INTO CHECKING ALL OTHER LIMITS - NORMAL EDIT DUTIES.
+
+
+TEST_PIN_LIMITS        ; IF HOUR MOVED DOWN TO EQUAL START HOUR, MAKE SURE REST OF TIME IS LEGAL.
+; IF HOUR IS MOVED UP TO PUNCH OUT HOUR, MAKE SURE REST OF TIME IS LESS.
+               MOVE.B  SMPTE_P_I_HR,D0      ;GET HOUR WE BE AT
+               CMP.B   SMPTE_P_O_HR,D0      ;ARE WE AT PUNCH OUT?
+               BEQ.S   PIN_POUT_HR          ;    IF SO, MAKE SURE WITHIN LEGAL BOUNDRIES.
+               CMP.B   SMPTE_START_HR,D0    ;ARE WE AT (OR BEFORE) START?
+               BLE     PIN_START_HR         ;    IF SO, CHECK REST OF TIME.
+               RTS                          ;         ELSE, KNOW REST OF TIME OKAY - SPLIT.
+
+PIN_POUT_HR            ; PUNCH IN HOUR EQUALS PUNCH OUT HOUR.  MAKE SURE REST OF TIME IS LESS OR EQUAL.
+               MOVE.B  SMPTE_P_O_HR,SMPTE_P_I_HR ;AFFIRM HOUR'S RIGHTNESS
+
+               MOVE.B  SMPTE_P_O_MN,D0
+               CMP.B   SMPTE_P_I_MN,D0      ;WHERE ARE WE NEXT TO OUT MINUTE?
+               BEQ.S   PIN_POUT_SC          ;    IF EQUAL, CHECK REST OF TIME
+               BCC.S   EXIT_PIN_POUT_CHECK  ;    IF LESS, WE BE COOL.
+               MOVE.B  D0,SMPTE_P_I_MN      ;    IF GREATER, MAKE EQUAL
+PIN_POUT_SC
+               MOVE.B  SMPTE_P_O_SC,D0
+               CMP.B   SMPTE_P_I_SC,D0      ;WHERE ARE WE NEXT TO OUT SECOND?
+               BEQ.S   PIN_POUT_FR          ;    IF EQUAL, CHECK REST OF TIME
+               BCC.S   EXIT_PIN_POUT_CHECK  ;    IF LESS, WE BE COOL.
+               MOVE.B  D0,SMPTE_P_I_FR      ;    IF GREATER, MAKE EQUAL
+PIN_POUT_FR
+               MOVE.B  SMPTE_P_O_FR,D0
+               CMP.B   SMPTE_P_I_FR,D0      ;WHERE ARE WE NEXT TO OUT BIT?
+               BEQ.S   PIN_POUT_BT          ;    IF EQUAL, CHECK REST OF TIME
+               BCC.S   EXIT_PIN_POUT_CHECK  ;    IF LESS, WE BE COOL.
+               MOVE.B  D0,SMPTE_P_I_FR      ;    IF GREATER, MAKE EQUAL
+PIN_POUT_BT
+               MOVE.B  SMPTE_P_O_BT,D0
+               CMP.B   SMPTE_P_I_BT,D0      ;WHERE ARE WE NEXT TO OUT MINUTE?
+               BCC.S   EXIT_PIN_POUT_CHECK  ;    IF LESS OR EQUAL, WE BE COOL.
+               MOVE.B  D0,SMPTE_P_I_BT      ;    IF GREATER, MAKE EQUAL
+EXIT_PIN_POUT_CHECK
+               ST      SUBFUN_INSTALL       ;DISPLAY POSSIBLE CHANGES
+               MOVE.B  SMPTE_P_I_HR,D0      ;GET HOUR WE BE AT
+               CMP.B   SMPTE_START_HR,D0    ;ARE WE AT (OR BEFORE) START?
+               BLE.S   PIN_START_HR         ;    IF SO, CHECK REST OF TIME.
+               RTS                          ;         ELSE, WE BE COOL - SPLIT.
+
+
+PIN_START_HR           ; PUNCH IN MUST BE GREATER THAN OR EQUAL TO SMPTE START TIME.
+               MOVE.B  SMPTE_START_HR,SMPTE_P_I_HR    ;AFFIRM HOUR'S RIGHTNESS
+
+               MOVE.B  SMPTE_START_MN,D0
+               CMP.B   SMPTE_P_I_MN,D0      ;HOW ARE WE NEXT TO MINUTE?
+               BEQ.S   PIN_START_SC         ;    IF EQUAL, CHECK SECONDS
+               BCS.S   EXIT_PIN_START_CHECK ;    IF GREATER, WE'RE COOL.
+               MOVE.B  D0,SMPTE_P_I_MN      ;    IF LESS, CORRECT TO BE EQUAL
+PIN_START_SC
+               MOVE.B  SMPTE_START_SC,D0
+               CMP.B   SMPTE_P_I_SC,D0      ;HOW ARE WE NEXT TO SECOND?
+               BEQ.S   PIN_START_FR         ;    IF EQUAL, CHECK FRAMES
+               BCS.S   EXIT_PIN_START_CHECK ;    IF GREATER, WE'RE COOL.
+               MOVE.B  D0,SMPTE_P_I_SC      ;    IF LESS, CORRECT TO BE EQUAL
+PIN_START_FR
+               MOVE.B  SMPTE_START_FR,D0
+               CMP.B   SMPTE_P_I_FR,D0      ;HOW ARE WE NEXT TO FRAME?
+               BEQ.S   PIN_START_BT         ;    IF EQUAL, CHECK BITS
+               BCS.S   EXIT_PIN_START_CHECK ;    IF GREATER, WE'RE COOL.
+               MOVE.B  D0,SMPTE_P_I_FR      ;    IF LESS, CORRECT TO BE EQUAL
+PIN_START_BT
+               MOVE.B  SMPTE_START_BT,D0
+               CMP.B   SMPTE_P_I_BT,D0      ;HOW ARE WE NEXT TO BIT?
+               BLE.S   EXIT_PIN_START_CHECK ;    IF WE'RE EQUAL OR GREATER, WE'RE COOL.
+               MOVE.B  D0,SMPTE_P_I_BT      ;    IF LESS, CORRECT TO BE EQUAL
+EXIT_PIN_START_CHECK
+               ST      SUBFUN_INSTALL       ;DISPLAY ANY POSSIBLE CHANGES
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             PUNCH OUT POINTS - SMPTE VERSION
+;
+SMPTE_POUT_SUB
+               ASC     "PUNCH OUT SEQ.  "
+               ASC     "   :  :  :  :   "
+
+;SEQUENCE NOMBRE FIELD
+
+               DC.B    14
+               DC.B    2
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+SET_PTR
+               DC.L    SEQ_NUM_ACC
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+HI_LIMIT
+               DC.W    98
+               DC.W    FIELD_END
+
+;HOUR FIELD
+
+               DC.B    17
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    SMPTE_P_O_HR
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    POUT_HR_LIMIT
+               DC.W    EDIT+HI_LIMIT
+               DC.W    23
+               DC.W    EDIT+CURS_LFT
+               DC.L    POUT_SMPTE_TO_BAR
+               DC.W    EDIT+ED_VEC
+               DC.L    TEST_POUT_LIMITS
+               DC.W    FIELD_END
+
+;MINUTE FIELD
+
+               DC.B    20
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    SMPTE_P_O_MN
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+HI_LIMIT
+               DC.W    59
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    POUT_MN_LIMIT
+               DC.W    EDIT+ED_VEC
+               DC.L    DROP_CHECK_POUT
+               DC.W    FIELD_END
+
+;SECOND FIELD
+
+               DC.B    23
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    SMPTE_P_O_SC
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+HI_LIMIT
+               DC.W    59
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    POUT_SC_LIMIT
+               DC.W    EDIT+ED_VEC
+               DC.L    DROP_CHECK_POUT
+               DC.W    FIELD_END
+
+;FRAME FIELD
+
+               DC.B    26
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    SMPTE_P_O_FR
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    POUT_FRAME_LIMIT
+               DC.W    EDIT+ED_VEC
+               DC.L    DROP_CHECK_POUT
+               DC.W    FIELD_END
+
+;BIT FIELD
+
+               DC.B    29
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    SMPTE_P_O_BT
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    POUT_BIT_LIMIT
+               DC.W    EDIT+ED_VEC
+               DC.L    TEST_POUT_LIMITS
+               DC.W    SUBFUN_END
+
+
+POUT_SMPTE_TO_BAR      ; MOVE SIDEWAYS BACK INTO BAR SCREEN.
+               MOVE.L  #PUNCH_OUT_SUB,CUR_SUB_BLOCK   ;INSTALL SMPTE VERSION OF US
+               ST      SUBFUN_INSTALL       ;UPDATE DISPLAYS
+               SF      BAR_OR_SMPTE_FLAG    ;DISAVOW THAT WE BE SMPTE.
+               MOVE    #2,CUR_FLD_INDEX     ;POSITION OVER CLICKOIDS.
+               RTS
+
+
+POUT_HR_LIMIT          ; LOWER LIMIT IS PUNCH IN TIME.  UPPER LIMIT IS THE SKY.
+               MOVE.B  SMPTE_P_I_HR,D0
+               EXT     D0
+               MOVE    D0,PARAM_LO_LIM
+               RTS
+
+
+POUT_MN_LIMIT          ; LOWER LIMIT IS PUNCH IN TIME.  UPPER LIMIT IS THE SKY.
+               MOVE.B  SMPTE_P_I_HR,D0      ;IF 'TWEEN PIN AND SKY, LEGAL
+               CMP.B   SMPTE_P_O_HR,D0
+               BNE.S   QSDF_1
+               MOVE.B  SMPTE_P_I_MN,D0
+               EXT     D0
+               MOVE    D0,PARAM_LO_LIM
+QSDF_1
+               RTS
+
+
+POUT_SC_LIMIT          ; LOWER LIMIT IS PUNCH IN TIME.  UPPER LIMIT IS THE SKY.
+               MOVE.B  SMPTE_P_I_HR,D0      ;ARE WE AGAINST THE START?
+               CMP.B   SMPTE_P_O_HR,D0
+               BNE.S   QSDF_3               ;    IF NOT, KEEP OLD DEFAULTS
+               MOVE.B  SMPTE_P_I_MN,D0
+               CMP.B   SMPTE_P_O_MN,D0
+               BNE.S   QSDF_3
+
+               MOVE.B  SMPTE_P_I_SC,D0      ;         ELSE, START IS LIMIT
+               EXT     D0
+               MOVE    D0,PARAM_LO_LIM
+QSDF_3
+               RTS
+
+
+POUT_FRAME_LIMIT       ; UPPER LIMIT ON FRAME COUNT DEPENDS ON SMPTE MODE.  FORTUNATELY, ALREADY
+; CALCULATED.
+               MOVE.B  SMPTE_NOW_TYPE,D0
+               EXT     D0
+               BCLR    #7,D0                ;(CLEAR DROP FRAME BIT)
+               SUBQ    #1,D0
+               MOVE    D0,PARAM_HI_LIM
+; NOW, DO REMAINDER OF THE P-IN CHECKING FOR LIMITS
+               MOVE.B  SMPTE_P_I_HR,D0      ;ARE WE AGAINST THE START?
+               CMP.B   SMPTE_P_O_HR,D0
+               BNE.S   QSDF_5               ;    IF NOT, KEEP OLD DEFAULTS
+               MOVE.B  SMPTE_P_I_MN,D0
+               CMP.B   SMPTE_P_O_MN,D0
+               BNE.S   QSDF_5
+               MOVE.B  SMPTE_P_I_SC,D0
+               CMP.B   SMPTE_P_O_SC,D0
+               BNE.S   QSDF_5
+
+               MOVE.B  SMPTE_P_I_FR,D0      ;         ELSE, PUNCH IN IS THE LIMIT
+               EXT     D0
+               MOVE    D0,PARAM_LO_LIM
+QSDF_5
+               RTS
+
+
+POUT_BIT_LIMIT         ;TIRELESSLY, AS ABOVE....
+               MOVE.L  SMPTE_P_I_HR,D0      ;ARE WE AGAINST THE START?
+               CMP.L   SMPTE_P_O_HR,D0      ; (SINCE DOWN TO BITS, CAN CHECK HR/MN/SC/FR AS A LONG WORD)
+               BNE.S   QSDF_7               ;    IF NOT, KEEP OLD DEFAULTS
+
+               MOVE.B  SMPTE_P_I_BT,D0      ;         ELSE, PUNCH IN IS LIMIT
+               EXT     D0
+               MOVE    D0,PARAM_LO_LIM
+QSDF_7
+               RTS
+
+
+DROP_CHECK_POUT        ; IF IN DROP-FRAME MODE, THE FIRST TWO FRAMES ARE DROPPED PER MINUTE
+; (EXCEPT FOR TENTH MINUTES).  CANNOT ALLOW ILLEGAL START TIMES EXIST.
+               BTST    #7,SMPTE_NOW_TYPE    ;DROP FRAME MODE?
+               BEQ.S   EXIT_DROP_POUT       ;    IF NOT, DON'T WORRY
+
+               TST.B   SMPTE_P_O_SC         ;IF NOT A MINUTE BOUNDRY, NO PROB!
+               BNE.S   EXIT_DROP_POUT
+
+               MOVE.B  SMPTE_P_O_MN,D0      ;LOAD UP MINUTE
+               AND.L   #0FFH,D0             ; (CLEAN UP)
+               ADD     #10,D0               ;   (AVOID ZERO DIVIDE ON MIN=0)
+               DIVU    #10,D0               ; SEE IF A TENTH MINUTE
+               SWAP    D0                   ;  (SEE THIS BY DIVIDING BY 10, AND LOOKING FOR REMAINDER)
+               TST     D0
+               BEQ.S   EXIT_DROP_POUT       ;    IF A TENTH MINUTE, ALLOWED TO SKIP ON
+
+               MOVE.B  SMPTE_P_O_FR,D0      ;         ELSE, SEE IF ILLEGAL (0,1) FRAME NOMBRE
+               CMP.B   #2,D0
+               BCC.S   EXIT_DROP_POUT
+               MOVE.B  #2,SMPTE_P_O_FR
+               ST      SUBFUN_INSTALL       ;HAVE CORRECTED FRAME NOMBRE & INITIATED A REDISPLAY
+
+EXIT_DROP_POUT         ;FALL INTO CHECKING ALL OTHER LIMITS - NORMAL EDIT DUTIES.
+
+
+TEST_POUT_LIMITS       ; IF HOUR MOVED DOWN TO EQUAL PUNCH IN HOUR, MAKE SURE REST OF TIME IS LEGAL.
+               MOVE.B  SMPTE_P_O_HR,D0      ;GET HOUR WE BE AT
+               CMP.B   SMPTE_P_I_HR,D0      ;ARE WE AT (OR BEFORE) PUNCH IN?
+               BLE.S   POUT_START_HR        ;    IF SO, CHECK REST OF TIME.
+               RTS                          ;         ELSE, KNOW REST OF TIME OKAY - SPLIT.
+
+POUT_START_HR          ; PUNCH OUT MUST BE GREATER THAN OR EQUAL TO PUNCH IN.
+               MOVE.B  SMPTE_P_I_HR,SMPTE_P_O_HR ;HOUR COULD HAVE BEEN LESS OR EQUAL - MAKE EQUAL
+
+               MOVE.B  SMPTE_P_I_MN,D0
+               CMP.B   SMPTE_P_O_MN,D0      ;HOW ARE WE NEXT TO MINUTE?
+               BEQ.S   POUT_START_SC        ;    IF EQUAL, CHECK SECONDS
+               BCS.S   EXIT_POUT_START_CHECK    ;IF GREATER, WE'RE COOL.
+               MOVE.B  D0,SMPTE_P_O_MN      ;    IF LESS, CORRECT TO BE EQUAL
+POUT_START_SC
+               MOVE.B  SMPTE_P_I_SC,D0
+               CMP.B   SMPTE_P_O_SC,D0      ;HOW ARE WE NEXT TO SECOND?
+               BEQ.S   POUT_START_FR        ;    IF EQUAL, CHECK FRAMES
+               BCS.S   EXIT_POUT_START_CHECK ;   IF GREATER, WE'RE COOL.
+               MOVE.B  D0,SMPTE_P_O_SC      ;    IF LESS, CORRECT TO BE EQUAL
+POUT_START_FR
+               MOVE.B  SMPTE_P_I_FR,D0
+               CMP.B   SMPTE_P_O_FR,D0      ;HOW ARE WE NEXT TO FRAME?
+               BEQ.S   POUT_START_BT        ;    IF EQUAL, CHECK BITS
+               BCS.S   EXIT_POUT_START_CHECK ;   IF GREATER, WE'RE COOL.
+               MOVE.B  D0,SMPTE_P_O_FR      ;    IF LESS, CORRECT TO BE EQUAL
+POUT_START_BT
+               MOVE.B  SMPTE_P_I_BT,D0
+               CMP.B   SMPTE_P_O_BT,D0      ;HOW ARE WE NEXT TO BIT?
+               BLE.S   EXIT_POUT_START_CHECK ;   IF WE'RE EQUAL OR GREATER, WE'RE COOL.
+               MOVE.B  D0,SMPTE_P_O_BT      ;    IF LESS, CORRECT TO BE EQUAL
+EXIT_POUT_START_CHECK
+               ST      SUBFUN_INSTALL       ;DISPLAY ANY POSSIBLE CHANGES
+               RTS                          ;         ELSE, OKAY - SPLIT.
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;900621;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;900621;
+;900621;
+;900621;
+;900621
+;900621WORK_LOOP_SUB  ASC      "        WORKLOOP"
+;900621               ASC      "S.   BR:   ->   "
+;900621
+;900621               DC.B     0
+;900621               DC.B     7
+;900621               DC.W     ACCESS+SET_PTR
+;900621               DC.L     WL_EVENT_ACC
+;900621               DC.W     ACCESS+WORD
+;900621               DC.W     DISPLAY+DISP_VEC
+;900621               DC.L     WRITE_PARAM_STRING
+;900621               DC.W     DISPLAY+DISP_STRNG
+;900621               DC.L     WL_TYPE_STR
+;900621               DC.W     EDIT+HI_LIMIT
+;900621               DC.W     1
+;900621               DC.W     EDIT+ENTR_VEC
+;900621               DC.L     GO_WL_2
+;900621               DC.W     EDIT+ED_VEC
+;900621               DC.L     GO_WL_3
+;900621               DC.W     EDIT+CUSTOMIZE
+;900621               DC.L     SET_ENTER_FLASH
+;900621               DC.W     EDIT+NO_KEYPAD
+;900621               DC.W     FIELD_END
+;900621
+;900621;SEQUENCE NUMBER FIELD
+;900621
+;900621               DC.B     18
+;900621               DC.B     2
+;900621               DC.W     ACCESS+SET_PTR
+;900621               DC.L     ACC_FROM_SEQ
+;900621               DC.W     ACCESS+WORD
+;900621               DC.W    DISPLAY+DISP_OFFSET
+;900621               DC.W    -1
+;900621               DC.W     DISPLAY+NO_ZERO_BLANK
+;900621               DC.W     EDIT+HI_LIMIT
+;900621               DC.W     98
+;900621               DC.W     EDIT+ENTR_VEC
+;900621               DC.L     GO_WL_2
+;900621               DC.W     EDIT+CUSTOMIZE
+;900621               DC.L     SET_ENTER_FLASH
+;900621               DC.W     EDIT+LINKED
+;900621               DC.W     FIELD_END
+;900621
+;900621;SOURCE "FROM" BAR NUMBER FIELD
+;900621
+;900621               DC.B     24
+;900621               DC.B     3
+;900621               DC.W     ACCESS+SET_PTR
+;900621               DC.L     ACC_SFROM_BAR
+;900621               DC.W     ACCESS+WORD
+;900621               DC.W     EDIT+ENTR_VEC
+;900621               DC.L     GO_WL_2
+;900621               DC.W     EDIT+CUSTOMIZE
+;900621               DC.L     BAR_SF_LIMIT
+;900621               DC.W     FIELD_END
+;900621
+;900621;SOURCE "THRU" BAR FIELD
+;900621
+;900621               DC.B     29
+;900621               DC.B     3
+;900621               DC.W     ACCESS+SET_PTR
+;900621               DC.L     ACC_STHRU_BAR
+;900621               DC.W     ACCESS+WORD
+;900621               DC.W     EDIT+ENTR_VEC
+;900621               DC.L     GO_WL_2
+;900621               DC.W     EDIT+CUSTOMIZE
+;900621               DC.L     BAR_ST_LIMIT
+;900621               DC.W     SUBFUN_END
+;900621
+;900621WORKLOOP_SUB_2
+;900621               ASC      " COPY WORK LOOP "
+;900621               ASC      " TO  SEQ.       "
+;900621
+;900621               DC.B     26
+;900621               DC.B     2
+;900621               DC.W     ACCESS+SET_PTR
+;900621               DC.L     WL_COPY_SEQ_ACC
+;900621               DC.W     ACCESS+WORD
+;900621               DC.W    DISPLAY+DISP_OFFSET
+;900621               DC.W    -1
+;900621               DC.W     DISPLAY+NO_ZERO_BLANK
+;900621               DC.W     EDIT+HI_LIMIT
+;900621               DC.W     98
+;900621               DC.W     EDIT+ENTR_VEC
+;900621               DC.L     EXTRACT_WORKLOOP
+;900621               DC.W     EDIT+CUSTOMIZE
+;900621               DC.L     SET_ENTER_FLASH
+;900621               DC.W     SUBFUN_END
+;900621
+;900621WORKLOOP_SUB_3
+;900621               ASC      "RETURN  WORKLOOP"
+;900621               ASC      "SEQ.   -> SEQ.  "
+;900621
+;900621;WORKLOOP TYPE FIELD
+;900621
+;900621               DC.B     0
+;900621               DC.B     7
+;900621               DC.W     ACCESS+DIR_PTR
+;900621               DC.W     SONG_EVENT
+;900621               DC.W     ACCESS+WORD
+;900621               DC.W     DISPLAY+DISP_VEC
+;900621               DC.L     WRITE_PARAM_STRING
+;900621               DC.W     DISPLAY+DISP_STRNG
+;900621               DC.L     WL_TYPE_STR
+;900621               DC.W     EDIT+HI_LIMIT
+;900621               DC.W     1
+;900621               DC.W     EDIT+ENTR_VEC
+;900621               DC.L     RETURN_WORKLOOP
+;900621               DC.W     EDIT+ED_VEC
+;900621               DC.L     GO_WL_1
+;900621               DC.W     EDIT+CUSTOMIZE
+;900621               DC.L     SET_ENTER_FLASH
+;900621               DC.W     EDIT+NO_KEYPAD
+;900621               DC.W     FIELD_END
+;900621
+;900621;FROM SEQUENCE NUMBER FIELD
+;900621
+;900621               DC.B     20
+;900621               DC.B     2
+;900621               DC.W     ACCESS+DIR_PTR
+;900621               DC.W     WL_FROM_SEQ
+;900621               DC.W     ACCESS+WORD
+;900621               DC.W    DISPLAY+DISP_OFFSET
+;900621               DC.W    -1
+;900621               DC.W     DISPLAY+NO_ZERO_BLANK
+;900621               DC.W     EDIT+HI_LIMIT
+;900621               DC.W     98
+;900621               DC.W     EDIT+ENTR_VEC
+;900621               DC.L     RETURN_WORKLOOP
+;900621               DC.W     EDIT+CUSTOMIZE
+;900621               DC.L     SET_ENTER_FLASH
+;900621               DC.W     FIELD_END
+;900621
+;900621;TO SEQUENCE NUMBER FIELD
+;900621
+;900621               DC.B     30
+;900621               DC.B     2
+;900621               DC.W     ACCESS+DIR_PTR
+;900621               DC.W     WL_TO_SEQ
+;900621               DC.W     ACCESS+WORD
+;900621               DC.W    DISPLAY+DISP_OFFSET
+;900621               DC.W    -1
+;900621               DC.W     DISPLAY+NO_ZERO_BLANK
+;900621               DC.W     EDIT+HI_LIMIT
+;900621               DC.W     98
+;900621               DC.W     EDIT+ENTR_VEC
+;900621               DC.L     RETURN_WORKLOOP
+;900621               DC.W     EDIT+CUSTOMIZE
+;900621               DC.L     SET_ENTER_FLASH
+;900621               DC.W     SUBFUN_END
+;900621
+;900621
+;900621ACC_FROM_SEQ   MOVE     CURRENT_SEQUENCE,FROM_SEQ_NUM
+;900621               MOVE.L   #CURRENT_SEQUENCE,D0
+;900621               RTS
+;900621
+;900621WL_COPY_SEQ_ACC CMP     #99,TO_SEQ_NUM
+;900621               BLT.S    WL_COPY_ACC_1
+;900621               CLR      TO_SEQ_NUM
+;900621WL_COPY_ACC_1  MOVE.L   #TO_SEQ_NUM,D0
+;900621               RTS
+;900621
+;900621GO_WL_1        TST      SONG_EVENT
+;900621               BNE.S    GO_WL_10
+;900621               MOVE.L   #WORK_LOOP_SUB,CUR_SUB_BLOCK
+;900621               ST       SUBFUN_INSTALL
+;900621GO_WL_10       RTS
+;900621
+;900621GO_WL_2        MOVE.L   #WORKLOOP_SUB_2,CUR_SUB_BLOCK
+;900621               ST       SUBFUN_INSTALL
+;900621               RTS
+;900621
+;900621GO_WL_3        TST      SONG_EVENT
+;900621               BEQ.S    GO_WL_30
+;900621               MOVE.L   #WORKLOOP_SUB_3,CUR_SUB_BLOCK
+;900621               ST       SUBFUN_INSTALL
+;900621GO_WL_30       RTS
+;900621
+;900621WL_EVENT_ACC   CLR      SONG_EVENT
+;900621               MOVE.L   #SONG_EVENT,D0
+;900621               RTS
+;900621
+;900621WL_TYPE_STR    ASC      "EXTRACTRETURN "
+;900621;
+;900621;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+;900621               SKIP
+;900621;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;900621;
+;900621EXTRACT_WORKLOOP
+;900621                                            ;TESTING, TESTING ....
+;900621;
+;900621               JSR     SEQ_RUNNING_TEST     ;IS SEQUENCER RUNNING? (NOT COOL TO AUTO-STOP IT ....)
+;900621               BNE     EXTRACT_STALL        ;EXIT IF YES (MESSAGE IS IN LCD ....)
+;900621;
+;900621               BSR     NULL_SEQ_TEST        ;IS USER TRYING TO EXTRACT FROM THE null seqUENCE?
+;900621               BNE     EXTRACT_STALL        ;EXIT IF YES (MESSAGE IS IN LCD ....)
+;900621;
+;900621               MOVE    FROM_SEQ_NUM,D0      ;ARE WORKLOOP SOURCE, DESTINATION THE SAME SEQUENCE?
+;900621               CMP     TO_SEQ_NUM,D0
+;900621               BNE.S   EXTR_WKLP_10         ;BRANCH IF NOT, GO ON.
+;900621               MOVE.L  #CANT_EXTR_SRC_SCRN,A1    ;ELSE, EXIT WITH ERROR MESSAGE.
+;900621               BRA.S   EXTRACT_WL_1
+;900621;
+;900621EXTR_WKLP_10
+;900621               MOVE    FROM_SEQ_NUM,D0      ;SOURCE SEQUENCE NUMBER -
+;900621               JSR     GET_SEQ_DIR_PTR      ;SET POINTER TO ITS DIRECTORY BLOCK.
+;900621               TST     Q_STATUS(A0)         ;OH - UH, DOES THIS SEQUENCE EXIST?
+;900621               BNE.S   EXTR_WKLP_20         ;BRANCH IF YES - GO TO IT, HEWITT!
+;900621               MOVE.L  #SRC_EMPTY_SCRN,A1   ;ELSE, EXIT WITH ERROR MESSAGE.
+;900621               BRA.S   EXTRACT_WL_1
+;900621;
+;900621EXTR_WKLP_20
+;900621               MOVE    TO_SEQ_NUM,D0        ;DESTINATION SEQUENCE NUMBER -
+;900621               JSR     GET_SEQ_DIR_PTR      ;SET POINTER TO ITS DIRECTORY BLOCK.
+;900621               TST     Q_STATUS(A0)         ;AH, UMM, DOES THIS SEQUENCE EXIST?
+;900621               BEQ.S   EXTR_WKLP_30         ;BRANCH IF NOT - GO ON, JUAN!
+;900621                                            ;NOTE - KEEP A0 INTACT FOR USE BY EXTRACT_SEQ BELOW.
+;900621               MOVE.L  #DST_NOT_MT_SCRN,A1  ;ELSE, EXIT WITH ERROR MESSAGE.
+;900621               BRA.S   EXTRACT_WL_1
+;900621;
+;900621EXTR_WKLP_30
+;900621               MOVE    #0010H,D1            ;OK - TELL 'EM WE BE BUSY.
+;900621               MOVE.L  #EXTRACTING_STR,A2
+;900621                ABS_LONG
+;900621               JSR     WRITE_STRING
+;900621               JSR     DISP_BUFFER
+;900621                ABS_SHORT
+;900621;
+;900621                                                 ;SET UP PARAMS USED BY THE EXTRACT_SEQ ROUTINE:
+;900621               CLR     FROM_TRACK_NUM            ;EXTRACT FROM ALL TRACKS.
+;900621               CLR     TO_TRACK_NUM              ;EXTRACT TO ALL TRACKS (PRESERVE ORIG TRACK INFO).
+;900621               MOVE    S_FROM_BAR,WL_FROM_BAR    ;SAVE BAR #s FOR USE BY RETURN_WORKLOOP ROUTINE.
+;900621               MOVE    S_THRU_BAR,WL_THRU_BAR
+;900621               MOVE    TO_SEQ_NUM,WL_FROM_SEQ    ;SAVE SEQ NUMBERS FOR RETURN_WORKLOOP (DEFAULT).
+;900621               MOVE    FROM_SEQ_NUM,WL_TO_SEQ
+;900621               MOVE    TO_SEQ_NUM,CURRENT_SEQUENCE    ;EXTRACT DESTINATION BECOMES CURRENT SEQ.
+;900621               MOVE    #2700H,SR                 ;KILL INTERRUPTS - GO FAST.
+;900621;
+;900621               BSR     EXTRACT_SEQ               ;WELL - THIS IS IT.
+;900621;
+;900621               MOVE.L  #EXTRACT_DONE_SCRN,A1     ;THAT WAS EASY - SAY WE'RE DONE.
+;900621;
+;900621EXTRACT_WL_1
+;900621                ABS_LONG
+;900621               JSR     DISP_SCREEN
+;900621                ABS_SHORT
+;900621               MOVE    #2000H,SR
+;900621EXTRACT_STALL
+;900621               BRA     USER_STALL
+;900621;
+;900621;
+;900621;
+;900621EXTRACT_DONE_SCRN
+;900621               ASC     "LOOP EXTRACTED -"
+;900621               ASC     "PRESS ANY SWITCH"
+;900621;
+;900621CANT_EXTR_SRC_SCRN
+;900621               ASC     "CAN'T EXTRACT TO"
+;900621               ASC     "SOURCE SEQUENCE!"
+;900621;
+;900621EXTRACTING_STR ASC     "EXTRACTING...   "
+;900621;
+;900621;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+;900621               SKIP
+;900621;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;900621;
+;900621RETURN_WORKLOOP
+;900621               JSR     SEQ_RUNNING_TEST     ;IS SEQUENCER RUNNING? (NOT COOL TO AUTO-STOP IT ....)
+;900621               BNE     RETURN_STALL         ;EXIT IF YES (MESSAGE IS IN LCD ....)
+;900621;
+;900621               MOVE    WL_FROM_SEQ,D0       ;DOES (WORKLOOP) SOURCE SEQUENCE EXIST?
+;900621               JSR     GET_SEQ_DIR_PTR
+;900621               TST     Q_STATUS(A0)
+;900621               BNE.S   RET_WKLP_10          ;BRANCH IF YES, GO ON.
+;900621               MOVE.L  #SRC_EMPTY_SCRN,A1   ;ELSE, EXIT WITH ERROR MESSAGE.
+;900621               BRA.S   RET_WKLP_18
+;900621;
+;900621RET_WKLP_10
+;900621               CMP     WL_TO_SEQ,D0         ;IS RETURN DESTINATION THE SAME SEQUENCE AS SOURCE?
+;900621               BNE.S   RET_WKLP_20          ;BRANCH IF NOT - LOOKING BETTER AND BETTER ....
+;900621               MOVE.L  #CANT_RET_SRC_SCRN,A1     ;ELSE, EXIT WITH ERROR MESSAGE.
+;900621RET_WKLP_18
+;900621               BRA     RETURN_WL_2
+;900621;
+;900621RET_WKLP_20
+;900621               MOVE    #2700H,SR
+;900621               MOVE    WL_FROM_SEQ,FROM_SEQ_NUM       ;SET SEQ TO RETURN FROM,
+;900621               MOVE    WL_TO_SEQ,TO_SEQ_NUM           ;SEQ TO RETURN TO.
+;900621               MOVE    TO_SEQ_NUM,CURRENT_SEQUENCE    ;DESTINATION BECOMES CURRENT SEQ (AS ALWAYS).
+;900621               JSR     GET_CUR_SEQ_DIR                ;NOW, ABOUT THAT DESTINATION SEQUENCE .....
+;900621               TST     (A0)                           ;IS IT EMPTY?
+;900621               BEQ.S   RETURN_WL_MT                   ;BRANCH IF YES, DO COPY TO EMPTY SEQUENCE.
+;900621;
+;900621                                            ;DEST SEQ NOT EMPTY:
+;900621;
+;900621               MOVE    Q_TOTAL_BARS(A0),D0  ;LAST BAR IN DESTINATION SEQUENCE -
+;900621               MOVE    WL_FROM_BAR,D1       ;DOES WORKLOOP START BEYOND END OF DEST SEQ?
+;900621               CMP     D0,D1
+;900621               BLE.S   RET_WKLP_30          ;BRANCH IF NOT - WILL HAVE TO DELETE SOME OF DEST SEQ.
+;900621               ADDQ    #1,D0                ;ELSE - SET UP TO INSERT AT END OF DEST SEQ,
+;900621               MOVE    D0,D_THRU_BAR
+;900621               BRA.S   RET_WKLP_70          ;GO STRAIGHT THERE (SKIP DELETE STEP).
+;900621;
+;900621RET_WKLP_30
+;900621               MOVE    D1,D_FROM_BAR        ;DELETE IN DEST SEQ STARTING WITH WORKLOOP START BAR.
+;900621               MOVE    WL_THRU_BAR,D1       ;DOES ENTIRE WORKLOOP OVERLAP DESTINATION SEQ?
+;900621               CMP     D0,D1                ;(THAT'S TOTAL BARS AGAIN)
+;900621               BGT.S   RET_WKLP_40          ;BRANCH IF NOT - DELETE THROUGH (NOT PAST!) END OF SEQ.
+;900621               MOVE    D1,D0                ;ELSE, DELETE THROUGH WORLKLOOP END BAR.
+;900621RET_WKLP_40
+;900621               MOVE    D0,D_THRU_BAR        ;DELETE IN DEST SEQ THRU WORKLOOP END BAR.
+;900621;
+;900621               BSR     DELETE_SEQ           ;DELETE THE OLD SHIT, HOWSOEVER.
+;900621;
+;900621               JSR     GET_CUR_SEQ_DIR      ;HAVE ANOTHER LOOK AT DESTINATION SEQUENCE -
+;900621               MOVE    WL_FROM_BAR,D1       ;START BAR OF WORKLOOP - NORMALLY WE'D INSERT IT HERE,
+;900621               MOVE    Q_TOTAL_BARS(A0),D0  ;BUT IS IT PAST END OF DESTINATION SEQUENCE?
+;900621               CMP     D0,D1                ;WE'LL SEE, WE'LL SEE ....
+;900621               BLE.S   RET_WKLP_50          ;NOT PAST END, INSERT IT AT ITS ORIGINAL PLACE.
+;900621               ADDQ    #1,D0                ;ELSE, INSERT AT END OF DESTINATION SEQUENCE.
+;900621               BRA.S   RET_WKLP_60
+;900621RET_WKLP_50
+;900621               MOVE    D1,D0                ;INSERT WHERE INSERT WE SHOULD (WORKLOOP START).
+;900621RET_WKLP_60
+;900621               MOVE    D0,D_THRU_BAR        ;SET WORKLOOP INSERT POINT HOWSOEVER.
+;900621;
+;900621RET_WKLP_70
+;900621               JSR     GET_CUR_SEQ_DIR      ;DEST SEQ MAY HAVE BEEN KILLED - LET'S HAVE A LOOK.
+;900621               TST     Q_STATUS(A0)         ;IS DESTINATION OF RETURN EMPTY?
+;900621               BEQ.S   RETURN_WL_MT         ;BRANCH IF YES - CREATE NEW SEQUENCE USING WORKLOOP.
+;900621;
+;900621               MOVE    #1,S_FROM_BAR        ;ELSE - INSERT STARTING WITH BAR 1 OF SOURCE (LOOP) -
+;900621               MOVE    FROM_SEQ_NUM,D0
+;900621               JSR     GET_SEQ_DIR_PTR
+;900621               MOVE    Q_TOTAL_BARS(A0),S_THRU_BAR    ;INSERT THE WHOLE WORK LOOP.
+;900621;
+;900621               BSR     INSERT_SEQ
+;900621;
+;900621RETURN_WL_1
+;900621               MOVE.L  #RETURN_DONE_SCRN,A1                    ;DISPLAY COMPLETION SCREEN
+;900621RETURN_WL_2
+;900621                ABS_LONG
+;900621               JSR     DISP_SCREEN
+;900621                ABS_SHORT
+;900621               MOVE    #2000H,SR
+;900621RETURN_STALL
+;900621               BRA     USER_STALL                              ;AND WAIT FOR USER
+;900621;
+;900621;
+;900621;
+;900621RETURN_WL_MT
+;900621               MOVE.L  A0,-(A7)             ;RETURN DESTINATION IS EMPTY -
+;900621               MOVE    FROM_SEQ_NUM,D0      ;CREATE A NEW SEQUENCE OF JUST THE WORK LOOP.
+;900621               JSR     GET_SEQ_DIR_PTR
+;900621               MOVE    #1,S_FROM_BAR
+;900621               MOVE    Q_TOTAL_BARS(A0),S_THRU_BAR
+;900621               MOVE.L  (A7)+,A0
+;900621               MOVE    TO_SEQ_NUM,CURRENT_SEQUENCE
+;900621               BSR     EXTRACT_SEQ
+;900621               BRA.S   RETURN_WL_1
+;900621;
+;900621;
+;900621;
+;900621RETURN_DONE_SCRN
+;900621               ASC     "LOOP RETURNED - "
+;900621               ASC     "PRESS ANY SWITCH"
+;900621;
+;900621CANT_RET_SRC_SCRN
+;900621               ASC     "CAN'T RETURN TO "
+;900621               ASC     "SOURCE SEQUENCE!"
+;900621;
+;900621;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+                SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;              TRACK MUTING SUB!!!!
+;
+MUTE_SUB
+               ASC     "MUTING    SEQ.  "
+               ASC     "TRACKS:         "
+
+;SEQUENCE NOMBRE FIELD
+
+               DC.B    14
+               DC.B    2
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+SET_PTR
+               DC.L    SEQ_NUM_ACC
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+HI_LIMIT
+               DC.W    98
+               DC.W    FIELD_END
+
+;TRACKS TO BE MUTED FIELD
+
+               DC.B    24
+               DC.B    1
+               DC.W    ACCESS+DIR_PTR
+               DC.W    NEW_MUTE_TRACK
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    CHANGE_MUTE_TRACK
+               DC.W    EDIT+HI_LIMIT
+               DC.W    7
+               DC.W    EDIT+POT_CHG_VEC
+               DC.L    NOTHINGNESS
+               DC.W    EDIT+INCR_VEC
+               DC.L    NOTHINGNESS
+               DC.W    EDIT+DECR_VEC
+               DC.L    NOTHINGNESS
+               DC.W    EDIT+ENTR_VEC
+               DC.L    UNMUTE_ALL
+               DC.W    EDIT+LINKED
+               DC.W    SUBFUN_END
+
+
+BLANK_STRING   ASC     "--"
+
+
+CHANGE_MUTE_TRACK
+
+               MOVEM.L D0-D2/A2,-(A7)
+               MOVE    NEW_MUTE_TRACK,D0        ;GET LATEST TRACK TO CHANGE
+               MOVE.B  TRACKS_MUTED,D2          ; CHANGE THAT TRACK IN THE BIT MASK
+               AND     #0FFH,D2
+               TST     NEW_MUTE_TRACK           ; IF NO CHANGE, NO CHANGE
+               BMI.S   JB_IS_HERE
+               BCHG    D0,D2                    ;CHANGE BIT OF TRACKS TO BE BOUNCED
+JB_IS_HERE
+               MOVE.B  D2,TRACKS_MUTED
+               MOVE    #7,D0
+               MOVE.L  #BLANK_STRING,A2         ;POINT TO BLANK SCREEN
+MUTE_1         MOVE    #24,D1                   ;GET POSITION OF STRING
+               ADD     D0,D1                    ;ADD TRACK NUMBER TO IT
+               LSL     #8,D1                    ;SHIFT IN TO HIGH ORDER BYTE
+               ADDQ    #1,D1                    ;SET LENGTH TO 1
+               BTST    D0,D2                    ;SEE IF TRACK IS ON OR OFF
+               BEQ     CLEAR_MIT                ;IF OFF DISPLAY BLANK
+               ADDQ    #1,D0
+                ABS_LONG
+               JSR     WORD_BIN_TO_BCD
+               JSR     WRITE_BCD_DIGITS         ;WRITE TRACK NUMBER TO DISPLAY
+                ABS_SHORT
+               SUBQ    #1,D0
+               BRA.S   MUTE_2
+                ABS_LONG
+CLEAR_MIT      JSR     WRITE_STRING
+                ABS_SHORT
+MUTE_2         DBRA    D0,MUTE_1
+                ABS_LONG
+               JSR     DISP_BUFFER
+                ABS_SHORT
+               MOVEM.L (A7)+,D0-D2/A2
+               MOVE    #-1,NEW_MUTE_TRACK        ;RESET NEW TRACK SO THAT ENTERING SUB DOES NOT CHANGE US
+
+               MOVE.B  TRACKS_MUTED,D0      ;GET MASK OF TRACKS MUTED
+               CMP.B   FORMER_MUTED,D0      ; COMPARE TO THOSE PREVIOUSLY MUTED
+               BEQ.S   EXIT_MUTE            ;  IF NO CHANGE THEN CONTINUE WITH OTHER TASKS
+
+               OR.B    FORMER_MUTED,D0      ;     MASK ON 'THOSE WHO WERE' TO SEE ALL WE'RE DEALING WITH
+
+               MOVE.B  FORMER_MUTED,D2      ;RESOLVE WHO JUST WENT OFF
+               EOR     D2,D0
+               EOR     #0FFH,D0             ;FLIP MASK
+
+               MOVE.B  D0,PENDING_MUTE      ;WILL KILL OFF STUFF LATER - DO THIS TO NOT XMIT OFFS
+                                            ; BEFORE POSSIBLY PENDING ONS (REMEMBER PRE-FETCH AND
+                                            ; PRE-LOADING OF UART BUFFERS).  SET UP DEMON TO DO SUCH.
+               MOVE.L  REAL_LONG_TIME,MUTE_OFF_TIMER
+               ADD.L   #80,MUTE_OFF_TIMER   ; (DELAY LONGEDT CLICKS - 62.5msec - PLUS MAX UART DEALY)
+EXIT_MUTE              ;BACKGROUND WILL EVENTUALLY PICK US UP AND DO EVERYTHING FOR REAL.
+               RTS
+
+
+UNMUTE_ALL             ; HITTING ENTER UNMUTES ALL TRACKS - SPECIAL, HIDDEN FUNCTION
+               CLR.B   TRACKS_MUTED
+               ST      SUBFUN_INSTALL
+               RTS
+;
+;
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+                SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; TIMING_GROUP:
+;
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;               TEMPO/A_R WINDOW - TWO VERSIONS - INIT TEMPO AND ACCELRANDO/RITARDO EDITING
+;
+TEMPO_CHANGE_SUB
+               ASC     "BAR:xxx   SEQ.  "
+               ASC     "     b/m     f/b"
+
+;'INITIAL' LINE IS ACTUALLY BAR NUMBER
+
+               DC.B    4
+               DC.B    3
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+SET_PTR
+               DC.L    EDIT_BAR_CLEAR
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    DISPLAY+MIN_LIMIT
+               DC.W    0
+               DC.W    DISPLAY+MIN_STRNG
+               DC.L    INIT_SCREEN
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    A_R_EDIT_LIM
+               DC.W    EDIT+ED_VEC
+               DC.L    BLAH_BLAH
+               DC.W    FIELD_END
+
+;SEQUENCE NOMBRE FIELD
+
+               DC.B    14
+               DC.B    2
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+SET_PTR
+               DC.L    SEQ_NUM_ACC
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+HI_LIMIT
+               DC.W    98
+               DC.W    FIELD_END
+
+;BPM FIELD
+
+               DC.B    16
+               DC.B    5
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    INIT_TEMPO_BPM
+               DC.W    DISPLAY+DEC_POINT
+               DC.W    1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    2500
+               DC.W    EDIT+LO_LIMIT
+               DC.W    400
+               DC.W    EDIT+ED_VEC
+               DC.L    I_CALC_FPB
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+
+;FPB FIELD
+
+               DC.B    25
+               DC.B    4
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    INIT_TEMPO_FPB
+               DC.W    DISPLAY+DEC_POINT
+               DC.W    1
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    LIMIT_FPB
+               DC.W    EDIT+ED_VEC
+               DC.L    I_CALC_BPM
+               DC.W    EDIT+LINKED
+               DC.W    SUBFUN_END
+
+
+INIT_SCREEN
+               DC.B    0
+               DC.B    7
+               ASC     "INITIAL"
+                EVEN
+
+
+EDIT_BAR_CLEAR         ; INITIALIZE (ie. CLEAR) EDIT_BAR, POINT TO IT FOR EDITING.
+               CLR     EDIT_BAR
+               ST      SUB_FIRST_TIME
+               MOVE.L  #EDIT_BAR,D0
+               RTS
+
+
+A_R_EDIT_LIM           ; LIMIT HIGHEST BAR NUMBER SELECTABLE FOR A_R_ EDITING.
+               MOVE    NOW_LAST_BAR,PARAM_HI_LIM
+               RTS
+
+
+BLAH_BLAH              ; IF EDIT_BAR EDITED, SEE IF EDITED TO SOMETHING NON_ZERO.  IF SO, NOW
+; EDITING A_R_'s, NOT INITIAL TEMPO - FLIP OVER TO THAT SUBFUNCTION
+               TST     NOW_SEQ_STATUS       ;IF SEQUENCE DOES NOT EXIST
+               BNE.S   TOO_LONG_2           ;    THEN NO PLAYING AROUND.
+               CLR     EDIT_BAR
+               BRA.S   EXIT_BLAH_BLAH
+TOO_LONG_2
+               TST     EDIT_BAR             ;BAR ZERO IS OUR HOME - STAY IF STILL OKAY
+               BEQ.S   EXIT_BLAH_BLAH
+               MOVE.L  #A_R_SUB,CUR_SUB_BLOCK    ;ELSE, EDIT ACCELERANDOS/RITARDOS
+               ST      SUBFUN_INSTALL
+EXIT_BLAH_BLAH
+               RTS
+
+
+
+I_CALC_FPB             ; HAVE VALUE IN BPM; NEED TO CALC IT IN USEC/CLICK AND FPB, AND TELL THE TC
+               MOVE.B  SMPTE_NOW_T_1,D0     ;FPB INTERACTS WITH SMPTE TYPE
+               EXT     D0
+               LSL     #1,D0                ; (WORD INDEX)
+               MOVE    SMPTE_MULT_TBL(PC,D0),D0  ;LOAD SMPTE FPS x100
+               MULU    #60,D0               ;MULT BY 60 SECONDS/MINUTE
+               DIVU    INIT_TEMPO_BPM,D0    ;DIVIDE BY INITIAL BEATS/MINUTE * 10
+               MOVE    D0,INIT_TEMPO_FPB    ;NOW HAVE F/B * 10
+
+               BRA     BPM_TO_USEC          ;COVERT TO USEC/CLICK, TELL TC, AND RETURN
+
+
+I_CALC_BPM             ; TURN ABOVE AROUND - FPB TO BPM
+               MOVE.B  SMPTE_NOW_T_1,D0     ;FPB INTERACTED WITH SMPTE TYPE
+               EXT     D0
+               LSL     #1,D0
+               MOVE    SMPTE_MULT_TBL(PC,D0),D0  ;(FRAMES/SEC)x100 * 60 SECONDS/MINUTE
+               MULU    #60,D0
+               DIVU    INIT_TEMPO_FPB,D0    ;TAKE ABOVE / ((FRAMES/BEAT)x100) = BEATS/MINUTE
+               MOVE    D0,INIT_TEMPO_BPM
+
+               BRA     BPM_TO_USEC          ;COVERT TO USEC/CLICK, TELL TC, AND RETURN
+
+
+SMPTE_MULT_TBL
+               DC.W    2400
+               DC.W    2500
+               DC.W    2997
+               DC.W    3000
+
+
+LIMIT_FPB              ; LIMIT TEMPO-WISE IS 40->250 BPM.  WHAT THE LIMIT IS IN FPB INTERACTS
+; WITH SMPTE TYPE.  HAVE CALCed A TABLE FOR THESE HIGH AND LOW LIMITS.
+               MOVE.B  SMPTE_NOW_T_1,D0     ;FPB INTERACTED WITH SMPTE TYPE
+               EXT     D0
+               LSL     #1,D0
+               MOVE    SMPTE_HI_LIM(PC,D0),PARAM_HI_LIM
+               MOVE    SMPTE_LO_LIM(PC,D0),PARAM_LO_LIM
+               RTS
+
+
+SMPTE_HI_LIM
+               DC.W    360                  ;24 FPS
+               DC.W    375                  ;25 FPS
+               DC.W    449                  ;29.97 FPS
+               DC.W    450
+
+
+SMPTE_LO_LIM
+               DC.W    58                   ;24 FPS
+               DC.W    60                   ;25 FPS
+               DC.W    72                   ;29.97 FPS
+               DC.W    72                   ;30 FPS
+
+
+BPM_TO_USEC            ; CONVERT FROM TO BPM TO usec/CLICK, STORE, AND TELL TC (IF NOT RUNNING).
+               MOVEM.L D0-D1/A0,-(A7)
+
+               MOVE.L  #25000000,D1         ;usec/CLICK = 25,000,000/(BPMx10)
+               DIVU    INIT_TEMPO_BPM,D1
+               MOVE    D1,INIT_TEMPO_USEC
+                ABS_LONG
+               JSR     GET_CUR_SEQ_DIR      ;PLACE IN DIRECTORY
+                ABS_SHORT
+               MOVE    INIT_TEMPO_USEC,Q_INIT_TEMPO(A0)
+
+               BTST    #3,XPORT_STATE       ;PLAY BUTTON ON?
+               BNE.S   EXIT_BPM_TO_USEC     ;    IF YES, LEAVE TC ALONE - STOPPING WILL DO WHAT's NEEDED
+                                            ;         ELSE....
+               MOVE    INIT_TEMPO_USEC,D0   ;REFRESH CURRENT & REFERENCE TEMPOS
+               MOVE    D0,REF_TEMPO_USEC
+               MOVE    D0,CUR_TEMPO_USEC
+                ABS_LONG
+               JSR     USEC_TO_ALL         ;CONVERT TO OTHER CUR_ FORMS, TELL TIMING CHIP
+                ABS_SHORT
+EXIT_BPM_TO_USEC
+               MOVEM.L (A7)+,D0-D1/A0
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             EDIT ACCELERANDOS/RITARDOS (A_R's, FOR SHORT)
+;
+A_R_SUB
+               ASC     "BAR:      SEQ.  "
+               ASC     "     BPM (=>  b)"
+
+;BAR NOMBRE FIELD
+
+               DC.B    4
+               DC.B    3
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+SET_PTR
+               DC.L    A_R_BAR_ACC
+               DC.W    DISPLAY+NO_ZERO_BLANK
+;              DC.W    DISPLAY+TAILOR
+;              DC.L    A_R_BAR_SETUP
+               DC.W    EDIT+ED_VEC
+               DC.L    UPDATE_A_R_BAR
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    A_R_EDIT_LIM
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+
+;SEQUENCE NOMBRE FIELD
+
+               DC.B    14
+               DC.B    2
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+SET_PTR
+               DC.L    SEQ_NUM_ACC
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+HI_LIMIT
+               DC.W    98
+               DC.W    EDIT+ED_VEC
+               DC.L    A_R_BAR_SETUP
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+
+;BPM (DELTA) FIELD
+
+               DC.B    16
+               DC.B    5
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    DI_TEMP_3_B
+               DC.W    ACCESS+SIGNED
+               DC.W    EDIT+HI_LIMIT
+               DC.W    +999
+               DC.W    EDIT+LO_LIMIT
+               DC.W    -999
+               DC.W    EDIT+ED_VEC
+               DC.L    SET_ENTER_FLASH
+               DC.W    EDIT+ENTR_VEC
+               DC.L    NEW_A_R
+               DC.W    DISPLAY+DEC_POINT
+               DC.W    1
+;07DEC               DC.W    DISPLAY+MIN_LIMIT
+;07DEC               DC.W    0
+;07DEC               DC.W    DISPLAY+MIN_STRNG
+;07DEC               DC.L    NO_A_R_SCREEN
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    NO_A_R_CHECK
+               DC.W    FIELD_END
+
+;BEATS IT EXTENDS OVER  FIELD
+
+               DC.B    28
+               DC.B    2
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    DI_TEMP_1_B
+               DC.W    EDIT+HI_LIMIT
+               DC.W    99
+               DC.W    EDIT+ED_VEC
+               DC.L    SET_ENTER_FLASH
+               DC.W    EDIT+ENTR_VEC
+               DC.L    NEW_A_R
+               DC.W    SUBFUN_END
+
+
+NO_A_R_SCREEN
+               DC.B    16
+               DC.B    5
+NO_A_R_FIELD
+               ASC     "---- "
+               EVEN
+
+
+A_R_BAR_ACC
+                TST    SUB_FIRST_TIME           ;ONLY PERFORM UPDATE ON FIRST PASS
+                BEQ.S  A_R_BAR_ACC_1
+                BSR    A_R_BAR_SETUP
+                CLR    SUB_FIRST_TIME
+A_R_BAR_ACC_1   MOVE.L #EDIT_BAR,D0
+                RTS
+
+
+NO_A_R_CHECK           ; IF THE DELTA IN THIS SCREEN BE <> 0, DISPLAY.  ELSE, BLANK OUT TO IMPRESS
+; UPON THE USER THE LACK OF ONE THIS BAR.
+               TST     DI_TEMP_3_B          ;IF DELTA IS NON-ZERO
+               BNE.S   AH_WELL_LONG_JUMP    ;    THEN WRITE NORMAL PARAMETER
+               MOVE    #1005H,D1            ;         ELSE, POSITION & WRITE OUR '---- '
+               MOVE.L  #NO_A_R_FIELD,A2
+                ABS_LONG
+               JMP     WRITE_STRING
+                ABS_SHORT
+
+AH_WELL_LONG_JUMP
+                ABS_LONG
+               JMP     WRITE_PARAM_VALUE
+                ABS_SHORT
+
+
+
+A_R_BAR_SETUP          ; GOTTA FIND IF THERE IS AN A_R AT THIS BAR, AND LOAD THE APROPOS VALUES
+; FOR EVERYONE ELSE TO DISPLAY.
+;
+               JSR     STOP_THE_SEQUENCER   ;MAKE SURE SEQUENCER IS NOT RUNNING.
+               SF      SUBFUN_INSTALL
+
+               MOVEM.L D7/A4,-(A7)
+
+               TST     NOW_SEQ_STATUS       ;IF SEQUENCE EXISTS
+               BNE.S   TOO_LONG_1           ;    THEN COOL
+               CLR     EDIT_BAR             ;         ELSE, RESET TO INITIAL TEMPO
+               BRA.S   NO_A_R_HERE          ;         AND DON'T GO A'LOOKIN
+TOO_LONG_1
+                ABS_LONG
+               JSR     ND_SEARCH_EDIT_BAR   ; FIND BAR DESIRED TO INSPECT
+               MOVE.L  SEQ_NDRD_PTR,A4      ;  (LOAD UP POINTER TO READ NEXT WORD)
+               JSR     SEQ_NDSTR_READ
+                ABS_SHORT
+               MOVE    D7,D0
+               AND     #0FH,D0
+               CMP     #11,D0               ;    AN A_R?
+               BNE.S   NO_A_R_HERE          ;         IF NOT, GOTTA FIX DISPLAY VALUES TO REFLECT THAT
+               AND     #3FF0H,D7            ;              ELSE, DISSECT
+               LSR     #4,D7
+               MOVE    D7,DI_TEMP_1_B       ;HAVE BEATS IT EXTENDS OVER
+                ABS_LONG
+               JSR     SEQ_NDSTR_READ       ;GET CHANGE IN TEMPO (IN BPM * 10)
+                ABS_SHORT
+               MOVE    D7,DI_TEMP_3_B
+EXIT_A_R_BAR_SETUP
+               MOVEM.L (A7)+,D7/A4          ;RESTORE REGGIES
+               RTS
+
+
+NO_A_R_HERE            ; NO A_R AT DESIRED BAR - DISPLAY ZEROES FOR CHANGES
+               CLR     DI_TEMP_1_B
+               CLR     DI_TEMP_3_B
+               BRA     EXIT_A_R_BAR_SETUP
+
+
+UPDATE_A_R_BAR         ; DUDE SELECTED A NEW BAR.  IF S/HE SELECTED BAR 0, FLIP BACK TO INIT TEMPO
+; SCREEN.  ELSE, REINSTALL OURSELF - WILL INITIATE A NEW SEARCH FOR A/R, ETC.
+               TST     EDIT_BAR             ;DUDE WANT INITIAL TEMPO, OR JUST ANOTHER A_R?
+               BNE.S   DEFLATE_A_R_BAR      ;    IF ANOTHER A_R, REINSTALL OURSELF
+               MOVE.L  #TEMPO_CHANGE_SUB,CUR_SUB_BLOCK     ;ELSE, INSTALL INIT TEMPO SUBFUNCTION
+               ST      SUBFUN_INSTALL
+               RTS
+DEFLATE_A_R_BAR
+               BRA.S   A_R_BAR_SETUP
+
+
+NEW_A_R                ; NEW A_R - EITHER TO PLACE, OR TO REPLACE THE ONE THAT WAS THERE.  BAR IT
+; IS SUPPOSED TO APPEAR AT IS EDIT_BAR (REMEMBER, AN A_R CAN ONLY EXIST RIGHT AFTER A BAR_MARKER),
+; THE NUMBER OF BEATS IT IS SUPPOSED TO EXTEND OVER IN DI_TEMP_1_B, AND THE DELTA (IN BPM * 10)
+; IN DI_TEMP_3_B.  GO FOR IT, DUDE......
+;
+;18JUN               JSR     STOP_THE_SEQUENCER   ;MAKE SURE SEQUENCER IS NOT RUNNING.
+               JSR     SEQ_RUNNING_TEST     ;IS SEQUENCER RUNNING? (NOT COOL TO AUTO-STOP IT ....)
+               BNE.S   A_R_STALL            ;EXIT IF YES (MESSAGE IS IN LCD ....)
+
+                ABS_LONG
+               JSR     SOLID_ENTER          ;KEPP ENTER LED ON SOLID TO TELL USER WE'RE BUSY
+               JSR     D_SEARCH_EDIT_BAR    ;MOVE UP TO THE POINT RIGHT AFTER REQUESTED BAR
+;;;;;;;;;;     JSR     ND_SEARCH_EDIT_BAR   ; BRING NON-DESTRUCTIVE READ TO SAME POINT
+;;;;;;;;;;     MOVE.L  SEQ_NDRD_PTR,A4      ;  (SET UP POINTERS FOR READS WE'RE ABOUT TO DO)
+               MOVE.L  SEQ1_DRD_PTR,A5
+               MOVE.L  SEQ_WR_PTR,A6        ;  (LOAD WRITE POINTER)
+;;;;;;;;;;     JSR     SEQ_NDSTR_READ       ;   GET NEXT EVENT
+                ABS_SHORT
+               MOVE    (A5),D7              ;   PEEK AT NEXT EVENT (LEAVE POINTER ALONE)
+               MOVE    D7,D0                ;    SEE WHAT FOLLOWS THE DESIRED BAR
+               AND     #0FH,D0
+               CMP     #11,D0               ;     IF SOMETHING OTHER THAN AN A_R
+               BNE.S   INSERT_NEW_A_R       ;         THEN INSERT BEFORE THIS EVENT
+                ABS_LONG
+               JSR     SEQ1_DSTR_READ       ;              ELSE, EAT OLD A_R
+               JSR     SEQ1_DSTR_READ       ;
+                ABS_SHORT
+INSERT_NEW_A_R
+               MOVE.L  A4,SEQ_NDRD_PTR      ;(RESAVE READ POINTERS)
+               MOVE.L  A5,SEQ1_DRD_PTR
+
+               TST     DI_TEMP_3_B          ;WELL - ANY REAL DELTA BEING REQUESTED HERE?
+               BEQ.S   NO_NEW_A_R           ;    IF NOT, DON'T WRITE ANYTHING
+               MOVE    DI_TEMP_1_B,D7             ;         ELSE, WRITE OUR NEW A_R
+               LSL     #4,D7                ;(BUILDING 1st WORD - CONTAINS # OF BARS & ID)
+               OR      #11,D7
+                ABS_LONG
+               JSR     SEQ_WRITE
+               MOVE    DI_TEMP_3_B,D7       ;2nd WORD IS DELTA
+               JSR     SEQ_WRITE
+                ABS_SHORT
+               MOVE.L  A6,SEQ_WR_PTR        ;(RESAVE WRITE POINTER)
+NO_NEW_A_R
+                ABS_LONG
+               JSR     SEQ_CONSOLIDATE      ;FINISH OUT BY TURNING AROUND & BUTTONING UP SEQUENCE
+               JSR     SEQ_TURNAROUND
+               JSR     UPDATE_SEQ_SIZE
+                ABS_SHORT
+               ST      SUBFUN_INSTALL       ;REINSTALL TO SHOW NEW, WHITER, BRIGHTER FACE!
+               RTS                     ;DONE!!!!
+;
+A_R_STALL
+               BRA     USER_STALL           ;EXIT THIS WAY WHEN SEQUENCER'S RUNNING.
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             RECORDING OF THE TAP TRACK!
+;
+RECORD_TAP_SUB
+               ASC     "TAP TRACK SEQ.  "
+               ASC     "STEP:1/   SLEW: "
+
+;SEQUENCE NOMBRE FIELD
+
+               DC.B    14
+               DC.B    2
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+SET_PTR
+               DC.L    SEQ_NUM_ACC
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    DISPLAY+TAILOR
+               DC.L    TAPPING_IN_PROG
+               DC.W    EDIT+HI_LIMIT
+               DC.W    98
+               DC.W    EDIT+LO_LIMIT
+               DC.W    0
+               DC.W    FIELD_END
+
+;STEP SIZE FIELD
+
+               DC.B    23
+               DC.B    1
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+SET_PTR
+               DC.L    TAP_STEP_ACCESS
+               DC.W    DISPLAY+DISP_SCALE
+               DC.W    4
+               DC.W    DISPLAY+TAILOR
+               DC.L    TAPPING_IN_PROG
+               DC.W    EDIT+LO_LIMIT
+               DC.W    1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    2
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    TAP_STEP_LEGAL
+               DC.W    EDIT+ED_VEC
+               DC.L    UPDATE_TAP_DIV
+               DC.W    FIELD_END
+
+;SLEW FIELD
+
+               DC.B    31
+               DC.B    1
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    TAP_SLEW_AMOUNT
+               DC.W    DISPLAY+TAILOR
+               DC.L    TAPPING_IN_PROG
+               DC.W    EDIT+LO_LIMIT
+               DC.W    2
+               DC.W    EDIT+HI_LIMIT
+               DC.W    8
+               DC.W    EDIT+ED_VEC
+               DC.L    CLICKS_TO_COUNT_IN
+               DC.W    SUBFUN_END
+
+
+TAP_STEP_ACCESS        ; WANT TO EDIT TAP_DIV_FLAG, BUT NEED TO EDIT & DISPLAY IN SLIGHTLY
+;MODIFIED FORM.  FLAG IS A 0/1 VALUE; WANT TO DISPLAY AS 4 OR 8.  SO, ADD ONE HERE, AND SCALE BY 4.
+               MOVE    TAP_DIV_FLAG,DI_TEMP_1_B  ;COPY 0/1 FLAG
+               ADD     #1,DI_TEMP_1_B       ;BUMP (SCALED BY 4 IN DISPLAY ROUTINE)
+               MOVE.L  #DI_TEMP_1_B,D0      ;POINT TO THIS BOGUS VALUE FOR EDITING.
+               RTS
+
+
+UPDATE_TAP_DIV         ; OPPOSITE OF ABOVE - TAKE 1/2 VALUE IN DI_TEMP_1_B, AND STORE AS 0/1 IN
+;TAP_DIV_FLAG.  OH - AND WHAT IS THIS FLAG ALL ABOUT?  0 = QUARTER NOTE TAPPING, 1 = EIGHTH.
+               MOVE    DI_TEMP_1_B,TAP_DIV_FLAG
+               SUB     #1,TAP_DIV_FLAG
+                ABS_LONG
+               JMP     CLICKS_TO_COUNT_IN   ;UPDATE ALL OTHER RELATED PARAMS
+                ABS_SHORT
+
+
+TAPPING_IN_PROG        ; IF CURRENTLY TAPPING, THEN GO TO SPECIAL SUBFUNCTION.  ELSE, SEE IF STARTING
+; TAPPING IS LEGAL.
+               TST     STARTED_TAPPING      ;IF NOT TAPPING YET
+               BEQ.S   TAP_STEP_LEGAL       ;    THEN CHECK LEGALITY OF TAPPING
+               MOVE.L  #TAPPING_SUB,CUR_SUB_BLOCK     ;ELSE, INSTALL TAPPING IN PROG SCREEN
+               ST      SUBFUN_INSTALL
+               RTS
+
+
+TAP_STEP_LEGAL         ; WE HAVE OUR LIMITS - IF DENOMINATOR = 2, 4, OR 8, TAP TRACKING IS NO
+; PROBLEM.  IF DENOM IS 8, ONLY ALLOWED TAP DIVISION IS EIGHTH NOTES (NO QUARTER TAPPING TO A 7/8
+; TIME, FOR INSTANCE).  IF DENOM NOT ONE OF THESE, NO TAP TRACKING ALLOWED.
+               MOVE    RAW_DENOMINATOR,D0   ; GET CURRENT DENOMINATOR
+               CMP     #3,D0                ;IF DENOMINATOR = 8ths (2/4/6/8 = 0/1/2/3)
+               BEQ.S   EIGHTH_TAPS_ONLY     ;    THEN ONLY EIGHTH TAPS ALLOWED
+               CMP     #2,D0                ;IF DENOMINATOR IS FINER THAN THAT (OR 6's)
+               BCC.S   NO_TAPPING_ALLOWED   ;    THEN ALLOW NO TAPPING, PERIOD
+               RTS                          ;         ELSE, IS COOL.
+
+
+EIGHTH_TAPS_ONLY       ;IF NUMERATOR IS ODD, FORCE EIGHT TAPS ONLY.
+               BTST    #0,NOW_NUMERATOR+1   ;IF NUMERATOR IS EVEN
+               BEQ.S   TAPPING_IS_COOL      ;    THEN QUARTERS WILL FIT - COOL.
+               MOVE    #1,TAP_DIV_FLAG      ;         ELSE, FORCE QUARTER TAPPING.
+               MOVE    #2,DI_TEMP_1_B
+               MOVE    #2,PARAM_LO_LIM      ;         ELSE, RESTRICT TAPPPING TO EIGHTHS.
+TAPPING_IS_COOL
+               RTS
+
+
+NO_TAPPING_ALLOWED     ; NO WAY, DUDE - NO TAPPING ALLOWED.
+               MOVE.L  #UH_UH_TAP_SUB,CUR_SUB_BLOCK
+               ST      SUBFUN_INSTALL
+               RTS
+
+
+;;;;;;;;;;
+UH_UH_TAP_SUB
+               ASC     "TAP TRACK SEQ.  "
+               ASC     "(WRONG TIME SIG)"
+
+;SEQUENCE NOMBRE FIELD
+
+               DC.B    14
+               DC.B    2
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+SET_PTR
+               DC.L    SEQ_NUM_ACC
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+HI_LIMIT
+               DC.W    98
+               DC.W    EDIT+ED_VEC
+               DC.L    MAYBE_LEGAL
+               DC.W    SUBFUN_END
+
+
+MAYBE_LEGAL            ; AS SOON AS EDITED, GO BACK TO NORMAL SUBFUNCTION
+               MOVE.L  #RECORD_TAP_SUB,CUR_SUB_BLOCK
+               RTS
+
+
+;;;;;;;;;;
+TAPPING_SUB
+               ASC     "TAP TRACK SEQ.  "
+               ASC     "B   /        b/m"
+
+;SEQUENCE NUMBER FIELD
+
+               DC.B    14
+               DC.B    2
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+SET_PTR
+               DC.L    SEQ_NUM_ACC
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    DISPLAY+TAILOR
+               DC.L    TAPPING_OUT_OF_PROG
+               DC.W    FIELD_END
+
+;BAR FIELD - NO EDIT - REACTS TO REALITY
+
+               DC.B    17
+               DC.B    3
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    NOW_BAR
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    DISPLAY+TAILOR
+               DC.L    TAPPING_OUT_OF_PROG
+               DC.W    FIELD_END
+
+;BEAT FIELD - NO EDIT - REACTS TO REALITY
+
+               DC.B    21
+               DC.B    2
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    NOW_BEAT
+               DC.W    DISPLAY+TAILOR
+               DC.L    TAPPING_OUT_OF_PROG
+               DC.W    FIELD_END
+
+;BPM FIELD
+
+               DC.B    24
+               DC.B    5
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CUR_TEMPO_BPM
+               DC.W    DISPLAY+DEC_POINT
+               DC.W    1
+               DC.W    DISPLAY+TAILOR
+               DC.L    TAPPING_OUT_OF_PROG
+               DC.W    SUBFUN_END
+
+
+TAPPING_OUT_OF_PROG    ; WHEN DONE TAPPING, REVERT TO NORMAL SCREEN.
+               TST     STARTED_TAPPING
+               BNE.S   ST_JOHN_2
+               MOVE.L  #RECORD_TAP_SUB,CUR_SUB_BLOCK
+               ST      SUBFUN_INSTALL
+ST_JOHN_2
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             EDITING THE TAPPED TRACK - HERE, MAINLY LOOK TO SEE IF THERE IS ONE ON REQUESTED
+;              BAR/BEAT.
+;
+EDIT_TAP_SUB
+               ASC     "EDIT 1/ TAPS    "
+               ASC     "B   /   (NO TAP)"
+
+;STEP SIZE FIELD
+
+               DC.B    7
+               DC.B    1
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+SET_PTR
+               DC.L    TAP_STEP_ACCESS
+               DC.W    DISPLAY+DISP_SCALE
+               DC.W    4
+               DC.W    EDIT+LO_LIMIT
+               DC.W    1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    2
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    TAP_STEP_LEGAL
+               DC.W    EDIT+ED_VEC
+               DC.L    UPDATE_TAP_DIV
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+
+;SEQUENCE NUMBER FIELD
+
+               DC.B    14
+               DC.B    2
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+SET_PTR
+               DC.L    SEQ_NUM_ACC
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+HI_LIMIT
+               DC.W    98
+               DC.W    FIELD_END
+
+;BAR FIELD
+
+               DC.B    17
+               DC.B    3
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    EDIT_BAR
+               DC.W    DISPLAY+TAILOR
+               DC.L    TAP_SEARCH
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    TAP_BAR_LIMIT
+               DC.W    EDIT+LO_LIMIT
+               DC.W    1
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+
+;BEAT BOX - er, FIELD
+
+               DC.B    21
+               DC.B    2
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    EDIT_BEAT
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    TAP_BEAT_LIMIT
+               DC.W    EDIT+INCR_VEC
+               DC.L    TAP_BEAT_INC
+               DC.W    EDIT+DECR_VEC
+               DC.L    TAP_BEAT_DEC
+               DC.W    EDIT+LINKED
+               DC.W    SUBFUN_END
+
+
+DEFLATE_TAP_DIV        ; UPDATE OTHER PARAMETERS ASSOCIATED WITH TAPS, MAKE SURE NOW_BEAT STILL LEGAL.
+               BSR     UPDATE_TAP_DIV       ;MAKE OTHER THINGIES (CLICKS_THIS_TAP, ETC.) PROPER
+               BSR     TAP_BEAT_LIMIT       ; MAKE SURE BEAT STILL LEGAL
+               MOVE    #2,PARAM_HI_LIM      ;  MAKE OUR OWN _HI_LIM RIGHTEOUS AGAIN
+               RTS
+
+
+TAP_BAR_LIMIT          ; TOTAL BARS IN THIS HERE SEQUENCE IS UPPER BAR LIMIT.  ALSO, PROTECT
+; AGAINST EDIT-BAR = 0.
+               MOVE    NOW_LAST_BAR,PARAM_HI_LIM
+               TST     EDIT_BAR             ;(THE A/R SUBFUN COULD HAVE ZEROED EDIT-BAR FOR INIT TEMPO)
+               BNE.S   KING_1
+               MOVE    #1,EDIT_BAR
+               ST      SUBFUN_INSTALL       ; IF HAVE TO CLEAN UP THEN DISPLAY THIS FACT
+KING_1
+               RTS
+
+
+TAP_BEAT_LIMIT         ; A LITTLE TRICKIER THAN ABOVE.  'BEATS' USUALLY EQUAL THE NUMERATOR.
+; HOWEVER, USER HAD OPTION OF TAPPING EIGHTHS OR QUARTERS.  QUARTERS OVER TWO MEANS DOUBLING
+; 'BEATS'; EIGHTHS OVER FOURS OR TWOS MEANS DOUBLING ALSO (IN THE CASE OF TWOS, AGAIN).  SAVE
+; AS UPPER LIMIT.
+               MOVE    NOW_NUMERATOR,D0     ;GET NOMINAL ANSWER
+               CMP     #2,RAW_DENOMINATOR   ; 2 = EIGHTHS
+               BEQ.S   KING_3               ;    IF TRUE, NUMERATOR COOL AS IS
+               TST     RAW_DENOMINATOR      ; 0 = TWOS
+               BNE.S   KING_2               ;  IF DIFF, COOL
+               ADD     D0,D0                ;    ELSE, DOUBLE
+KING_2
+               TST     TAP_DIV_FLAG         ;EIGHTH TAPS MEANS A DOUBLIN, ALSO
+               BEQ.S   KING_3
+               ADD     D0,D0
+KING_3
+               SUBQ    #1,D0                ;KNOCK DOWN FOR CONVERSION TO CLICKS (0->{LIMIT-1})
+               MOVE    D0,PARAM_HI_LIM
+               CMP     EDIT_BEAT,D0         ;MAKE SURE EDIT_BEAT IS LEGAL (USER MAY HAVE CHANGED
+               BCC.S   KING_0               ; TAP SIZE ABOVE - COULD THROW US OFF).
+               MOVE    D0,EDIT_BEAT
+               ST      SUBFUN_INSTALL
+KING_0
+               RTS
+
+
+TAP_BEAT_INC           ; CHECK IF USER IS INCing BEATS INTO NEXT BAR.
+               MOVE    EDIT_BEAT,D0         ;GET OLD BEAT NUMBER
+               CMP     PARAM_HI_LIM,D0      ; LAST BEAT IN THIS BAR?
+               BNE.S   KING_4               ;    IF NOT, DO NORMAL INC
+                                            ;         ELSE, POSSIBLE MONDO-INC
+               MOVE    EDIT_BAR,D0          ;SEE IF ALREADY IN LAST LEGAL BAR
+               CMP     NOW_LAST_BAR,D0      ; WELL?
+               BEQ.S   KING_5               ;    IF YES, NO ACTION - TOPPED OUT
+               ADDQ    #1,EDIT_BAR          ;         ELSE, MOVE TO FIRST BEAT OF NEXT BAR
+               CLR     EDIT_BEAT
+               ST      SUBFUN_INSTALL
+KING_5
+               RTS
+
+KING_4
+               ADDQ    #1,EDIT_BEAT         ;NORMAL INC
+               ST      SUBFUN_INSTALL
+               RTS
+
+
+TAP_BEAT_DEC           ; LIKE 'INC' ABOVE, 'CEPT GOING DOWN ("YOU'RE GOING DOWN, BOY; ALL THE WAY
+; DOWN" (line by the Devil's assistant in 'CROSSROADS')).
+               MOVE    EDIT_BEAT,D0         ;LOOK AT LAST BEAT SELECTED
+               BNE.S   KING_6               ;    IF ROOM TO DEC, THEN DEC
+                                            ;         ELSE - SEE IF ALREADY AT START!
+               CMP     #1,EDIT_BAR          ;IN FIRST BAR YET?
+               BEQ.S   KING_7               ;    IF YES, THEN BOTTOMED OUT - STAY PUT
+               SUBQ    #1,EDIT_BAR          ;         ELSE, GO INTO LAST BEAT OF PREVIOUS BAR
+               MOVE    PARAM_HI_LIM,EDIT_BEAT
+               ST      SUBFUN_INSTALL
+KING_7
+               RTS
+
+KING_6
+               SUBQ    #1,EDIT_BEAT         ;NORMAL DEC
+               ST      SUBFUN_INSTALL
+               RTS
+
+
+TAP_SEARCH             ; UPON FIRST ENTERING (OR REENTERING) THIS SUBFUNCTION, TAKE EDIT_BAR AND _BEAT
+; AND LOOK FOR A TAP TRACK EVENT BETWEEN IT AND THE NEXT TIME_, BAR_, OR END_OF_SEQUENCE_MARKER.
+; IF FIND ONE, DISPLAY IT AND ALLOW IT TO BE EDITED IN AN ALTER-EGO SUBFUNCTION.  ELSE, FINISH
+; INSTALLING THIS SUBFUNCTION WITH '(NO TAP)' IN PLACE OF THE TAPPED TEMPO.
+;     NOTE TO YE WHO EDIT HERE - WHAT WE'RE DOING IS ALLOWING AN EDIT, AND PICKING UP THE RAMIFICATIONS
+; OF THAT EDIT ON THE NEXT _INSTALL (COURTESY OF THE EDIT+LINKED's).  THAT WAY, A 'COLD' ENTRANCE
+; ALSO TAKES THIS ACTION BELOW.
+               MOVEM.L D1-D7/A1-A6,-(A7)    ;PROTECT REGGIES
+
+               BTST    #3,XPORT_STATE       ;IF RUNNING
+               BNE     NO_TAP_EXIT          ;    THEN NO SEARCH!!!!!
+
+               TST     NOW_SEQ_STATUS       ;IF DOESN'T EXIST
+               BNE.S   CRIMSON_00           ;    THEN DON'T GO A LOOMIN'
+               MOVE.L  #10000H,EDIT_BAR     ;    AND RESET BAR/BEAT NUMBER
+               MOVE    #0,EDIT_BEAT
+               BRA     NO_TAP_EXIT
+CRIMSON_00
+               TST     EDIT_BAR             ;PROTECT POSSIBLE BOGUS EDIT_BAR VALUE
+               BNE.S   CRIMSON_0
+               MOVE    #1,EDIT_BAR
+CRIMSON_0
+               MOVE    EDIT_BEAT,D0         ;FIRST TASK IS TO COVERT 'BEATS' NTO CLICKS
+               TST     TAP_DIV_FLAG         ; ARE THESE BEATS EIGHTHS OR QUARTERS?
+               BNE.S   CRIMSON_1            ;  QUARTERS HAVE 24 CLICKS/BEAT; EIGHTHS HAVE 12
+               ADD     D0,D0                ;   IF QUARTERS THEN DOUBLE BEATS TO FAKE DOUBLE CLICKS
+CRIMSON_1
+               MULU    #12,D0
+               MOVE    D0,EDIT_CLICK
+
+                ABS_LONG
+               JSR     SEQ_NDRD_SETUP       ;SET UP NON-DESTRUCTIVE READS
+                ABS_SHORT
+               MOVE.L  SEQ_NDRD_PTR,A4      ; LOAD READ POINTER
+CRIMSON_3
+                ABS_LONG
+               JSR     SEQ_NDSTR_READ       ;READ AN EVENT
+                ABS_SHORT
+               MOVE    D7,D0                ; ISOLATE ID
+               AND     #0FH,D0
+CRIMSON_4
+               CMP     #8,D0                ;  IS A BAR_MARKER?
+               BNE.S   CRIMSON_2            ;    IF NOT, KEEP LOOKING
+               SWAP    D7
+                ABS_LONG                    ;         ELSE - SEE IF IT'S THE ONE WE'RE LOOKING FOR
+               JSR     SEQ_NDSTR_READ       ;         READ BAR NUMBER
+                ABS_SHORT
+               CMP     EDIT_BAR,D7          ;         MATCH OUR TARGET?
+               BEQ     FOUND_TAP_BAR        ;         IF CORRECT THEN LOOK FOR CLICK
+               BRA     CRIMSON_3            ;              ELSE, KEEP LOOKING...
+CRIMSON_2
+               CMP     #0FH,D0              ;ALWAYS WEIRD CHANCE WE HIT END
+               BEQ     NO_TAP_EXIT          ;    IF DID, SPLIT
+                ABS_LONG                    ;         ELSE, EAT THIS EVENT, AND GO ONTO NEXT
+               JSR     SEQ_NDRD_EATER
+                ABS_SHORT
+               BRA     CRIMSON_4            ;         AND TRY, TRY AGAIN
+
+FOUND_TAP_BAR  ; FOUND TARGET BAR - NOW, LOOK FOR TARGET CLICK
+                ABS_LONG
+               JSR     BAR_MARKER_HANDLER   ;FIRST TO DO IS TO PROCESS THIS BAR
+                ABS_SHORT
+               MOVE    EDIT_CLICK,D1        ;LOAD TARGET CLICK
+               BEQ     FOUND_TAP_CLICK      ;    IF AFTER DOWNBEAT, ALREADY 'FOUND' IT.
+CRIMSON_6                                   ;         ELSE, LOOK...
+                ABS_LONG
+               JSR     SEQ_NDSTR_READ       ;GET NEXT EVENT
+                ABS_SHORT
+               MOVE    D7,D0                ; ISOLATE ID
+               AND     #0FH,D0
+CRIMSON_5
+               CMP     #8,D0                ;IF ANOTHER BAR_MARKER
+               BEQ     NO_TAP_EXIT          ;    THEN NOT FOUND
+               CMP     #0FH,D0              ;IF END_OF_SEQUENCE
+               BEQ     NO_TAP_EXIT          ;    THEN NOT FOUND
+               CMP     #9,D0                ;IF TIME_MARKER
+               BEQ.S   INSPECT_TAP_CLICK    ;    THEN SEE IF IT'S THE ONE WE'RE AFTER
+                ABS_LONG                    ;         ELSE, KEEP LOOKING
+               JSR     SEQ_NDRD_EATER
+                ABS_SHORT
+               BRA     CRIMSON_5
+
+INSPECT_TAP_CLICK      ; FOUND A TIME - SEE IF EQUAL TO (OR AFTER) OUR TARGET
+               LSR     #4,D7                ;ROTATE OFF ID
+               CMP     EDIT_CLICK,D7        ; IF EQUALS TARGET
+               BEQ     FOUND_TAP_CLICK      ;    THEN LOOK FOR TAP ITSELF
+               BCC     NO_TAP_EXIT          ; IF AFTER, NO TAP FOUND - SPLIT
+               BRA     CRIMSON_6            ;         ELSE, KEEP LOOKIN'...
+
+FOUND_TAP_CLICK        ; WHERE WE'RE SUPPOSED TO BE - NOW WHERE'S THE TAP?!?  IF RUN INTO ANY
+; OF THE DREADED (NOT DREADLOCKED) '_MARKERS' BEFORE WE FIND ONE,... THEN THERE ISN'T ONE.  ELSE,
+; NOTE, AND SWITCH SUBFUNCTIONS.
+                ABS_LONG
+               JSR     SEQ_NDSTR_READ       ;GET NEXT EVENT
+                ABS_SHORT
+               MOVE    D7,D0                ; ISOLATE ID
+               AND     #0FH,D0
+CRIMSON_7
+               CMP     #0AH,D0              ;IF TAP
+               BEQ     FOUND_TAP            ;    THEN THE HOLY GRAIL HATH BEEN FOUND!
+               CMP     #8,D0                ;IF BAR_MARKER
+               BEQ     NO_TAP_EXIT          ;    THEN WE HAVE FAILED IN OUR QUEST
+               CMP     #9,D0                ;IF TIME_MARKER
+               BEQ     NO_TAP_EXIT          ;    THEN WE HAVE FAILED, ETC., ETC.
+               CMP     #0FH,D0              ;IF END_OF_SEQ_MARKER
+               BEQ     NO_TAP_EXIT          ;    THEN HAVE FAILED MISERABLY.
+                ABS_LONG
+               JSR     SEQ_NDRD_EATER      ;         ELSE, PRESS ONWARD, BRAVE KNIGHTS
+                ABS_SHORT
+               BRA     CRIMSON_7
+
+
+FOUND_TAP              ; GOT IT - NOW, DECODE IT, SAVE IT, AND THROW UP A SUBFUNCTION TO EDIT IT IN.
+               SWAP    D7                   ;(FIRST, GET REST OF IT)
+                ABS_LONG
+               JSR     SEQ_NDSTR_READ
+                ABS_SHORT
+               MOVE.L  D7,D0                ;MAKE A WORK COPY
+               SWAP    D0                   ;WORK ON REFERNCE TEMPO FIRST
+               LSR     #4,D0                ;ROTATE OFF GUNK
+               MOVE.L  #25000000,D1         ;CONVERT TO usec/CLICK
+               DIVU    D0,D1                ;25000000/BPM*10 = usec/CLICK
+               MOVE    D1,DI_TEMP_3_B       ; SAVE COPY TO AID IN EDITING
+
+               ADD     D7,D1                ;ADD OFFSET TO REFERENCE
+               MOVE.L  #25000000,D0         ; CONVERT BACK TO BPM*10
+               DIVU    D1,D0
+               MOVE    D0,DI_TEMP_5_B       ;  SAVE FOR DISPLAYING & EDITING
+
+               MOVE.L  #EDITING_TAP_SUB,CUR_SUB_BLOCK ;INSTALL THAT EDITING SUBFUNCTION
+               ST      SUBFUN_INSTALL
+               MOVE.L  A4,DI_TEMP_7_B       ;REMEMBER WHERE DATA WAS - WILL HAVE TO CHANGE DELTA
+NO_TAP_EXIT
+               MOVEM.L (A7)+,D1-D7/A1-A6    ;RESTORE REGGIES
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             SUBFUNCTION FOR ACTUAL EDITING OF A TAP.  IF USER SELECTS ANOTHER BAR OR BEAT (OR
+;              SEQUENCE), GO BACK TO ABOVE SUBFUNCTION, AND START ALL OVER.
+;
+EDITING_TAP_SUB
+               ASC     "EDIT 1/  TAPS   "
+               ASC     "B   /        b/m"
+
+;STEP SIZE FIELD
+
+               DC.B    7
+               DC.B    1
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+SET_PTR
+               DC.L    TAP_STEP_ACCESS
+               DC.W    DISPLAY+DISP_SCALE
+               DC.W    4
+               DC.W    EDIT+LO_LIMIT
+               DC.W    1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    2
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    TAP_STEP_LEGAL
+               DC.W    EDIT+ED_VEC
+               DC.L    REFLATE_TAP_DIV
+               DC.W    EDIT+ENTR_VEC
+               DC.L    REWRITE_TAP
+               DC.W    FIELD_END
+
+;SEQUENCE NUMBER FIELD
+
+               DC.B    14
+               DC.B    2
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+SET_PTR
+               DC.L    SEQ_NUM_ACC
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+HI_LIMIT
+               DC.W    98
+               DC.W    EDIT+ED_VEC
+               DC.L    BACK_TO_EDIT_TAP
+               DC.W    EDIT+ENTR_VEC
+               DC.L    REWRITE_TAP
+               DC.W    FIELD_END
+
+;BAR FIELD
+
+               DC.B    17
+               DC.B    3
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    EDIT_BAR
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    TAP_BAR_LIMIT
+               DC.W    EDIT+LO_LIMIT
+               DC.W    1
+               DC.W    EDIT+ED_VEC
+               DC.L    BACK_TO_EDIT_TAP
+               DC.W    EDIT+ENTR_VEC
+               DC.L    REWRITE_TAP
+               DC.W    FIELD_END
+
+;BEAT FIELD
+
+               DC.B    21
+               DC.B    2
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    EDIT_BEAT
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    TAP_BEAT_LIMIT
+               DC.W    EDIT+INCR_VEC
+               DC.L    TAP_ED_BEAT_INC
+               DC.W    EDIT+DECR_VEC
+               DC.L    TAP_ED_BEAT_DEC
+               DC.W    EDIT+ED_VEC
+               DC.L    BACK_TO_EDIT_TAP
+               DC.W    EDIT+ENTR_VEC
+               DC.L    REWRITE_TAP
+               DC.W    FIELD_END
+
+;TEMPO FIELD
+
+               DC.B    24
+               DC.B    5
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    DI_TEMP_5_B
+               DC.W    DISPLAY+DEC_POINT
+               DC.W    1
+               DC.W    EDIT+LO_LIMIT
+               DC.W    400
+               DC.W    EDIT+HI_LIMIT
+               DC.W    2500
+               DC.W    EDIT+ED_VEC
+               DC.L    SET_ENTER_FLASH
+               DC.W    EDIT+ENTR_VEC
+               DC.L    REWRITE_TAP
+               DC.W    SUBFUN_END
+
+
+REFLATE_TAP_DIV        ; TWO TASKS - SWITCH TO ABOVE SUBFUNCTION, AND UPDATE ALL IMPLICATIONS OF
+; HAVING CHANGED THE TAP DIVISION.
+               BSR     DEFLATE_TAP_DIV
+
+BACK_TO_EDIT_TAP       ; SWITCH BACK TO ABOVE SUBFUNCTION - HE'S OUR BOSS.  (OKAY, OKAY - ADDITIONAL
+; EXPLANATION.  EDITING MAY MOVE US TO A TIME THAT DOES NOT HAVE A TAP - THEREFORE, CANNOT SAFELY
+; REMAIN IN THE EDITING SCREEN (HERE).  ALSO, HE LOOKS UP WHAT THE NEW TAP TEMPO IS (IF IT EXISTS),
+; AND WILL INDEED PASS CONTROL BACK TO US IF HE DOES FIND ONE.  CLASS DISMISSED.)
+               MOVE.L  #EDIT_TAP_SUB,CUR_SUB_BLOCK
+               ST      SUBFUN_INSTALL
+               RTS
+
+
+TAP_ED_BEAT_INC        ; DO TRICKY INCing OF TAP NUMBER (SEE ABOVE), AND REINSTALLS ABOVE SUBFUNCTION.
+               BSR     TAP_BEAT_INC
+               BRA     BACK_TO_EDIT_TAP
+
+
+TAP_ED_BEAT_DEC        ; AS ABOVE, 'CEPT DEC.
+               BSR     TAP_BEAT_DEC
+               BRA     BACK_TO_EDIT_TAP
+
+
+REWRITE_TAP            ; USER GAVE US A NEW TAP TEMPO IN DI_TEMP_5_B.  CONVERT TO usec/CLICK,
+; CALC AS AN OFFSET TO THE REFERENCE TEMPO IN THIS TAP (SAVED IN DI_TEMP_3_B), AND SAVE BACK
+; INTO SEQUENCE (MEMORY POINTER SAVED IN DI_TEMP_7_B.L).
+               BTST    #3,XPORT_STATE       ;IF SEQUENCER RUNNING
+               BNE     BACK_TO_EDIT_TAP     ;    THEN EXIT - DON'T KNOW WHO WE'RE WRITING!!!
+
+               MOVE.L  #25000000,D0         ;CONVERT FROM BPM*10 TO usec/CLICK
+               DIVU    DI_TEMP_5_B,D0
+               SUB     DI_TEMP_3_B,D0       ; FIND DIFFERNCE (DELTA FROM REFERENCE)
+               MOVE.L  DI_TEMP_7_B,A0       ;  LOAD POINTER OF WHERE IT GOES
+               MOVE    D0,0(A0)             ;   WRITE IT
+               ST      SUBFUN_INSTALL       ;    (RE-ENTER TO WIPE OUT ENTER_LED)
+               RTS                     ;DONE!
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;02AUG;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;02AUG;
+;02AUG;             SUBFUNCTION FOR ALTERING UART ADVANCE/DELAY PER BAR.
+;02AUG;
+;02AUGUART_TIMING_SUB
+;02AUG               ASC     "MIDI BAR:xxx #xx"
+;02AUG               ASC     "A:xxx B:xxx msec"
+;02AUG
+;02AUG;BAR FIELD
+;02AUG
+;02AUG               DC.B    9
+;02AUG               DC.B    3
+;02AUG               DC.W    ACCESS+WORD
+;02AUG               DC.W    ACCESS+DIR_PTR
+;02AUG               DC.W    EDIT_BAR
+;02AUG               DC.W    DISPLAY+TAILOR
+;02AUG               DC.L    A_D_SEARCH
+;02AUG               DC.W    DISPLAY+NO_ZERO_BLANK
+;02AUG               DC.W    EDIT+CUSTOMIZE
+;02AUG               DC.L    TAP_BAR_LIMIT
+;02AUG               DC.W    EDIT+LO_LIMIT
+;02AUG               DC.W    1
+;02AUG               DC.W    EDIT+LINKED
+;02AUG               DC.W    EDIT+ENTR_VEC
+;02AUG               DC.L    REWRITE_A_D
+;02AUG               DC.W    FIELD_END
+;02AUG
+;02AUG;SEQUENCE NUMBER FIELD
+;02AUG
+;02AUG               DC.B    14
+;02AUG               DC.B    2
+;02AUG               DC.W    ACCESS+WORD
+;02AUG               DC.W    ACCESS+SET_PTR
+;02AUG               DC.L    SEQ_NUM_ACC
+;02AUG               DC.W    DISPLAY+DISP_OFFSET
+;02AUG               DC.W    -1
+;02AUG               DC.W    DISPLAY+NO_ZERO_BLANK
+;02AUG               DC.W    EDIT+HI_LIMIT
+;02AUG               DC.W    98
+;02AUG               DC.W    EDIT+ENTR_VEC
+;02AUG               DC.L    REWRITE_A_D
+;02AUG               DC.W    FIELD_END
+;02AUG
+;02AUG
+;02AUG;ADVANCE/DELAY FIELD A
+;02AUG
+;02AUG               DC.B    18
+;02AUG               DC.B    3
+;02AUG               DC.W    ACCESS+WORD
+;02AUG               DC.W    ACCESS+DIR_PTR
+;02AUG               DC.W    MA_SEQ_ADVANCE
+;02AUG               DC.W    ACCESS+SIGNED
+;02AUG               DC.W    DISPLAY+MAX_LIMIT
+;02AUG               DC.W    16
+;02AUG               DC.W    DISPLAY+MAX_STRNG
+;02AUG               DC.L    A_NO_A_D_SCREEN
+;02AUG               DC.W    EDIT+LO_LIMIT
+;02AUG               DC.W    -15
+;02AUG               DC.W    EDIT+HI_LIMIT
+;02AUG               DC.W    16
+;02AUG               DC.W    EDIT+ED_VEC
+;02AUG               DC.L    SET_ENTER_FLASH
+;02AUG               DC.W    EDIT+ENTR_VEC
+;02AUG               DC.L    REWRITE_A_D
+;02AUG               DC.W    FIELD_END
+;02AUG
+;02AUG;ADVANCE/DELAY FIELD B
+;02AUG
+;02AUG               DC.B    24
+;02AUG               DC.B    3
+;02AUG               DC.W    ACCESS+WORD
+;02AUG               DC.W    ACCESS+DIR_PTR
+;02AUG               DC.W    MB_SEQ_ADVANCE
+;02AUG               DC.W    ACCESS+SIGNED
+;02AUG               DC.W    DISPLAY+MAX_LIMIT
+;02AUG               DC.W    16
+;02AUG               DC.W    DISPLAY+MAX_STRNG
+;02AUG               DC.L    B_NO_A_D_SCREEN
+;02AUG               DC.W    EDIT+LO_LIMIT
+;02AUG               DC.W    -15
+;02AUG               DC.W    EDIT+HI_LIMIT
+;02AUG               DC.W    16
+;02AUG               DC.W    EDIT+ED_VEC
+;02AUG               DC.L    SET_ENTER_FLASH
+;02AUG               DC.W    EDIT+ENTR_VEC
+;02AUG               DC.L    REWRITE_A_D
+;02AUG               DC.W    SUBFUN_END
+;02AUG
+;02AUG
+;02AUGAB_STRING
+;02AUG               ASC     "AB"
+;02AUG
+;02AUGA_NO_A_D_SCREEN
+;02AUG               DC.B    18
+;02AUG               DC.B    3
+;02AUG               ASC     "---"
+;02AUG                EVEN
+;02AUG
+;02AUGA_GONE_A_D_STRING
+;02AUG               DC.B    18
+;02AUG               DC.B    3
+;02AUG               ASC     "***"
+;02AUG                EVEN
+;02AUG
+;02AUG
+;02AUGB_NO_A_D_SCREEN
+;02AUG               DC.B    24
+;02AUG               DC.B    3
+;02AUG               ASC     "---"
+;02AUG                EVEN
+;02AUG
+;02AUGB_GONE_A_D_STRING
+;02AUG               DC.B    24
+;02AUG               DC.B    3
+;02AUG               ASC     "***"
+;02AUG                EVEN
+;02AUG
+;02AUG
+;02AUG
+;02AUGA_D_SEARCH             ; UPON FIRST ENTERING (OR REENTERING) THIS SUBFUNCTION, TAKE EDIT_BAR AND LOOK
+;02AUG; FOR A UART ADVANCE/DELAY EVENT BETWEEN IT AND THE NEXT BAR_ OR END_OF_SEQUENCE_MARKER.
+;02AUG; DISPLAY IT AND ALLOW IT TO BE EDITED.  PASS THIS BY PLACING UART A'S IN DI_TEMP_1_B; B'S IN _3_B.
+;02AUG;     NOTE TO YE WHO EDIT HERE - WHAT WE'RE DOING IS ALLOWING AN EDIT, AND PICKING UP THE RAMIFICATIONS
+;02AUG; OF THAT EDIT ON THE NEXT _INSTALL (COURTESY OF THE EDIT+LINKED's).  THAT WAY, A 'COLD' ENTRANCE
+;02AUG; ALSO TAKES THIS ACTION BELOW.
+;02AUG               MOVEM.L D1-D7/A1-A6,-(A7)    ;PROTECT REGGIES
+;02AUG
+;02AUG               BTST    #3,XPORT_STATE       ;IF RUNNING
+;02AUG               BNE     A_D_EXIT             ;    THEN NO SEARCH!!!!!
+;02AUG
+;02AUG               TST     NOW_SEQ_STATUS       ;IF DOESN'T EXIST
+;02AUG               BNE.S   KRIMSON_00           ;    THEN DON'T GO A LOOKIN'
+;02AUG               MOVE.L  #10000H,EDIT_BAR     ;    AND RESET BAR/BEAT NUMBER
+;02AUG               BRA     A_D_EXIT
+;02AUGKRIMSON_00
+;02AUG               TST     EDIT_BAR             ;PROTECT POSSIBLE BOGUS EDIT_BAR VALUE
+;02AUG               BNE.S   KRIMSON_0
+;02AUG               MOVE    #1,EDIT_BAR
+;02AUGKRIMSON_0
+;02AUG                ABS_LONG
+;02AUG               JSR     SEQ_NDRD_SETUP       ;SET UP NON-DESTRUCTIVE READS
+;02AUG                ABS_SHORT
+;02AUG               MOVE.L  SEQ_NDRD_PTR,A4      ; LOAD READ POINTER
+;02AUGKRIMSON_3
+;02AUG                ABS_LONG
+;02AUG               JSR     SEQ_NDSTR_READ       ;READ AN EVENT
+;02AUG                ABS_SHORT
+;02AUG               MOVE    D7,D0                ; ISOLATE ID
+;02AUG               AND     #0FH,D0
+;02AUGKRIMSON_4
+;02AUG               CMP     #8,D0                ;  IS A BAR_MARKER?
+;02AUG               BNE.S   KRIMSON_2            ;    IF NOT, KEEP LOOKING
+;02AUG               SWAP    D7
+;02AUG                ABS_LONG                    ;         ELSE - SEE IF IT'S THE ONE WE'RE LOOKING FOR
+;02AUG               JSR     SEQ_NDSTR_READ       ;         READ BAR NUMBER
+;02AUG                ABS_SHORT
+;02AUG               CMP     EDIT_BAR,D7          ;         MATCH OUR TARGET?
+;02AUG               BEQ     FOUND_A_D_BAR        ;         IF CORRECT THEN LOOK FOR CLICK
+;02AUG               BRA     KRIMSON_3            ;              ELSE, KEEP LOOKING...
+;02AUGKRIMSON_2
+;02AUG               CMP     #0FH,D0              ;ALWAYS WEIRD CHANCE WE HIT END
+;02AUG               BEQ     NO_A_D_EXIT          ;    IF DID, SPLIT
+;02AUG                ABS_LONG                    ;         ELSE, EAT THIS EVENT, AND GO ONTO NEXT
+;02AUG               JSR     SEQ_NDRD_EATER
+;02AUG                ABS_SHORT
+;02AUG               BRA     KRIMSON_4            ;         AND TRY, TRY AGAIN
+;02AUG
+;02AUGFOUND_A_D_BAR          ; WHERE WE'RE SUPPOSED TO BE - NOW WHERE'S THE A/D?!?  IF RUN INTO ANY
+;02AUG; OF THE DREADED (NOT DREADLOCKED) '_MARKERS' BEFORE WE FIND ONE,... THEN A REAL PROBLEM.  ELSE,
+;02AUG; NOTE LOCATION & VALUE.
+;02AUG                ABS_LONG
+;02AUG               JSR     SEQ_NDSTR_READ       ;GET NEXT EVENT
+;02AUG                ABS_SHORT
+;02AUG               MOVE    D7,D0                ; ISOLATE ID
+;02AUG               AND     #0FH,D0
+;02AUGKRIMSON_7
+;02AUG               CMP     #0CH,D0              ;IF TAP
+;02AUG               BEQ     FOUND_A_D            ;    THEN THE HOLY GRAIL HATH BEEN FOUND!
+;02AUG;12DEC               CMP     #8,D0                ;IF BAR_MARKER
+;02AUG;12DEC               BEQ     NO_A_D_EXIT          ;    THEN WE HAVE FAILED IN OUR QUEST
+;02AUG;12DEC               CMP     #9,D0                ;IF TIME_MARKER
+;02AUG;12DEC               BEQ     NO_A_D_EXIT          ;    THEN WE HAVE FAILED, ETC., ETC.
+;02AUG;12DEC               CMP     #0FH,D0              ;IF END_OF_SEQ_MARKER
+;02AUG;12DEC               BEQ     NO_A_D_EXIT          ;    THEN HAVE FAILED MISERABLY.
+;02AUG                ABS_LONG
+;02AUG               JSR     SEQ_NDRD_EATER      ;         ELSE, PRESS ONWARD, BRAVE KNIGHTS
+;02AUG                ABS_SHORT
+;02AUG               BRA     KRIMSON_7
+;02AUG
+;02AUG
+;02AUGFOUND_A_D              ; GOT IT - NOW, DECODE IT, SAVE IT, AND THROW UP A SUBFUNCTION TO EDIT IT IN.
+;02AUG               BTST    #15,D7               ;IF 'A' IS INACTIVE
+;02AUG               BNE.S   WAVE_0               ;    THEN IGNORE; MOVE ON TO B
+;02AUG               MOVE    D7,D6                ;         ELSE, PROCESS
+;02AUG               LSL     #1,D6                ;ROTATE OFF 'ACTIVITY' BIT
+;02AUG               ASR     #8,D6                ; ROTATE, SIGN-EXTENDED, INTO A WORD VALUE
+;02AUG               ASR     #3,D6
+;02AUG               MOVE    D6,MA_SEQ_ADVANCE    ;  SAVE
+;02AUG               BRA.S   WAVE_00
+;02AUGWAVE_0
+;02AUG               MOVE    #16,MA_SEQ_ADVANCE   ;(16 = INACTIVITY)
+;02AUGWAVE_00
+;02AUG               BTST    #9,D7                ;IF 'B' IS INACTIVE
+;02AUG               BNE.S   WAVE_1               ;    THEN COOL - DONE
+;02AUG               MOVE    D7,D6                ;         ELSE, PROCESS
+;02AUG               LSR     #1,D6                ;GET SO THAT BUISNESS PART ON BYTE BOUNDRY
+;02AUG               ASR.B   #3,D6                ; SIGN-EXTEND INTO A BYTE
+;02AUG               EXT     D6                   ;  SIGN-EXTEND INTO A WORD
+;02AUG               MOVE    D6,MB_SEQ_ADVANCE    ;   SAVE
+;02AUG               BRA.S   WAVE_01
+;02AUGWAVE_1
+;02AUG               MOVE    #16,MB_SEQ_ADVANCE   ;(16 = INACTIVITY)
+;02AUGWAVE_01
+;02AUG
+;02AUG;12DEC               MOVE    D7,D6                ; MAKE A COPY FOR UNPARSING
+;02AUG;12DEC               ASR     #2,D6                ;  GET TWO UARTS STRADLING BYTE BORDER
+;02AUG;12DEC               TST     D6                   ;   IF UPPER BIT OF UPPER BYTE SET
+;02AUG;12DEC               BPL.S   FOUND_A              ;         THEN LOAD 'NO CHANGE' MAX VALUE
+;02AUG;12DEC               MOVE    #16,D7
+;02AUG;12DEC               BRA.S   SAVE_A
+;02AUG;12DECFOUND_A                                     ;              ELSE, PROCESS
+;02AUG;12DEC               LSL     #1,D7                ;ROTATE OFF 'ACTIVITY' BIT
+;02AUG;12DEC               ASR     #3,D7                ; ROTATE DOWN INTO A SIGN-EXTENDED WORD
+;02AUG;12DEC               ASR     #8,D7
+;02AUG;12DECSAVE_A
+;02AUG;12DEC               MOVE    D7,DI_TEMP_1_B
+;02AUG;12DEC
+;02AUG;12DEC               TST.B   D6                   ;IF UPPER BIT OF LOWER BYTE SET
+;02AUG;12DEC               BPL.S   FOUND_B              ;    THEN NO CHANGE FOR UART B
+;02AUG;12DEC               MOVE    #16,D6
+;02AUG;12DEC               BRA.S   SAVE_B
+;02AUG;12DECFOUND_B                                     ;         ELSE, PROCES
+;02AUG;12DEC               LSL     #1,D6                ;MOVE ACTIVITY BIT OUT OF WAY (INTO UPPER BYTE)
+;02AUG;12DEC               ASR.B   #3,D6                ; ROTATE OFF ID
+;02AUG;12DEC               EXT     D6                   ;  MAKE A SIGN-EXTENDED WORD
+;02AUG;12DECSAVE_B
+;02AUG;12DEC               MOVE    D6,DI_TEMP_3_B
+;02AUG
+;02AUG               MOVE.L  A4,DI_TEMP_5_B       ;REMEMBER WHERE DATA WAS - WILL HAVE TO CHANGE DELTA
+;02AUG               BRA.S   A_D_EXIT
+;02AUG
+;02AUGNO_A_D_EXIT
+;02AUG               MOVE    #-16,MA_SEQ_ADVANCE
+;02AUG               MOVE    #-16,MB_SEQ_ADVANCE
+;02AUGA_D_EXIT
+;02AUG               MOVEM.L (A7)+,D1-D7/A1-A6    ;RESTORE REGGIES
+;02AUG               RTS
+;02AUG
+;02AUG
+;02AUGWHICH_UART             ; LOOK AT NOW_UART - DECIDE WHICH UART A/D TO DISPLAY.
+;02AUG               TST.B   NOW_UART             ;SET = A, CLEAR = B
+;02AUG               BNE.S   EDIT_UART_B
+;02AUGEDIT_UART_A
+;02AUG               MOVE.L  #MA_SEQ_ADVANCE,D0
+;02AUG               RTS
+;02AUGEDIT_UART_B
+;02AUG               MOVE.L  #MB_SEQ_ADVANCE,D0
+;02AUG               RTS
+;02AUG;
+;02AUG;
+;02AUG;
+;02AUG; HAVE DESIRED UART A A/D IN DI_TEMP_1_B; B's IN _3_B.  POINTING TO WHERE
+;02AUG; IN THE SEQUENCE THIS GOES WITH DI_TEMP_5_B.L.  DO IT, DUDE.
+;02AUG;     IT LOOKS LIKE:
+;02AUG;              a bbbbb c ddddd 1100     a = 1 = NO CHANGE ON A; bbbbb = +/- msec CHANGE ON UART A
+;02AUG;                                       c = 1 = NO CHANGE ON B; ddddd = +/- msec CHANGE ON UART B
+;02AUG;
+;02AUGREWRITE_A_D
+;02AUG               JSR     SEQ_RUNNING_TEST     ;IS SEQUENCER RUNNING? (NOT COOL TO AUTO-STOP IT ....)
+;02AUG               BNE.S   R_A_D_STALL          ;EXIT IF YES (MESSAGE IS IN LCD ....)
+;02AUG;
+;02AUG               MOVE    MA_SEQ_ADVANCE,-(A7)  ;SAVE UART A ADVANCE DELAY
+;02AUG               MOVE    MB_SEQ_ADVANCE,-(A7)  ;SAVE UART B ADVANCE DELAY
+;02AUG;18JUN               JSR     STOP_THE_SEQUENCER   ;MAKE SURE SEQUENCER IS NOT RUNNING.
+;02AUG               MOVE    (A7)+,MB_SEQ_ADVANCE   ;RESTORE UART B ADVANCE/DELAY
+;02AUG               MOVE    (A7)+,MA_SEQ_ADVANCE   ;RESTORE UART A ADVANCE/DELAY
+;02AUG               CMP     #-16,MA_SEQ_ADVANCE  ;IF WE COULDN'T FIND THE ORIGINAL
+;02AUG               BEQ.S   NO_A_D_PERIOD        ;    THEN DON'T REWRITE
+;02AUG
+;02AUG               MOVE    MA_SEQ_ADVANCE,D0    ;BUILD EVENT.
+;02AUG               AND     #1FH,D0              ; MASK TO BUISNESS BITS
+;02AUG               CMP     #16,MA_SEQ_ADVANCE   ;  IF NOT OF A DISABLED STATE
+;02AUG               BNE.S   FEVER_0              ;    THEN COOL
+;02AUG               MOVE    #32,D0               ;         ELSE, SET UP PROPERLY
+;02AUGFEVER_0
+;02AUG               LSL     #8,D0                ; MOVE UART A TO UPPER BYTE
+;02AUG               MOVE.B  MB_SEQ_ADVANCE+1,D0  ;  LOAD UART B INTO LOWER BYTE
+;02AUG               AND.B   #1FH,D0              ;   MASK TO BUSINESS BITS
+;02AUG               CMP     #16,MB_SEQ_ADVANCE   ;    IF NOT A DISABLED EVENT
+;02AUG               BNE.S   FEVER_1              ;         THEN COOL
+;02AUG               MOVE.B  #32,D0               ;              ELSE, MARK AS SO
+;02AUGFEVER_1
+;02AUG               LSL.B   #2,D0                ;   ROTATE UART B UP AGAINST BOTTOM OF UART A
+;02AUG               LSL     #2,D0                ;    ROTATE WHOLE MESS TO TOP OF WORD
+;02AUG               OR      #0CH,D0              ;     PLOP ON ID
+;02AUG
+;02AUG               MOVE.L  DI_TEMP_5_B,A0       ;      RECOVER WHERE IT GOES
+;02AUG               MOVE    D0,0(A0)             ;       WRITE IT
+;02AUG               ST      SUBFUN_INSTALL       ;        COME BACK IN, TO EXTINGUISH ENTER LED
+;02AUGNO_A_D_PERIOD
+;02AUG               RTS
+;02AUG;
+;02AUGR_A_D_STALL
+;02AUG               BRA     USER_STALL           ;EXIT THIS WAY WHEN SEQUENCER'S RUNNING.
+;02AUG;
+;02AUG;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; SUBFUNCTION FOR DISPLAYING/EDITING MIDI UART ADVANCE/DELAY PER BAR:
+;
+; AN HISTORICAL NOTE -
+; AT A POINT IN THE PAST IT WAS DECIDED THAT THERE SHOULD BE A UART
+; TIMING EVENT IN EVERY BAR OF EVERY SEQUENCE, FROM BIRTH UNTIL DEATH,
+; EVEN THOUGH MOST OF THE TIME THESE WOULD SIMPLY INDICATE "NO CHANGE IN
+; THIS HERE BAR, BOSS."  IT IS NOT ENTIRELY CLEAR WHY THIS DECISION WAS
+; REACHED OR HOW - PERHAPS IT HAD SOMETHING TO DO WITH THE ALL-TOO-HUMAN
+; TENDENCY TO CLING TO THE OLD, KNOWN WAYS, HOWEVER INADEQUATE, RATHER
+; THAN START ANEW - BUT IT IS CERTAIN THAT THIS SUBFUNCTION WAS SCULPTED
+; WITH THE ASSUMPTION IN MIND THAT, NORMALLY, A SEARCH WOULD TURN UP ONE
+; OF THESE EVENTS IN ANY BAR.
+; MEANWHILE, BACK IN REALITY, IT CAME TO PASS THAT THIS SYSTEM GRADUALLY
+; BEGAN TO DISINTEGRATE.  AS THE SITUATION PROGRESSED, CASES WERE SEEN
+; IN WHICH WHOLE SEQUENCES WHICH HAD SOMEHOW BECOME ENTIRELY DEVOID OF
+; UART TIMING EVENTS.  SOMEWHERE OUT IN THE VAST VASTNESS OF SEQUENCE-
+; EDITING LAND, A GREMLIN WAS LOOSE .... WANTONLY DEVOURING THESE VALUED
+; BITS OF DATA!
+; THE MEN CHARGED WITH KILLING THIS GREMLIN, SENSING THAT TIME WAS SHORT
+; AND VASTNESS VAST, REASONED THAT ACCOMMODATION WAS THE ORDER OF THE
+; DAY.  IF THESE EVENTS BE MISSING, SO BE IT - GO WITH THE FLOW.  AFTER
+; ALL, THIS WAS NOT REALLY MUCH DIFFERENT FROM A NULL UART TIMING EVENT.
+; IN TIME, THEY SAW THAT A BOAT HAD BEEN MISSED:  WHY DISPLAY "NOTHING"
+; IN MOST BARS, WHICH TELLS PEOPLE NOTHING ABOUT THE ADVANCE/DELAY WHICH
+; IS IN EFFECT AT THAT POINT IN THE SEQUENCE, JUST BECAUSE THERE HAPPENS
+; TO BE NO ACTUAL CHANGE AT THAT POINT?  WOULD IT NOT PERHAPS BE MORE
+; USEFUL TO DISPLAY THE EFFECTIVE VALUE AT EVERY POINT (AS PER THE MOST
+; RECENT UART TIMING EVENT)?
+;
+; IN FACT, THEY WOULD NOT HAVE HAD TO SEARCH FAR TO CATCH THIS TRICKY
+; GREM - HIS FAVOURED HAUNT WAS THE "ERASE ALL" FUNCTION, WHERE HE HAD
+; COACHED THE CROWD TO ERRONEOUSLY ERASE ALL NON-TRACK-ORIENTED EVENTS,
+; EVEN THOUGH THE ERASURE MIGHT BE INTENDED TO HAPPEN ON ONLY ONE TRACK.
+; SUCH WAS THE INTELLIGENCE BORNE TO THEM BY A PENNILESS STREET-LEPER,
+; MOMENTS BEFORE HE DISINTEGRATED INTO AN OOZING PILE OF ROTTING FLESH.
+; THE ERASE FUNCTION WAS SUMMARILY AUGMENTED TO INCLUDE A FACILITY FOR
+; PSEUDO-ERASURE OF THESE EVENTS - IT NULLED THEM OUT WITHOUT REMOVING
+; THEM FROM THE SEQUENCE - AS WELL AS FOR ERASURE OF TEMPO CHANGE DATA,
+; WHICH HAD UNACCOUNTABLY BEEN OMITTED IN EARLIER DAYS, THUS PROVIDING
+; THE COSMIC CATALYST FOR SPONTANEOUS GENERATION OF GREMLINS.
+;
+; NOW, WE ASSUME THAT WE WILL ALWAYS FIND WHAT WE SEEK, WHILE IF WE FAIL
+; TO FIND IT, WE DO NOT PANIC AND THROW OURSELVES OFF A CLIFF.
+;
+; THE REST, AS THEY SAY, IS HIS STORY .....
+;
+UART_TIMING_SUB
+               ASC     "MIDI BAR:xxx #xx"
+               ASC     "A:xxx B:xxx msec"
+;
+               DC.B    9                    ;BAR NUMBER FIELD.
+               DC.B    3
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    EDIT_BAR
+               DC.W    DISPLAY+TAILOR
+               DC.L    UART_TIME_SEARCH
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    TAP_BAR_LIMIT
+               DC.W    EDIT+LO_LIMIT
+               DC.W    1
+               DC.W    EDIT+LINKED
+               DC.W    EDIT+ENTR_VEC
+               DC.L    SET_UART_TIME
+               DC.W    FIELD_END
+;
+               DC.B    14                   ;SEQUENCE NUMBER FIELD.
+               DC.B    2
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+SET_PTR
+               DC.L    SEQ_NUM_ACC
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+HI_LIMIT
+               DC.W    98
+               DC.W    EDIT+ENTR_VEC
+               DC.L    SET_UART_TIME
+               DC.W    FIELD_END
+;
+               DC.B    18                   ;UART "A" ADVANCE/DELAY FIELD.
+               DC.B    3
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    MA_SEQ_ADVANCE
+               DC.W    ACCESS+SIGNED
+               DC.W    EDIT+LO_LIMIT
+               DC.W    -15
+               DC.W    EDIT+HI_LIMIT
+               DC.W    15
+               DC.W    EDIT+ED_VEC
+               DC.L    SET_ENTER_FLASH
+               DC.W    EDIT+ENTR_VEC
+               DC.L    SET_UART_TIME
+               DC.W    FIELD_END
+;
+               DC.B    24                   ;UART "B" ADVANCE/DELAY FIELD.
+               DC.B    3
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    MB_SEQ_ADVANCE
+               DC.W    ACCESS+SIGNED
+               DC.W    EDIT+LO_LIMIT
+               DC.W    -15
+               DC.W    EDIT+HI_LIMIT
+               DC.W    15
+               DC.W    EDIT+ED_VEC
+               DC.L    SET_ENTER_FLASH
+               DC.W    EDIT+ENTR_VEC
+               DC.L    SET_UART_TIME
+               DC.W    SUBFUN_END
+               SKIP
+;
+; BAR-NUMBER DISPLAY_TAILOR VECTOR:
+; SEARCHES THROUGH SEQUENCE TO EDIT_BAR TO DETERMINE THE UART TIMING
+; ADVANCE/DELAY IN EFFECT AT THAT POINT FOR EACH OF THE MIDI UARTS.
+; PLOPS THE RESULTS INTO MA/MB_SEQ_ADVANCE, WHICH ARE THE VARIABLES
+; THAT ACTUALLY GET DISPLAYED AND EDITED DIRECTLY.
+; IN ADDITION, A POINTER TO THE UART TIMING EVENT IS GENERATED AND
+; STORED IN DI_TEMP_5_B(.L) TO FACILITATE MODIFICATION OF THE EVENT.
+; THE BAR-NUMBER FIELD USES THE "LINKED" SWITCH TO FORCE REINSTALLATION
+; OF THE SUBFUNCTION (AND THUS REEXECUTION OF THIS PROCEDURE) WHENEVER
+; THE BAR NUMBER IS CHANGED (SO, BE PREPARED TO WAIT A WHILE ....)
+;
+;
+UART_TIME_SEARCH
+               MOVEM.L D1-D7/A1-A6,-(A7)    ;DISPLAY SYSTEM ALLOWS ONLY FOR D0/A0 TRASHING.
+;
+               BTST    #3,XPORT_STATE       ;IS SEQUENCER RUNNING?
+               BNE     UTS_Z0               ;EXIT IF YES - WE CAN'T GO THROUGH THE SEQUENCE NOW.
+;
+               CLR.L   DI_TEMP_5_B          ;DEFAULT TO "NO UART TIMING EVENT FOUND" STATUS.
+;
+               TST     NOW_SEQ_STATUS       ;DOES CURRENT SEQUENCE EXIST?
+               BNE.S   UTS_10               ;BRANCH IF YES, ON WE GO.
+               MOVE.L  #10000H,EDIT_BAR     ;ELSE - JAM BAR-NUMBER TO 1, FORGO ANY FURTHER EFFORT.
+               BRA     UTS_Z0
+;
+UTS_10
+               TST     EDIT_BAR             ;MAKE SURE WE AIN'T TRYIN' TO FIND BAR 0.
+               BNE.S   UTS_20
+               MOVE    #1,EDIT_BAR
+UTS_20
+               JSR     SEQ_NDRD_SETUP       ;SET UP NON-DESTRUCTIVE READ OF SEQUENCE -
+                                            ;READ POINTER IS LOADED INTO A4(.L).
+               CLR     MA_SEQ_ADVANCE       ;AT FIRST, WE ASSUME NO ADVANCE OR DELAY.
+               CLR     MB_SEQ_ADVANCE
+;
+;
+; LOOP IN SEARCH OF EDIT_BAR -
+; NOTE UART ADVANCE/DELAY VALUES IN PRECEDING BARS AS WE GO:
+;
+UTS_30
+               JSR     SEQ_NDSTR_READ       ;READ EVENT ID WORD,
+               MOVE    D7,D0                ;ISOLATE ID IN D0.
+               AND     #0FH,D0
+UTS_40
+               CMP     #8,D0                ;IS THIS A BAR MARKER?
+               BNE.S   UTS_50               ;BRANCH IF NOT, KEEP LOOKING.
+               JSR     SEQ_NDSTR_READ       ;ELSE - READ BAR NUMBER,
+               CMP     EDIT_BAR,D7          ;SEE IF IT MATCHES OUR TARGET -
+               BEQ.S   UTS_60               ;BRANCH IF YES, GO LOOK FOR OUR UART TIMING EVENT.
+               BRA     UTS_30               ;ELSE, KEEP LOOKING FOR TARGET BAR MARKER.
+;
+UTS_50
+               CMP     #0CH,D0              ;IS THIS A UART TIMING EVENT FOR AN EARLIER BAR?
+               BNE.S   UTS_56               ;BRANCH IF NOT, POP ON AHEAD.
+               BSR.S   DISSECT_UART_TIME    ;ELSE - NOTE THE VALUES CONTAINED THEREIN,
+               BRA.S   UTS_5A               ;THEN PROCEED TO NEXT EVENT.
+UTS_56
+               CMP     #0FH,D0              ;JUST TO BE SAFE - DID WE OVERSHOOT AND HIT END OF SEQ?
+               BEQ.S   UTS_Z0               ;BRANCH IF YES - EXIT WITH DI_TEMP_5_B = 0 TO INDICATE.
+UTS_5A
+               JSR     SEQ_NDRD_EATER       ;ELSE - READ THROUGH EVENT TO NEXT, ISOLATE ITS ID,
+               BRA     UTS_40               ;GO BACK AND CHECK IT OUT.
+;
+;
+; WE HAVE (FORSOOTH) FOUND THE TARGET BAR MARKER:
+;
+UTS_60
+               JSR     SEQ_NDSTR_READ       ;GET NEXT EVENT, ETC ETC.
+               MOVE    D7,D0                ;ISOLATE ID IN D0.
+               AND     #0FH,D0
+UTS_70
+               CMP     #0CH,D0              ;IS IT, LIKE, A UART TIMING EVENT?
+               BEQ.S   UTS_80               ;BRANCH IF YES, GO PICK IT APART ....
+               CMP     #8,D0                ;HOW ABOUT, IS IT A BAR MARKER?
+               BEQ.S   UTS_Z0               ;BRANCH IF YES - EXIT WITH DI_TEMP_5_B = 0 TO INDICATE
+                                            ;THAT WE DIDN'T FIND "IT" IN TARGET BAR.
+               CMP     #0FH,D0              ;FOR PARANOIA'S SAKE - IF WE HIT THE END OF SEQUENCE,
+               BEQ.S   UTS_Z0               ;THEN BEAR SAME BAD NEWS.
+               JSR     SEQ_NDRD_EATER       ;ELSE - CHEER UP, THERE'S ALWAYS THE NEXT EVENT.
+               BRA     UTS_70
+;
+;
+; O BOY O BOY O BOY - GUESS WHAT, WE FOUND IT WE FOUND IT WE FOUND IT !!
+;
+UTS_80
+               BSR.S   DISSECT_UART_TIME    ;PULL IT APART INTO "A" AND "B" THINGS, AND LOG 'EM.
+               MOVE.L  A4,DI_TEMP_5_B       ;REMEMBER WHERE THE UART TIMING EVENT WAS, SO WE CAN
+                                            ;GO STRAIGHT TO IT IF WE DECIDE TO CHANGE IT.
+                                            ;THAT'S ALL FOR NOW, EH.
+;
+UTS_Z0
+               MOVEM.L (A7)+,D1-D7/A1-A6    ;RESTORE REGGIES
+UTS_EXIT
+               RTS
+;
+;
+;
+; DISSECT THE UART TIMING EVENT IN D7(.W) -
+; LOG ANY CHANGE AS THE CURRENT ADVANCE/DELAY VALUE, PER UART:
+;
+DISSECT_UART_TIME
+               BTST    #15,D7               ;ANY CHANGE FOR UART "A"?
+               BNE.S   DUT_10               ;BRANCH IF NOT - TIME FOR THE "B" SIDE.
+               MOVE    D7,D6                ;ELSE - COPY THE EVENT,
+               LSL     #1,D6                ;SQUISH OFF THE "A" CHANGE BIT,
+               ASR     #8,D6                ;ROTATE, SIGN-EXTENDED, INTO A WORD VALUE.
+               ASR     #3,D6
+               MOVE    D6,MA_SEQ_ADVANCE    ;KEEP MINDFUL OF THIS UNTIL FURTHER NOTICE.
+DUT_10
+               BTST    #9,D7                ;ANY CHANGE FOR UART "B"?
+               BNE.S   DUT_EXIT             ;BRANCH IF NOT, SHINE IT.
+               LSR     #1,D7                ;ELSE - LEFT-JUSTIFY "B" TIMING VALUE IN L.S.BYTE,
+               ASR.B   #3,D7                ;THEN SIGN-EXTEND INTO A BYTE,
+               EXT     D7                   ;AND FINALLY, SIGN-EXTEND INTO A WORD.
+               MOVE    D7,MB_SEQ_ADVANCE    ;THIS IS IT UNTIL FURTHER UART TIMING EVENTS SEEN.
+DUT_EXIT
+               RTS
+               SKIP
+;
+; USER HAS DECIDED TO SET NEW VALUE(S) FOR UART ADVANCE/DELAY -
+; TAKE VALUES IN MA/MB_SEQ_ADVANCE, MASH THEM DOWN INTO A UART TIMING
+; EVENT AND STUFF THEM INTO SEQUENCE AT THE PLACE WE SAW ONE AT BEFORE,
+; AS FAITHFULLY RECORDED IN THE FORM OF A POINTER IN DI_TEMP_5_B(.L).
+; HOWEVER, (HOKUM HERE) IF THIS POINTER IS SET TO ZERO, WE DID NOT
+; FIND A UART TIMING EVENT IN THE DESIRED BAR.  IN THIS CASE, SINCE
+; WE'RE TOO STUPID TO CREATE A NEW EVENT, WE JUST DO NOTHING (SIGH).
+; FORTUNATELY, THIS IS SOMETHING WHICH IS NOT SUPPOSED TO HAPPEN, AND
+; GENERALLY IT DOESN'T - SO NO BIG DEAL REALLY.
+;
+; AHH - FORMAT FOR AN EVENT SUCH AS THIS:
+;
+;              abbb bbcd dddd 1100
+;
+;              a = 1   = NO CHANGE FOR UART "A"
+;              bbbbb   = msec OFFSET FOR UART "A" (+ = ADV, - = DELAY)
+;              c = 1   = NO CHANGE FOR UART "B"
+;              ddddd   = msec OFFSET FOR UART "B" (+ = ADV, - = DELAY)
+;
+SET_UART_TIME
+               JSR     SEQ_RUNNING_TEST     ;IS SEQUENCER RUNNING? (NOT COOL TO AUTO-STOP IT ....)
+               BNE.S   SUT_STALL            ;EXIT IF YES (MESSAGE IS IN LCD ....)
+;
+               TST.L   DI_TEMP_5_B          ;DID WE FIND A UART TIMING EVENT IN THE TARGET BAR?
+               BEQ.S   SUT_EXIT             ;BRANCH IF NOT, EXIT - CAN'T DO NUTHN'.
+;
+               MOVE    MA_SEQ_ADVANCE,D0    ;ELSE - ASSEMBLE EVENT IN D0.
+               AND     #1FH,D0              ;MASK TO BUSINESS BITS FOR UART "A" -
+               LSL     #8,D0                ;MOVE UART "A" VALUE TO UPPER BYTE,
+               MOVE.B  MB_SEQ_ADVANCE+1,D0  ;LOAD UART "B" INTO LOWER BYTE -
+               AND.B   #1FH,D0              ;MASK IT TO BUSINESS BITS TOO.
+               LSL.B   #2,D0                ;ROTATE "B" VALUE UP AGAINST "A" VALUE,
+               LSL     #2,D0                ;LEFT-JUSTIFY HOLE-DAM THING,
+               OR      #0CH,D0              ;PLOP ON ID CODE FOR UART TIMING EVENT.
+;
+               MOVE.L  DI_TEMP_5_B,A0       ;NOW, WHERE DID WE WANT TO PUT THIS?
+               MOVE    D0,0(A0)             ;PUT 'ER THERE, PAL.
+               ST      SUBFUN_INSTALL       ;REINSTALL, IF ONLY TO EXTINGUISH ENTER LED (?)
+SUT_EXIT
+               RTS
+;
+SUT_STALL
+               BRA     USER_STALL           ;EXIT THIS WAY WHEN SEQUENCER'S RUNNING.
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+

@@ -1,0 +1,2679 @@
+               INCLUDE HPFIXUPS
+               TITLE "SYSFUNS2"
+***************************************************************************************************
+***************************************************************************************************
+***                                                                                             ***
+***            SYSFUNS2 - SUBFUNCTIONS UNDER "INPUTS", "DISK" FUNCTION SWITCHES                 ***
+***                                                                                             ***
+***************************************************************************************************
+***************************************************************************************************
+;
+NEG_EXT        EQU     0FFFFFF00H      ;USE IN MOVEQ INSTRUCTIONS WHERE ARG IS
+                                       ;80H OR LARGER - HP XASM DOES NOT HANDLE
+                                       ;SIGN-EXTEND CORRECTLY.  COSMETIC, KEEPS
+                                       ;ACTUAL BYTE VALUE CLEARER.
+;
+               INCLUDE EQUATES         ;HDW ADDR AND CONSTANT DEFS, ABS_SHORT DIRECTIVE.
+;
+               INCLUDE S_BLK_EQU       ;SOUND BLOCK EQUATES/OFFSETS
+;
+               INCLUDE FIELD_EQU       ;SUBFUNCTION/FIELD BLOCK DEFINITIONS.
+;
+               INCLUDE DISKDEFS        ;DISK SYSTEM DEFINITIONS.
+;
+               include trapdefs        ; system function access definitions.
+;
+               include lcd_funs        ; lcd/screen_buffer system function defs.
+;
+               GLB     SET_NAME_BUF_ACC,FETCH_NAME
+               GLB     NAME_CURS_LEFT,NAME_CURS_RIGHT,CHAR_EDIT_LIM
+               GLB     WRITE_NAME_BUF,STORE_NAME_BUF,NOT_SAVED_WARNING
+;
+                                            ;SEQUENCE DIRECTORY BLOCK PARAMETERS.
+               EXTERNAL  Q_STATUS
+               EXTERNAL  Q_XS_BEATS
+               EXTERNAL  Q_TOTAL_BARS
+;
+               EXTERNAL  DISKWARD_HO        ;EXTERNAL ROM.
+               EXTERNAL  DLY_20_MSEC
+               EXTERNAL  UPDATE_AUTOCORRECT
+               EXTERNAL  WRITE_PARAM_STRING,WRITE_STRING
+               EXTERNAL  WRITE_PARAM_VALUE
+               EXTERNAL  DISP_SCREEN
+               EXTERNAL  RECALCMEM,SET_SAMPLED_SOUNDS
+               EXTERNAL  WRITE_ZERO_AND_PEAK
+               EXTERNAL  NOTHINGNESS
+               EXTERNAL  UNPLUG_ALL_EDITS,USER_STALL,GO_TO_NEXT_FIELD
+               EXTERNAL  SET_ASSIGN_MAPS,MOVE_DEM_SOUND_DOWN
+;890321               EXTERNAL  KILL_ALL_VOICES
+;890321               EXTERNAL  WIPE_OUT_ENTER
+               EXTERNAL  SET_ENTER_FLASH
+               EXTERNAL  PROP_NEW_KEY
+               EXTERNAL  CALC_FPB
+               EXTERNAL  KILL_ACTIVE_PERF
+               EXTERNAL  CREATE_CLOCK_IN
+               EXTERNAL  CREATE_CLOCK_OUT
+               EXTERNAL  DROP_CHECK_START
+               EXTERNAL  NEW_TAPE_SPEED
+;890321               EXTERNAL  STOP_THE_SEQUENCER
+               EXTERNAL  SEQ_RUNNING_TEST
+               EXTERNAL  UPDATE_SEQ_SIZE
+               EXTERNAL  GET_SEQ_DIR_PTR
+               EXTERNAL  INSTALL_KIT
+               .IMPORT GENL_SHUTDOWN
+;
+               EXTERNAL  S_BLK_00           ;WAY RAM, DUBE.
+               EXTERNAL  S_BLK_31
+               EXTERNAL  PARAM_BUFFER
+               EXTERNAL  FOOTSW_SELECT
+               EXTERNAL  FTSW1_ACTION
+               EXTERNAL  FTSW2_ACTION
+               EXTERNAL  FTSW1_KIT
+               EXTERNAL  FTSW2_KIT
+               EXTERNAL  FTSW1_VELOCITY
+               EXTERNAL  FTSW2_VELOCITY
+               EXTERNAL  FTSW1_ALT_PRM
+               EXTERNAL  FTSW2_ALT_PRM
+               EXTERNAL  TRIG_ACTION
+               EXTERNAL  TRIG_KIT
+               EXTERNAL  TRIG_VELOCITY
+               EXTERNAL  TRIG_ALT_PRM
+               EXTERNAL  TRIG_ON_THRESH
+               EXTERNAL  TRIG_OF_THRESH
+               EXTERNAL  PARAM_HI_LIM
+               EXTERNAL  TRIG_VEL_DLY
+               EXTERNAL  TRIG_HOLD_OFF
+               EXTERNAL  AUX_ED_PTR_1
+               EXTERNAL  AC_TYPE
+               EXTERNAL  MIDI_GARBAGE
+               EXTERNAL  MIDI_ROUTINE_PENDING
+               EXTERNAL  ZERO_BLANKING
+               EXTERNAL  ENTER_VEC
+               EXTERNAL  UNIT_INFO_SEL
+               EXTERNAL  LOAD_INFO_SEL
+               EXTERNAL  SAVE_INFO_SEL
+               EXTERNAL  SAVE_VER_SEL
+               EXTERNAL  SND_UNIT_SEL
+               EXTERNAL  SEQ_UNIT_SEL
+               EXTERNAL  SONG_UNIT_SEL
+               EXTERNAL  DIR_INFO_SEL
+               EXTERNAL  DIR_SHOW_SEL
+               EXTERNAL  DISK_OP_CODE
+               EXTERNAL  WASTELAND
+               EXTERNAL  DIRECTORY_BUF
+               EXTERNAL  SUBFUN_INSTALL
+               EXTERNAL  DISP_STRNG_PTR
+               EXTERNAL  CUR_SUB_BLOCK
+               EXTERNAL  SWITCH_HIT
+               EXTERNAL  SWITCH_STAT
+               EXTERNAL  CUR_FUN_INDEX
+               EXTERNAL  MAP_ARRAY
+               EXTERNAL  CURRENT_SOUND
+               EXTERNAL  CURRENT_SEQUENCE
+               EXTERNAL  CURRENT_SONG
+               EXTERNAL  FORMER_SEQUENCE
+               EXTERNAL  NEW_PHASE_LIST,PHASE_LIST
+               EXTERNAL  REAL_TIME
+               EXTERNAL  ED_BLOCK_TIMER
+               EXTERNAL  PAD_CTRL_STAT
+               EXTERNAL  KIT_INDEX
+               EXTERNAL  DRIVE_SEL
+               EXTERNAL  BANK_SEL
+               EXTERNAL  DISK_UTIL_SEL
+               EXTERNAL  BANK_NAME_SEL
+               EXTERNAL  NAME_BUFFER
+               EXTERNAL  PROTECT_SEL
+               EXTERNAL  CUR_FLD_INDEX
+               EXTERNAL  CUR_BANK_NAME
+               EXTERNAL  PARAM_POINTER
+               EXTERNAL  POSITION_CURS
+               EXTERNAL  CUR_FLD_BLOCK
+               EXTERNAL  SCREEN_BUFFER
+               EXTERNAL  UPDATE_LCD
+               EXTERNAL  HD_CAPACITY
+               EXTERNAL  BANK_TYPE_BUF
+               EXTERNAL  FLD_INDEX_STEP
+               EXTERNAL  FD_DISK_NAME
+               EXTERNAL  BANK_DESCR_BUF
+               EXTERNAL  NEW_SCSI_ID
+;900424               EXTERNAL  NEW_DRIVE_SIZE
+               .import new_drive_type
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; FOR STARTERS, GLOBAL DECLARATIONS FOR THE SUBFUNCTION BLOCKS -
+; THEY'RE ACCESSED FROM SWITCHBOY MODULE:
+;
+                                            ;INPUTS_GROUP.
+               GLB     FOOTSWITCH_SUB
+               GLB     FOOTSW_PAD_SUB
+               GLB     TRIG_ROUTING_SUB
+               GLB     TRIG_THRESH_SUB
+               GLB     TRIG_DELAY_SUB
+                                            ;DISK_GROUP.
+               GLB     LOAD_FILE_SUB
+               GLB     SAVE_FILE_SUB
+               GLB     DIRECTORY_SUB
+               GLB     MOVE_UNIT_SUB
+               GLB     FORMAT_SUB
+;900621               GLB     DRIVE_SEL_SUB
+               GLB     DISK_UTILS_SUB
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; THE SUBFUNCTION BLOCKS -
+; EACH BEGINS WITH THE DEFAULT SCREEN TEXT FOR THE SUBFUNCTION.
+;
+;
+;
+; INPUTS_GROUP:
+;
+;
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; PROGRAMMABLE FOOTSWITCH SETUP - SWITCH ROUTINGS:
+; IF FOOTSWITCH ROUTED TO PAD, WE TRANSFER OVER TO FOOTSW_PAD_SUB.
+;
+FOOTSWITCH_SUB
+               ASC     "FTSWx: nnnnnnnnn"
+               ASC     "                "
+;
+               DC.B    4                    ;FOOTSWITCH SELECT FIELD.
+               DC.B    1
+               DC.W    ACCESS+DIR_PTR
+               DC.W    FOOTSW_SELECT
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    1
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+;
+               DC.B    7                    ;FOOTSWITCH ROUTING FIELD.
+               DC.B    9
+               DC.W    ACCESS+SET_PTR
+               DC.L    SET_FOOTSW_ACCESS
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    FOOTSW_STRING
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    45
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+;
+               DC.B    16                   ;SWITCH ACTION MODE DISPLAY FIELD.
+               DC.B    16
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+SET_PTR
+               DC.L    SET_FOOTSW_ACCESS
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_FOOTSW_MODE
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    FOOTSW_MODE_STRING
+               DC.W    SUBFUN_END
+;
+;
+; SET POINTER TO FOOTSWITCH ACTION PARAMETER PER SELECTED FOOTSWITCH -
+; IF SELECTED SETTING IS IN THE FOOTSWITCH-PLAYS-PAD RANGE, INVOKE
+; TRANSITION TO FOOTSW_PAD_SUB.
+;
+SET_FOOTSW_ACCESS
+               TST     FOOTSW_SELECT
+               BNE.S   SETFA_10
+               MOVE    #FTSW1_ACTION,A0
+               BRA.S   SETFA_20
+SETFA_10
+               MOVE    #FTSW2_ACTION,A0
+SETFA_20
+               CMP     #38,(A0)             ;ARE WE IN SWITCH-ROUTING OR PAD-ROUTING RANGE?
+               BLT.S   SETFA_30             ;BRANCH IF SWITCH-ROUTING, WE STAY IN THIS SUBFUNCTION.
+               MOVE.L  #FOOTSW_PAD_SUB,CUR_SUB_BLOCK  ;ELSE, WE'RE GOING TO THIS SUBFUNCTION.
+               ST      SUBFUN_INSTALL
+SETFA_30
+               MOVE.L  A0,D0                ;RETURN PARAMETER POINTER IN D0.
+SETFA_EXIT
+               RTS
+;
+;
+; FOOTSWITCH ACTION-MODE DISPLAY ROUTINE -
+; TROUNCES BUFFERED FTSWx_ACTION CODE INTO ONE OF THREE VALUES
+; USEABLE BY WRITE_PARAM_STRING - OK, SINCE THIS IS NOT AN EDIT FIELD.
+;
+WRITE_FOOTSW_MODE
+               MOVE    PARAM_BUFFER,D0
+               BEQ.S   WRFTMD_EXIT          ;IF NO ACTION AT ALL, DISPLAY NOTHING.
+               CMP     #10,D0
+               BLT.S   WRFTMD_20            ;BRANCH IF IN "NORMAL ACTION" FRONT-PANEL SWITCH RANGE.
+               CMP     #14,D0
+               BLE.S   WRFTMD_30            ;BRANCH IF IN THE "MOMENTARY" FRONT-PANEL SWITCH RANGE.
+               CMP     #21,D0
+               BEQ.S   WRFTMD_20            ;ANOTHER SPOT OF "NORMAL"ITY (EXIT SEQ LOOP).
+               BGT.S   WRFTMD_30            ;ANOTHER "MOMENTARY" ZONE.
+               MOVEQ   #2,D0                ;FOR OTHERS, ASSUME "AUTOSCROLL" RANGE.
+               BRA.S   WRFTMD_40
+WRFTMD_20
+               CLR     D0
+               BRA.S   WRFTMD_40
+WRFTMD_30
+               MOVEQ   #1,D0
+WRFTMD_40
+               MOVE    D0,PARAM_BUFFER
+                ABS_LONG
+               JSR     WRITE_PARAM_STRING
+                ABS_SHORT
+WRFTMD_EXIT
+               RTS
+;
+;
+; FOOTSWITCH ROUTING STRINGS:
+;
+FOOTSW_STRING
+               ASC     "NO ACTION"
+;
+               ASC     "  AUTORPT"     ;"NORMAL" ACTION RANGE.
+               ASC     "    ERASE"
+               ASC     "   RECORD"
+               ASC     "    PAUSE"
+               ASC     "ALT PARAM"
+               ASC     " KIT/BANK"
+               ASC     "TAP TEMPO"
+               ASC     "     PLAY"
+               ASC     "    ENTER"
+;
+               ASC     "  AUTORPT"     ;MOMENTARY ACTION RANGE.
+               ASC     "    ERASE"
+               ASC     "   RECORD"
+               ASC     "    PAUSE"
+               ASC     "ALT PARAM"
+;
+               ASC     " TEMPO UP"     ;AUTOSCROLLED SWITCH-ROUTING RANGE.
+               ASC     " TEMPO DN"
+               ASC     "INC VALUE"
+               ASC     "DEC VALUE"
+               ASC     " FAST FWD"
+               ASC     "   REWIND"
+;
+               ASC     "EXIT RPT."     ;HIDDEN FUNCTION - EXIT FROM SEQUENCE PLAYBACK LOOP -
+                                       ;"NORMAL" ACTION.
+;
+               ASC     "  PROG  1"     ;MORE MOMENTARY ACTION, ALTHOUGH NOT SWITCHES ACTUALLY.
+               ASC     "  PROG  2"
+               ASC     "  PROG  3"
+               ASC     "  PROG  4"
+               ASC     "  PROG  5"
+               ASC     "  PROG  6"
+               ASC     "  PROG  7"
+               ASC     "  PROG  8"
+               ASC     "  PROG  9"
+               ASC     "  PROG 10"
+               ASC     "  PROG 11"
+               ASC     "  PROG 12"
+               ASC     "  PROG 13"
+               ASC     "  PROG 14"
+               ASC     "  PROG 15"
+               ASC     "  PROG 16"
+;
+;
+FOOTSW_MODE_STRING
+               ASC     "(NORMAL ACTION) "
+               ASC     "  (MOMENTARY)   "
+               ASC     "  (AUTOSCROLL)  "
+;
+               EVEN
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; PROGRAMMABLE FOOTSWITCH SETUP - PAD ROUTINGS:
+; IF FOOTSWITCH ROUTED TO SWITCH, WE TRANSFER BACK TO FOOTSWITCH_SUB.
+;
+FOOTSW_PAD_SUB
+               ASC     "FTSWx: PADp kkkk"
+               ASC     "VEL:vvv ALTP:aaa"
+;
+               DC.B    4                    ;FOOTSWITCH SELECT FIELD.
+               DC.B    1
+               DC.W    ACCESS+DIR_PTR
+               DC.W    FOOTSW_SELECT
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    1
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+;
+               DC.B    10                   ;FOOTSWITCH ROUTING FIELD.
+               DC.B    1
+               DC.W    ACCESS+SET_PTR
+               DC.L    SET_FOOT_PAD_ACCESS
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    37
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    45
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+;
+               DC.B    12                   ;KIT SELECT FIELD.
+               DC.B    4
+               DC.W    ACCESS+SET_PTR
+               DC.L    SET_FOOT_KIT_ACCESS
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    FOOT_KIT_STRING
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    8
+               DC.W    FIELD_END
+;
+               DC.B    20                   ;"PAD" VELOCITY FIELD.
+               DC.B    3
+               DC.W    ACCESS+SET_PTR
+               DC.L    SET_FOOT_VEL_ACCESS
+               DC.W    ACCESS+WORD
+               DC.W    EDIT+LO_LIMIT
+               DC.W    1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    127
+               DC.W    FIELD_END
+;
+               DC.B    29                   ;ALT-PARAMS FIELD.
+               DC.B    3
+               DC.W    ACCESS+SET_PTR
+               DC.L    SET_FOOT_ALT_ACCESS
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    FOOT_ALT_STRING
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    2
+               DC.W    SUBFUN_END
+;
+;
+; SET POINTER TO FOOTSWITCH ACTION PARAMETER PER SELECTED FOOTSWITCH -
+; IF SELECTED SETTING IS IN THE FOOTSWITCH-ACTUATES-SWITCH RANGE,
+; INVOKE TRANSITION TO FOOTSWITCH_SUB.
+;
+SET_FOOT_PAD_ACCESS
+               TST     FOOTSW_SELECT
+               BNE.S   SETFP_10
+               MOVE    #FTSW1_ACTION,A0
+               BRA.S   SETFP_20
+SETFP_10
+               MOVE    #FTSW2_ACTION,A0
+SETFP_20
+               CMP     #38,(A0)             ;ARE WE IN SWITCH-ROUTING OR PAD-ROUTING RANGE?
+               BGE.S   SETFP_30             ;BRANCH IF PAD-ROUTING, WE STAY IN THIS SUBFUNCTION.
+               MOVE.L  #FOOTSWITCH_SUB,CUR_SUB_BLOCK  ;ELSE, WE'RE GOING TO THIS SUBFUNCTION.
+               ST      SUBFUN_INSTALL
+SETFP_30
+               MOVE.L  A0,D0                ;RETURN PARAMETER POINTER IN D0.
+SETFP_EXIT
+               RTS
+;
+;
+; SET POINTER TO FOOT-PAD KIT SETTING PER SELECTED FOOTSWITCH -
+;
+SET_FOOT_KIT_ACCESS
+               TST     FOOTSW_SELECT
+               BNE.S   SETFK_10
+               MOVE    #FTSW1_KIT,A0
+               BRA.S   SETFK_20
+SETFK_10
+               MOVE    #FTSW2_KIT,A0
+SETFK_20
+               MOVE.L  A0,D0                ;RETURN PARAMETER POINTER IN D0.
+SETFK_EXIT
+               RTS
+;
+;
+; SET POINTER TO FOOT-PAD VELOCITY SETTING PER SELECTED FOOTSWITCH -
+;
+SET_FOOT_VEL_ACCESS
+               TST     FOOTSW_SELECT
+               BNE.S   SETFV_10
+               MOVE    #FTSW1_VELOCITY,A0
+               BRA.S   SETFV_20
+SETFV_10
+               MOVE    #FTSW2_VELOCITY,A0
+SETFV_20
+               MOVE.L  A0,D0                ;RETURN PARAMETER POINTER IN D0.
+SETFV_EXIT
+               RTS
+;
+;
+; SET POINTER TO FOOT-PAD ALT-PARAMS SETTING PER SELECTED FOOTSWITCH -
+;
+SET_FOOT_ALT_ACCESS
+               TST     FOOTSW_SELECT
+               BNE.S   SETFALT_10
+               MOVE    #FTSW1_ALT_PRM,A0
+               BRA.S   SETFALT_20
+SETFALT_10
+               MOVE    #FTSW2_ALT_PRM,A0
+SETFALT_20
+               MOVE.L  A0,D0                ;RETURN PARAMETER POINTER IN D0.
+SETFALT_EXIT
+               RTS
+;
+;
+FOOT_KIT_STRING
+               ASC     "PADS"
+               ASC     "KT:1"
+               ASC     "KT:2"
+               ASC     "KT:3"
+               ASC     "KT:4"
+               ASC     "BK:A"
+               ASC     "BK:B"
+               ASC     "BK:C"
+               ASC     "BK:D"
+;
+FOOT_ALT_STRING
+               ASC     "LIVOFF ON"
+;
+               EVEN
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; ANALOG TRIGGER-INPUT ROUTING SUBFUNCTION -
+; TAP-SWITCH OR NO-ROUTING SETTINGS:
+; (IF PAD-ROUTING SELECTED, WE JUMP OVER TO TRIG_PAD_SUB).
+;
+TRIG_ROUTING_SUB
+               ASC     "TRIG:  nnnnnnnnn"
+               ASC     "                "
+;
+               DC.B    7                    ;TRIGGER ROUTING FIELD.
+               DC.B    9
+               DC.W    ACCESS+SET_PTR
+               DC.L    SET_TRIG_ACCESS
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    TRIG_STRING
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    9
+               DC.W    EDIT+LINKED
+               DC.W    SUBFUN_END
+;
+;
+; SET POINTER TO TRIGGER-IN ACTION PARAMETER -
+; IF SETTING IS IN THE TRIGGER-IN-PLAYS-PAD RANGE, INVOKE
+; TRANSITION TO TRIG_PAD_SUB.
+;
+SET_TRIG_ACCESS
+               MOVE    #TRIG_ACTION,A0
+               CMP     #2,(A0)              ;ARE WE IN SWITCH-ROUTING OR PAD-ROUTING RANGE?
+               BLT.S   SETTA_30             ;BRANCH IF SWITCH-ROUTING, WE STAY IN THIS SUBFUNCTION.
+               MOVE.L  #TRIG_PAD_SUB,CUR_SUB_BLOCK    ;ELSE, WE'RE GOING TO THIS SUBFUNCTION.
+               ST      SUBFUN_INSTALL
+SETTA_30
+               MOVE.L  A0,D0                ;RETURN PARAMETER POINTER IN D0.
+SETTA_EXIT
+               RTS
+;
+;
+;
+; TRIGGER ROUTING STRINGS (NOT INCLUDING PADS):
+;
+TRIG_STRING
+               ASC     "NO ACTION"
+               ASC     "TAP TEMPO"
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; ANALOG TRIGGER-INPUT PAD ROUTINGS:
+; IF ACTUALLY ROUTED TO SWITCH, WE TRANSFER BACK TO TRIG_ROUTING_SUB.
+;
+TRIG_PAD_SUB
+               ASC     "TRIG:  PADp kkkk"
+               ASC     "VEL:vvv ALTP:aaa"
+;
+               DC.B    10                   ;TRIGGER-IN ROUTING FIELD.
+               DC.B    1
+               DC.W    ACCESS+SET_PTR
+               DC.L    SET_TRIG_PAD_ACCESS
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    1
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    9
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+;
+               DC.B    12                   ;KIT SELECT FIELD.
+               DC.B    4
+               DC.W    ACCESS+DIR_PTR
+               DC.W    TRIG_KIT
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    FOOT_KIT_STRING
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    8
+               DC.W    FIELD_END
+;
+               DC.B    20                   ;"PAD" VELOCITY FIELD.
+               DC.B    3
+               DC.W    ACCESS+DIR_PTR
+               DC.W    TRIG_VELOCITY
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+MIN_STRNG
+               DC.L    VEL_SENS_STRING
+               DC.W    DISPLAY+MIN_LIMIT
+               DC.W    0
+               DC.W    EDIT+HI_LIMIT
+               DC.W    127
+               DC.W    FIELD_END
+;
+               DC.B    29                   ;ALT-PARAMS FIELD.
+               DC.B    3
+               DC.W    ACCESS+DIR_PTR
+               DC.W    TRIG_ALT_PRM
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    FOOT_ALT_STRING
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    2
+               DC.W    SUBFUN_END
+;
+;
+VEL_SENS_STRING
+               DC.B    20
+               DC.B    3
+               ASC     "DYN"
+               EVEN
+;
+;
+; SET POINTER TO TRIGGER-IN ACTION PARAMETER -
+; IF SELECTED SETTING IS IN THE TRIGGER-IN-ACTUATES-SWITCH RANGE,
+; INVOKE TRANSITION TO TRIG_ROUTING_SUB.
+;
+SET_TRIG_PAD_ACCESS
+               MOVE    #TRIG_ACTION,A0
+               CMP     #2,(A0)              ;ARE WE IN SWITCH-ROUTING OR PAD-ROUTING RANGE?
+               BGE.S   SETTP_30             ;BRANCH IF PAD-ROUTING, WE STAY IN THIS SUBFUNCTION.
+               MOVE.L  #TRIG_ROUTING_SUB,CUR_SUB_BLOCK     ;ELSE, WE'RE GOING TO THIS SUBFUNCTION.
+               ST      SUBFUN_INSTALL
+SETTP_30
+               MOVE.L  A0,D0                ;RETURN PARAMETER POINTER IN D0.
+SETTP_EXIT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; ANALOG TRIGGER-INPUT THRESHOLDS:
+;
+TRIG_THRESH_SUB
+               ASC     "TRIG THRESHOLDS:"
+               ASC     "ON:nnn   OFF:fff"
+;
+               DC.B    19                   ;"ON" THRESHOLD FIELD.
+               DC.B    3
+               DC.W    ACCESS+DIR_PTR
+               DC.W    TRIG_ON_THRESH
+               DC.W    ACCESS+WORD
+               DC.W    EDIT+LO_LIMIT
+               DC.W    21
+               DC.W    EDIT+HI_LIMIT
+               DC.W    254
+               DC.W    EDIT+ED_VEC
+               DC.L    SWEEP_OFF_THRESH
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+;
+               DC.B    29                   ;"OFF" THRESHOLD FIELD.
+               DC.B    3
+               DC.W    ACCESS+DIR_PTR
+               DC.W    TRIG_OF_THRESH
+               DC.W    ACCESS+WORD
+               DC.W    EDIT+LO_LIMIT
+               DC.W    20                   ;EMPIRICAL - TO ENSURE WE ACTUALLY CAN GO OFF (NOISE?).
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_OFF_HI_LIMIT
+               DC.W    SUBFUN_END
+;
+;
+; TRIGGER "OFF" THRESHOLD -
+; HIGH LIMIT IS ALWAYS EQUAL TO "ON" THRESHOLD MINUS 1.
+;
+SET_OFF_HI_LIMIT
+               MOVE    TRIG_ON_THRESH,PARAM_HI_LIM
+               SUBQ    #1,PARAM_HI_LIM
+               RTS
+;
+;
+; SWEEP THE "OFF" THRESHOLD SETTING OUT OF THE WAY WHENEVER THE "ON"
+; THRESHOLD COLLIDES WITH IT IN THE DOWNWARD DIRECTION.
+;
+SWEEP_OFF_THRESH
+               MOVE    TRIG_ON_THRESH,D0    ;COMPUTE "OFF" THRESHOLD HIGH LIMIT
+               SUBQ    #1,D0                ;BASED ON CURRENT "ON" THRESHOLD SETTING.
+               CMP     TRIG_OF_THRESH,D0    ;IS "OFF" THRESHOLD ALREADY COOL?
+               BGE.S   SWP_OFF_EXIT         ;YES - AT OR BELOW THIS POINT, SO NO PROBLEM.
+               MOVE    D0,TRIG_OF_THRESH    ;NO - FIX IT TO BE COOL.
+SWP_OFF_EXIT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; AUDIO TRIGGER-IN DELAY SETTINGS:
+;
+TRIG_DELAY_SUB
+               ASC     "TRIG HOLDOFF:hhh"
+               ASC     "VEL-SENSE DLY:vv"
+;
+               DC.B    13                   ;HOLD-OFF DELAY FIELD.
+               DC.B    3
+               DC.W    ACCESS+SET_PTR
+               DC.L    SET_HOLD_OFF_ACCESS
+               DC.W    ACCESS+WORD
+               DC.W    EDIT+LO_LIMIT        ;EDIT/DISPLAY VALUE REPRESENTS 10 MSEC/UNIT -
+               DC.W    1                    ;ALLOW NO LESS THAN 10 MSEC.
+               DC.W    EDIT+HI_LIMIT
+               DC.W    999                  ;YEAH - UP TO 10 SECONDS !!!
+               DC.W    EDIT+ED_VEC
+               DC.L    STORE_HOLD_OFF
+               DC.W    FIELD_END
+;
+               DC.B    30                   ;VELOCITY-SENSE DELAY FIELD.
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    TRIG_VEL_DLY
+               DC.W    ACCESS+WORD
+               DC.W    EDIT+LO_LIMIT
+               DC.W    1
+               DC.W    SUBFUN_END
+;
+;
+; SCALE HOLD-OFF VALUE DOWN BY 10x FOR DISPLAY/EDIT -
+; SET UP A DUMMY VARIABLE FOR EDIT INTERFACE:
+;
+SET_HOLD_OFF_ACCESS
+               MOVE    #AUX_ED_PTR_1,A0     ;THIS'LL BE THE DUMMY.
+               CLR.L   D0                   ;MAKE D0 LONG-CLEAR FOR DIVIDE.
+               MOVE    TRIG_HOLD_OFF,D0     ;FETCH CURRENT SETTING.
+               DIVU    #10,D0               ;SCALE DOWN TO DISPLAY/EDIT RANGE,
+               MOVE    D0,(A0)              ;GIVE THIS VALUE TO THE DUMMY.
+               MOVE.L  A0,D0                ;RETURN DUMMY PARAMETER POINTER IN D0.L.
+               RTS
+;
+;
+; ACTUAL HOLD-OFF VALUE IS SCALED UP 10x FROM EDIT/DISPLAY VALUE:
+;
+STORE_HOLD_OFF
+               MOVE    AUX_ED_PTR_1,D0
+               MULU    #10,D0
+               MOVE    D0,TRIG_HOLD_OFF
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; DISK_GROUP:
+;
+; VALUES FOR UNIT_INFO_SEL:
+;
+LOADSND_VAL    EQU     0               ;LOAD ONE SOUND.
+LOADSEQ_VAL    EQU     1               ;LOAD ONE SEQUENCE.
+LOADSNG_VAL    EQU     2               ;LOAD ONE SONG.
+SAVESNG_VAL    EQU     3               ;SAVE ONE SONG.
+COMPSNG_VAL    EQU     4               ;COMPARE ONE SONG.
+;
+;
+; VALUES FOR LOAD_INFO_SEL, SAVE_INFO_SEL:
+;
+SND_KT_CF_VAL  EQU     0               ;SOUNDS, KITS, SYS CONFIG.
+SNDS_KITS_VAL  EQU     1               ;SOUNDS AND KITS.
+SNDS_ONLY_VAL  EQU     2               ;SOUNDS ONLY.
+SEQ_SG_CF_VAL  EQU     3               ;SEQUENCES, SONGS, SYS CONFIG.
+SEQS_SNGS_VAL  EQU     4               ;SEQUENCES AND SONGS.
+SEQS_ONLY_VAL  EQU     5               ;SEQUENCES ONLY.
+CTLS_ONLY_VAL  EQU     6               ;SOUND CONTROLS.
+KITS_ONLY_VAL  EQU     7               ;PAD KITS/BANKS ONLY.
+CNFG_ONLY_VAL  EQU     8               ;SYS CONFIG ONLY.
+SNGS_ONLY_VAL  EQU     9               ;SONGS ONLY.
+SMPTE_CUE_VAL  EQU     10              ;SMPTE CUE LIST.
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+;
+;
+;
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+LOAD_FILE_SUB
+               ASC     " LOAD FROM DISK "
+               ASC     "                "
+;
+               DC.B    16                   ;INFO SELECTION FIELD (iiiiiiii).
+               DC.B    8
+               DC.W    ACCESS+DIR_PTR
+               DC.W    LOAD_INFO_SEL
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    FILE_INFO_STRING
+               DC.W    EDIT+LINKED
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    10
+               DC.W    EDIT+ENTR_VEC
+               DC.L    DO_LOAD_FILE
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    FIELD_END
+;
+               DC.B    24                   ;INFO SELECTION TAIL FIELD (tttttttt).
+               DC.B    8
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+DIR_PTR
+               DC.W    LOAD_INFO_SEL
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    INFO_TAIL_STRING
+               DC.W    SUBFUN_END
+;
+;
+FILE_INFO_STRING
+               ASC     "SOUNDS-K"
+               ASC     "SOUNDS A"
+               ASC     "  SOUNDS"
+               ASC     "SEQS-SON"
+               ASC     " SEQS AN"
+               ASC     " SEQUENC"
+               ASC     "SOUND CT"
+               ASC     "KITS-BAN"
+               ASC     "SYS CONF"
+               ASC     "   SONGS"
+               ASC     " SMPTE C"
+INFO_TAIL_STRING
+               ASC     "ITS-CNFG"
+               ASC     "ND KITS "
+               ASC     " ONLY   "
+               ASC     "GS-CONFG"
+               ASC     "D SONGS "
+               ASC     "ES ONLY "
+               ASC     "RLS ONLY"
+               ASC     "KS ONLY "
+               ASC     "IG ONLY "
+               ASC     " ONLY   "
+               ASC     "UE LIST "
+;
+;
+;
+LOAD_CODES
+               DC.W    LOAD_MASK+SAM_MASK+MOV_ALL_MASK+KIT_MASK+SYSTEM_MASK
+               DC.W    LOAD_MASK+SAM_MASK+MOV_ALL_MASK+KIT_MASK
+               DC.W    LOAD_MASK+SAM_MASK+MOV_ALL_MASK
+               DC.W    LOAD_MASK+SEQ_MASK+MOV_ALL_MASK+SONG_MASK+SYSTEM_MASK
+               DC.W    LOAD_MASK+SEQ_MASK+MOV_ALL_MASK+SONG_MASK
+               DC.W    LOAD_MASK+SEQ_MASK+MOV_ALL_MASK
+               DC.W    LOAD_MASK+CONTROL_MASK+MOV_ALL_MASK
+               DC.W    LOAD_MASK+KIT_MASK
+               DC.W    LOAD_MASK+SYSTEM_MASK
+               DC.W    LOAD_MASK+SONG_MASK+MOV_ALL_MASK
+               DC.W    LOAD_MASK+CUELIST_MASK
+;
+;
+;
+; BOSS-MAN SAY "GO!" SO GO -
+;
+DO_LOAD_FILE
+               MOVE    LOAD_INFO_SEL,D0     ;SET UP DISK_OP_CODE VALUE -
+               ADD     D0,D0                ;MAKE WORD OFFSET FROM INFO SELECT SETTING,
+               MOVE    LOAD_CODES(PC,D0),DISK_OP_CODE ;LOAD CODE FROM DISK_OP_CODE TABLE,
+                                                      ;FALL THROUGH, DO THAT DISK THING.
+;
+;
+; GENERAL PROCEDURE FOR MOST DISK ACCESS ONCE DISK_OP_CODE IS SET UP:
+;
+DO_THAT_DISK_THING
+;
+;890321               JSR     STOP_THE_SEQUENCER   ;MAKE SURE SEQUENCER IS NOT RUNNING.
+;890321               JSR     KILL_ALL_VOICES      ;STOP 'EM DEAD, MON.
+;890321               MOVE.W  #0,VOLUME_OUT        ;DROP MAIN VOLUME TO ZERO - IT'LL STAY THERE.
+;890321                ABS_LONG
+;890321               JSR     WIPE_OUT_ENTER       ;KNOCK OUT THE ENTER LED IF ON.
+;890321                ABS_SHORT
+;
+               JSR     GENL_SHUTDOWN        ; quell sequencer, voices, edits,
+                                            ; ENTER LED.
+;
+               MOVE    #2700H,SR            ;SCRONCH ALL INTERRUPTS.
+                ABS_LONG
+               JSR     DISKWARD_HO          ;INTO IT, OUT OF IT.
+                ABS_SHORT
+                                            ;FALL THROUGH, SEE WHAT'S NEXT.
+;
+;
+;
+; SET UP DISPLAY/FUNCTION RESPONSE FOLLOWING RETURN FROM DISK SYSTEM -
+; DO OTHER HOUSEKEEPING AS APPROPRIATE TO THE OPERATION JUST COMPLETED,
+; AND THE MANNER IN WHICH WE GOT BACK FROM THE DISK SYSTEM.
+; REQUIRES Z FLAG STATUS AS RETURNED FROM DISK SYSTEM.
+;
+WHAT_NEXT_BOSS
+               BEQ.S   JUST_YOU_STAY_CALM   ;BRANCH IF NOT ERROR/ABORT RETURN - FULL CLEANUP.
+               TST     SWITCH_HIT           ;ELSE - ERROR, OR ABORT (VIA SWITCH HIT, GET IT)?
+               BEQ.S   APRES_NON_LOAD       ;NO SWITCH HIT, HENCE ERROR RETURN - MINIMAL CLEANUP.
+;
+               MOVE    SWITCH_HIT,D0        ;ABORT - A SWITCH WAS HIT TO GET US OUT,
+               SUBQ    #1,D0                ;GO THROUGH ELABORATE SCHEME TO CONTROL RESPONSE:
+               MOVE    D0,D1
+               LSR     #3,D1
+               AND     #7,D0
+               MOVE    #SWITCH_STAT,A0      ;TO WIT, SNOW SWITCH_SCAN INTO THINKING THE SWITCH
+               BSET    D0,0(A0,D1)          ;IS ALREADY ON, TO AVOID REDUNDANT/UNWANTED RESPONSE.
+               CMP     #25,SWITCH_HIT       ;NOW - WHAT SWITCH GOT US HERE?
+               BCS.S   WHAT_IT_IS           ;IF FUNCTION SWITCH, PLAY IT STRAIGHT.
+               MOVE    #20,SWITCH_HIT       ;"BAD" SWITCH - "HIT" DISK SWITCH AGAIN.
+WHAT_IT_IS
+               BRA.S   APRES_NON_LOAD       ;NOW, WE GO FOR THE MINIMAL CLEANUP.
+;
+JUST_YOU_STAY_CALM
+;
+               MOVE    DISK_OP_CODE,D1      ;NON-ERROR, NON-ABORT RETURN - WAS IT A LOAD OPERATION?
+               BTST    #LOAD_BIT,D1
+               BEQ.S   SAY_WE_BE_DONE       ;NO - SAY WE'RE DONE, THEN DO MINIMAL CLEANUP.
+;
+                                            ;FULL-TILT, POST-SUCCESSFUL-LOAD CLEANUP:
+               BSR     PLUG_UM_HOLES        ;FIND/PLUG ANY SAMPLE MEMORY HOLES (E.G., 2000 DISK).
+                ABS_LONG
+               JSR     RECALCMEM            ;UPDATE FREE_SAM_RAM.
+               JSR     SET_SAMPLED_SOUNDS   ;UPDATE LIST OF SAMPLED (PLAYABLE) SOUNDS.
+               JSR     SET_ASSIGN_MAPS      ;UPDATE VOICE ASSIGN STATUS MAPS.
+                ABS_SHORT
+               JSR     UPDATE_SEQ_SIZE      ;UPDATE FREE SEQ MEM STATUS VARIABLES, POINTERS.
+               BSR.S   CHRIS_STUFF          ;REGROOVE MIDI MAPS, WHATNOT.
+;
+SAY_WE_BE_DONE
+               MOVE.L  #DISK_OP_CMP_SCRN,A1      ;TELL 'EM WE'RE DONE NOW.
+                ABS_LONG
+               JSR     DISP_SCREEN
+                ABS_SHORT
+;
+;
+;
+; SAVE/VERIFY/FORMAT/ERROR/ABORT CLEANUP:
+; LIMITED TO THOSE THINGS WHICH ARE NOT PRONE TO BEING TRIPPED UP
+; BY BAD DATA FROM AN INCOMPLETE OR CORRUPTED DATA LOAD.
+;
+APRES_NON_LOAD
+               JSR     WRITE_ZERO_AND_PEAK  ;MAINTAIN THE DATA IN THESE SAMPLE LOCATIONS,
+                                            ;ALSO RESTORE 4-CHIP DAISY-CHAIN.
+;
+               BSR     KILL_EXCESS_BEATS    ;SEQUENCE MANICURE (SEE ACCOMPANYING DOCUMENTATION).
+;
+               MOVE    REAL_TIME,ED_BLOCK_TIMER  ;SET TIMER TO PREVENT SPONTANEOUS PERFORMANCE
+               BSET    #0,ED_BLOCK_TIMER+1       ;PARAMETER EDITS UPON RETURN TO BACKGROUND.
+                                                 ;(NEED NON-ZERO VALUE TO ACTIVATE TIMER).
+;
+               MOVE    #2300H,SR            ;SOMEONE MAY BE BLOWING IT BETWEEN APRES_DISQUE AND
+                                            ;HERE - MAKE SURE REALTIME IS LOCKED OUT FOR THIS:
+               MOVE.B  PAD_CTRL_STAT,D0     ;DISCHARGE TRIGGER INPUTS TO AVERT
+               AND     #0F7H,D0             ;SPONTANEOUS MOLTO-BLASTO IF ROUTED TO A PAD.
+               MOVE.B  D0,PAD_CONTROL
+                ABS_LONG
+               JSR     DLY_20_MSEC          ;SHOULD BE ENUF ....
+                ABS_SHORT
+               MOVE.B  PAD_CTRL_STAT,PAD_CONTROL      ;RESTORE STATUS.
+;
+;
+; ONE-SEQ LOAD (DO_UNIT_MOVE) ESCAPES VIA THIS POINT AFTER TELLING USER
+; TO STOP THE SEQUENCER BEFORE ATTEMPTING A ONE-SEQUENCE LOAD:
+;
+DISK_THING_STALL
+                ABS_LONG
+               JSR     USER_STALL           ;NO SCREEN REINSTALL UNTIL SOMEONE DOES SOMETHING.
+                ABS_SHORT
+;
+               MOVE    #2000H,SR            ;LET INTERRUPTS BACK IN.
+;
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; REGROOVE MIDI MAPS AND WHAT-HAVE-YOU --
+; OTRA FUNCTIONS CHRIS CAN THINK OF TO PERFORM AFTER A SOUNDS DISK LOAD.
+; IF SYS INFO LOAD, JUMP IN AT CM_INIT_2 (NO NEED TO RECALC MAPS).
+;
+CHRIS_STUFF
+               MOVE    #-1,FORMER_SEQUENCE  ;INVOKE BACKGROUND REINSTALL OF CURRENT_SEQUENCE.
+;
+               MOVE.L  #MAP_ARRAY,A0        ;CLEAR OUT OLD KEY MAPS ....
+               MOVE    #(88*32)-1,D0        ;UP TO 32 MAPS,
+MAP_CLEAR_LOOP
+               CLR.L   (A0)+                ;88 LONG-WORDS EACH ....
+               DBRA    D0,MAP_CLEAR_LOOP
+;
+               MOVE    CURRENT_SOUND,-(A7)  ;STASH CURRENT SOUND NUMBER,
+               MOVE    #31,CURRENT_SOUND    ;RUN OUT MAPS FOR ALL THESE SUCKAHS.
+MAP_FILL_LOOP
+                ABS_LONG
+               JSR     PROP_NEW_KEY
+                ABS_SHORT
+               SUBQ    #1,CURRENT_SOUND
+               BPL     MAP_FILL_LOOP
+;
+               MOVE    (A7)+,CURRENT_SOUND  ;RESTORE CURRENT SOUND NUMBER.
+;
+CM_INIT_2
+                                            ;RANDOM VARIBLES THAT NEED NON-ZERO POWER UP DEFAULTS:
+               MOVE.L  #MIDI_GARBAGE,MIDI_ROUTINE_PENDING  ;INIT MIDI RCV TO NOTHING AT ALL.
+               CMP     #1,AC_TYPE           ;GARBAGE AUTOCORRECT TYPE FROM PRE-1.4 DISK?
+               BLE.S   CHRISTUF_40          ;BRANCH IF 0 OR 1 - IT'S LEGIT.
+               CLR     AC_TYPE              ;ELSE DEFAULT TO NEW-IMPROVED AUTOCORRECT.
+CHRISTUF_40
+                ABS_LONG
+               JSR     CALC_FPB             ;CONVERT FROM BPM TO FPB AND usec/CLICK; TELL TC.
+               JSR     KILL_ACTIVE_PERF     ;NAIL ANY MIDI PERFORMANCE PARAMETERS PENDING
+               JSR     CREATE_CLOCK_IN      ;TELL TC THE NEW CLOCK IN MODE & DIVIDES
+               JSR     CREATE_CLOCK_OUT     ;  "   "  "   "    "   OUT MODE & DIVIDES
+               JSR     NEW_TAPE_SPEED       ;  "   "  "   "  SMPTE IN TAPE SPEED VARIATIONS
+               JSR     DROP_CHECK_START     ;  "   "  "   "  SMPTE START TIME.
+               JSR     UPDATE_AUTOCORRECT   ;MAKE SURE PHASE_LIST ADDRESS VALID (CHANGES ACROSS ROMS)
+                ABS_SHORT
+               MOVE.L  NEW_PHASE_LIST,PHASE_LIST
+;
+               MOVE    CURRENT_SOUND,-(A7)  ;SAVE CURRENT_SOUND - INSTALL_KIT MIGHT CHANGE IT.
+               MOVE    KIT_INDEX,D0         ;UPDATE LAST KIT USED ON LOADED DISK
+                ABS_LONG
+               JSR     INSTALL_KIT
+                ABS_SHORT
+               MOVE    (A7)+,CURRENT_SOUND  ;RESTORE CURRENT SOUND NUMBER.
+;
+CHRIS_STUFFED
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; FIND AND ELIMINATE ANY HOLES IN ALLOCATED SAMPLE MEMORY -
+; SUCH HOLES ARE A NORMAL RESULT OF LOADING FROM A 2000/2002 DISK IF
+; BOTH HALVES OF DISK ARE LOADED AND LEFT HALF IS NOT COMPLETELY FULL.
+; ALSO CAN BE CAUSED BY LOADING A 440 DISK CONTAING SOUNDS FROM A
+; 2000/2002 DISK WHICH WAS LOADED UNDER 440 SOFTWARE NOT CONTAINING THIS
+; ROUTINE ( .... OOPS, FUCKED UP THERE DIDN'T I, HEH-HEH .... ).
+; SO, WE DO IT FOR ALL DISK LOADS - WHY NOT - NO ACTION IF NO HOLES
+; (I THINK MOST OF YOU CAN RELATE TO THAT BASIC STATEMENT ....)
+; REGISTERS, THEY ARE PRESERVED.
+;
+PLUG_UM_HOLES
+               MOVEM.L A0-A3/D2,-(A7)
+;
+               MOVE.L  #DIGESTING_SCREEN,A1 ;IN CASE THIS "EATS UP" A BIT OF TIME ....
+                ABS_LONG
+               JSR     DISP_SCREEN
+                ABS_SHORT
+;
+               SUB.L   A2,A2                ;A2 IS THE "DESTINATION" ADDRESS REGISTER, STARTS AT 0.
+;
+PLUG_UM_20
+               MOVE.L  #80000H,A1           ;DEFAULT "SOURCE" ADDRESS IS TOP OF SAMPLE RAM.
+               MOVE    #S_BLK_00,A0         ;GO THROUGH ALL SOUND CONTROL BLOCKS EACH TIME THROUGH.
+PLUG_UM_40
+               BTST    #NOT_DEL_BIT,S_STATUS(A0) ;IF SAMPLE IS DELETES-VILLE,
+               BEQ.S   PLUG_UM_80                ;WE SHAN'T DWELL FURTHER UPON IT.
+               CMP.L   S_BEGIN(A0),A2       ;COMPARE THIS SAMPLE'S BEGIN ADDR AGAINST "DEST" ADDR -
+               BHI.S   PLUG_UM_80           ;IF LOWER THAN "DESTINATION" ADDR, WE CARE NOT FOR IT.
+               BNE.S   PLUG_UM_60           ;NOT EQUAL, SEE IF IT IS YET LOWER THAN "SOURCE" ADDR -
+               MOVE.L  A2,A1                ;IF EQUAL, SET "SOURCE" ADDRESS = "DEST" ADDRESS -
+               BRA.S   PLUG_UM_A0           ;SKIP RIGHT ON OUT OF THE LOOP.
+PLUG_UM_60
+               CMP.L   #7FFFFH,S_BEGIN(A0)  ;IGNORE TRIGGER-OUT SAMPLES, WHICH START AT THIS ADDR.
+               BCC.S   PLUG_UM_80
+               CMP.L   S_BEGIN(A0),A1       ;GREATER THAN "DEST" ADDRESS -
+               BLS.S   PLUG_UM_80           ;IF NOT LESS THAN "SOURCE" ADDRESS, ALL-AROUND LOSER -
+               MOVE.L  S_BEGIN(A0),A1       ;ELSE, SET IT AS NEW "SOURCE" ADDRESS -
+                                            ;OTHER SIDE OF THE VOID IF WE FIND NO ONE LOWER.
+               MOVE    A0,A3                ;ALSO, SAVE CTRL BLOCK POINTER FOR POSSIBLE LATER USE.
+PLUG_UM_80
+               ADD     #S_BLOCK_SIZE,A0     ;STEP TO NEXT SOUND CONTROL BLOCK, IF ANY -
+               CMP     #S_BLK_31,A0         ;WELL?  ANY?
+               BLS     PLUG_UM_40           ;LOOP BACK AGAIN IF YES.
+;
+PLUG_UM_A0
+               CMP.L   A1,A2                ;DID WE MATCH "DESTINATION" ADDRESS?
+               BEQ.S   PLUG_UM_C0           ;BRANCH IF YES, MEANS WE AIN'T FOUND NO HOLE YET.
+               CMP.L   #80000H,A1           ;IF THESE BE EQUAL, WE HAVE RISEN ABOVE ALL SAMPLES -
+               BEQ.S   PLUG_UM_E0           ;SO, THINGS ARE INHERENTLY SELF-PERFECTED - WE EXIT.
+               MOVE.L  #80000H,D2           ;ELSE, SET THIS AS UPPER LIMIT FOR MOVE-DOWN SOURCE
+                                            ;BLOCK (DON'T QUITE TRUST FREE_SAM_RAM AT THIS TIME),
+                ABS_LONG
+               JSR     MOVE_DEM_SOUND_DOWN  ;MOVE SOUNDS FROM "SOURCE" ADDR DOWN TO "DEST" ADDR.
+                ABS_SHORT
+               MOVE    A3,A0                ;RETRIEVE SOUND CONTROL BLOCK POINTER FOR THE SOUND
+                                            ;WHICH WAS AT OTHER EDGE OF THE VOID.
+;
+PLUG_UM_C0
+               MOVE.L  S_FINISH(A0),A2      ;FINISH ADDRESS + 1 OF SAMPLE WE'VE JUST BEEN DEALING
+               ADDQ.L  #1,A2                ;WITH IS NEW "DESTINATION" ADDRESS -
+               CMP.L   #80000H,A2           ;IF WE'VE TOPPED OUT, WE'RE DONE -
+               BCS.S   PLUG_UM_20           ;ELSE, LOOP BACK AND LOOK AGAIN FOR (YET MORE?) HOLES.
+;
+PLUG_UM_E0
+               MOVEM.L (A7)+,A0-A3/D2
+;
+PLUG_UM_EXIT
+               RTS
+;
+;
+DIGESTING_SCREEN
+               ASC     " Rearranging    "
+               ASC     "sound memory...."
+;
+DISK_OP_CMP_SCRN
+               ASC     " DISK OPERATION "
+               ASC     "  IS COMPLETE   "
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; KILL "EXCESS BEATS" IN SEQUENCES -
+;
+; AS OF THE TIME THAT THIS ROUTINE WAS INCLUDED IN THE 440 CODE,
+; THE "EXCESS BEATS" SEQUENCE PARAMETER WAS ELIMINATED AS A WORKING
+; CONCEPT AND PARAMETER IN SEQUENCE CREATION/MANIPULATION.
+; THIS WAS DONE BECAUSE OF THE LARGE AMOUNT OF EXTRA COMPLEXITY WHICH
+; WOULD HAVE BEEN NEEDED IN THE SEQUENCE EDITING UTILITIES IN ORDER TO
+; HANDLE THIS PARAMETER CORRECTLY IN ALL CASES (MOST CASES, IN FACT,
+; DID NOT HANDLE IT CORRECTLY) - IN ADDITION TO WHICH, THE EXCESS BEATS
+; WERE DEALT WITH INTERNALLY AS JUST ANOTHER BAR IN THE SEQUENCE,
+; GENERALLY HAVING A DIFFERENT TIME-SIGNATURE NUMERATOR THAN THE REST OF
+; THE SEQUENCE, BUT OTHERWISE NO DIFFERENT FROM A NORMAL SEQUENCE BAR.
+; (THE FURTHER ASSUMPTION THAT THE EXCESS BEATS WERE AT THE END OF THE
+; SEQUENCE WAS NOT NECESSARILY VALID, ESPECIALLY FOLLOWING EDITING.)
+; THE SAME THING IS EASILY ACCOMPLISHED USING THE "INSERT" UTILITY,
+; WHICH AVOIDS THE BARS-VERSUS-BEATS AMBIGUITY AND ANY ASSMUPTIONS.
+;
+; OUR MISSION HERE IS TO GO THROUGH SEQUENCES WHICH (MAY) HAVE JUST BEEN
+; LOADED FROM DISK, AND, RECOGNIZING THAT THEY MAY PRE-DATE THIS CHANGE
+; OF SEQUENCE PHILOSOPHY, LOOK FOR ANY WHICH INDICATE EXCESS BEATS ARE
+; PRESENT AND ADJUST THEIR DIRECTORY BLOCK INFORMATION SO THAT THE
+; EXCESS BEATS ARE REPRESENTED AS AN ADDITIONAL BAR IN THE SEQUENCE -
+; THE EXCESS-BEATS PARAMETER IS CLEARED OUT.
+;
+; YEAH - WE'LL PRESERVE ALL REGISTERS - WHY NOT.
+;
+KILL_EXCESS_BEATS
+               MOVEM.L D0/A0,-(A7)
+               MOVEQ   #98,D0               ;DO SEQ #99 THRU #01 - DON'T BOTHER WITH NULL SEQUENCE.
+;
+KILL_XS_20
+               JSR     GET_SEQ_DIR_PTR      ;SET A0 AS POINTER TO SEQ DIRECTORY BLOCK.
+               TST     Q_STATUS(A0)         ;DOES THIS SEQUENCE EXIST?
+               BEQ.S   KILL_XS_40           ;BRANCH IF NOT, DON'T BOTHER WITH IT.
+               TST     Q_XS_BEATS(A0)       ;IT EXISTS - DOES IT HAVE ANY "EXCESS" BEATS?
+               BEQ.S   KILL_XS_40           ;BRANCH IF NOT - IT PASSES THE "ATTITUDE CHECK".
+               CLR     Q_XS_BEATS(A0)       ;ELSE - BLOW THIS PARAMETER AWAY,
+               ADDQ    #1,Q_TOTAL_BARS(A0)  ;TACK THE "EXCESS" ONTO THE TOTAL BAR COUNT.
+KILL_XS_40
+               DBRA    D0,KILL_XS_20        ;LOOP UNTIL ALL "REAL" SEQUENCES CHECKED.
+;
+               MOVEM.L (A7)+,D0/A0
+KILL_XS_EXIT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+SAVE_FILE_SUB
+;
+; (ALSO VERIFY ....)
+;
+               ASC     "        TO DISK "
+               ASC     "                "
+;
+               DC.B    0                    ;SAVE/COMPARE FIELD (fffffff).
+               DC.B    7
+               DC.W    ACCESS+DIR_PTR
+               DC.W    SAVE_VER_SEL
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    SAVE_VER_STRING
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    1
+               DC.W    EDIT+ENTR_VEC
+               DC.L    DO_SAVE_FILE
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    FIELD_END
+;
+               DC.B    16                   ;INFO SELECTION FIELD (iiiiiiii).
+               DC.B    8
+               DC.W    ACCESS+DIR_PTR
+               DC.W    SAVE_INFO_SEL
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    FILE_INFO_STRING
+               DC.W    EDIT+LINKED
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    10
+               DC.W    EDIT+ENTR_VEC
+               DC.L    DO_SAVE_FILE
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    FIELD_END
+;
+               DC.B    24                   ;INFO SELECTION TAIL FIELD (tttttttt).
+               DC.B    8
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+DIR_PTR
+               DC.W    SAVE_INFO_SEL
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    INFO_TAIL_STRING
+               DC.W    SUBFUN_END
+;
+;
+SAVE_VER_STRING
+               ASC     "   SAVE"
+               ASC     "COMPARE"
+;
+;
+;
+; BOSS-MAN SAY "GO!" SO GO -
+;
+DO_SAVE_FILE
+               MOVE    SAVE_INFO_SEL,D0     ;SET UP DISK_OP_CODE VALUE -
+               ADD     D0,D0                ;MAKE WORD OFFSET FROM INFO SELECT SETTING,
+               MOVE    SAVE_CODES(PC,D0),D0 ;LOAD CODE FROM DISK_OP_CODE TABLE,
+               TST     SAVE_VER_SEL         ;NOW - ARE WE SAVING OR VERI-FRYING?
+               BEQ.S   DO_SVFL_30           ;BRANCH IF SAVING, WE BE COOL.
+               BCLR    #SAVE_BIT,D0         ;ELSE REGROOVE A BIT HERE 'N' THERE.
+               BSET    #VERIFY_BIT,D0
+DO_SVFL_30
+               MOVE    D0,DISK_OP_CODE      ;PLUG IN THE FINAL OP CODE FOR MR. DISK.
+               BRA     DO_THAT_DISK_THING   ;GO FOR IT, DUDE.
+;
+;
+;
+SAVE_CODES
+               DC.W    SAVE_MASK+SAM_MASK+MOV_ALL_MASK+KIT_MASK+SYSTEM_MASK
+               DC.W    SAVE_MASK+SAM_MASK+MOV_ALL_MASK+KIT_MASK
+               DC.W    SAVE_MASK+SAM_MASK+MOV_ALL_MASK
+               DC.W    SAVE_MASK+SEQ_MASK+MOV_ALL_MASK+SONG_MASK+SYSTEM_MASK
+               DC.W    SAVE_MASK+SEQ_MASK+MOV_ALL_MASK+SONG_MASK
+               DC.W    SAVE_MASK+SEQ_MASK+MOV_ALL_MASK
+               DC.W    SAVE_MASK+CONTROL_MASK+MOV_ALL_MASK
+               DC.W    SAVE_MASK+KIT_MASK
+               DC.W    SAVE_MASK+SYSTEM_MASK
+               DC.W    SAVE_MASK+SONG_MASK+MOV_ALL_MASK
+               DC.W    SAVE_MASK+CUELIST_MASK
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+DIRECTORY_SUB
+               ASC     " :      --------"
+               ASC     "READ DIR:       "
+;
+               DC.B    0                    ;DRIVE SELECT FIELD.
+               DC.B    1
+               DC.W    ACCESS+DIR_PTR
+               DC.W    DRIVE_SEL
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+SIGNED
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_DRIVE
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    F_DRIVE_STRING
+               DC.W    EDIT+LO_LIMIT
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    6
+               DC.W    EDIT+LINKED
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    EDIT+ENTR_VEC
+               DC.L    DO_GET_DIRECTORY
+               DC.W    FIELD_END
+;
+               DC.B    2                    ;BANK SELECT FIELD.
+               DC.B    3
+               DC.W    ACCESS+SET_PTR
+               DC.L    SET_BANK_SEL_ACC
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_GET_DIR_BANK
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    EDIT+ENTR_VEC
+               DC.L    DO_GET_DIRECTORY
+               DC.W    FIELD_END
+;
+               DC.B    26                   ;INFO SELECTION FIELD.
+               DC.B    6
+               DC.W    ACCESS+DIR_PTR
+               DC.W    DIR_INFO_SEL
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    DIR_INFO_STRING
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    3
+               DC.W    EDIT+ENTR_VEC
+               DC.L    DO_GET_DIRECTORY
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    SUBFUN_END
+;
+;
+F_DRIVE_STRING
+               ASC     "F0123456"
+;
+;
+LOPPY_STRING
+               DC.B    1
+               DC.B    5
+               ASC     "LOPPY"
+               EVEN
+;
+;
+; SET POINTER TO BANK_SEL CELL FOR CURRENT DRIVE_SEL SETTING -
+; IF DRIVE_SEL IS SET FOR FLOPPY DRIVE AND WE ARE PERCHED UPON THE
+; BANK SELECT/DISPLAY FIELD (ASSUMED CUR_FLD_INDEX = 1), PUSH FIELD
+; INDEX OFF TO ONE SIDE OR THE OTHER AND SET FLAG TO REINSTALL -
+; I.E., THIS FIELD BECOMES NO-EDIT IF FLOPPY IS SELECTED.
+;
+SET_BANK_SEL_ACC
+               MOVE    #BANK_SEL,A0         ;SET POINTER TO BANK_SEL ARRAY.
+               MOVE    DRIVE_SEL,D0         ;AIMED AT FLOPPY DRIVE?
+               BPL.S   SET_BSA_10           ;BRANCH IF NOT, WE COOL.
+               CMP     #1,CUR_FLD_INDEX     ;AIMED AT FLOPPY - ARE WE IN BANK SELECT FIELD?
+               BNE.S   SET_BSA_10           ;NO - WE STILL BE COOL.
+               MOVE    FLD_INDEX_STEP,D0    ;ELSE, HEAD OFF IN CURRENT FIELD SCROLL DIRECTION,
+               ADD     D0,CUR_FLD_INDEX     ;SET UP IN A DIFFERENT FIELD.
+               ST      SUBFUN_INSTALL
+               BRA.S   SET_BSA_20           ;RETURN DEFAULT POINTER TO BANK_SEL(0) JUST TO BE SAFE.
+SET_BSA_10
+               ADD     D0,D0                ;CONVERT DRIVE_SEL SETTING TO WORD OFFSET,
+               ADD     D0,A0                ;COMBINE WITH BANK_SEL ARRAY BASE POINTER.
+SET_BSA_20
+               MOVE.L  A0,D0                ;RETURN POINTER TO OUR PARAMETER.
+               RTS
+;
+;
+;
+WRITE_GET_DIR_BANK
+               TST     DRIVE_SEL            ;AIMED AT FLOPPY DRIVE?
+               BMI.S   WR_GBD_20            ;YES - WE HAVE SOMETHING SPECIAL TO SAY ON THIS TOPIC.
+                ABS_LONG
+               JMP     WRITE_PARAM_VALUE    ;ELSE - NORMAL DISPLAY SHTICK.
+                ABS_SHORT
+WR_GBD_20
+               MOVEM.L D1/A2,-(A7)
+               MOVE.L  #LOPPY_STRING,A2
+               MOVE    (A2)+,D1
+                ABS_LONG
+               JSR     WRITE_STRING
+                ABS_SHORT
+               MOVEM.L (A7)+,D1/A2
+               RTS
+;
+;
+;
+DIR_INFO_STRING
+               ASC     "SOUNDS"
+               ASC     "  SEQS"
+               ASC     " SONGS"
+               ASC     " BANKS"
+               EVEN
+;
+;
+; BOSS-MAN SAY "GO!" SO GO -
+;
+DO_GET_DIRECTORY
+;
+;890321               JSR     STOP_THE_SEQUENCER   ;MAKE SURE SEQUENCER IS NOT RUNNING.
+;890321               JSR     KILL_ALL_VOICES      ;STOP 'EM DEAD, MON.
+;890321               MOVE.W  #0,VOLUME_OUT        ;DROP MAIN VOLUME TO ZERO - IT'LL STAY THERE.
+;890321                ABS_LONG
+;890321               JSR     WIPE_OUT_ENTER       ;KNOCK OUT THE ENTER LED IF ON.
+;890321                ABS_SHORT
+;
+               JSR     GENL_SHUTDOWN        ; quell sequencer, voices, edits,
+                                            ; ENTER LED.
+;
+               MOVE    DIR_INFO_SEL,D0      ;SET UP DISK_OP_CODE VALUE -
+               ADD     D0,D0                ;MAKE WORD OFFSET FROM INFO SELECT SETTING,
+               MOVE    DIR_CODES(PC,D0),DISK_OP_CODE  ;LOAD CODE FROM DISK_OP_CODE TABLE.
+;
+               MOVE    #2700H,SR            ;SCRONCH ALL INTERRUPTS.
+                ABS_LONG
+               JSR     DISKWARD_HO          ;INTO IT, OUT OF IT.
+                ABS_SHORT
+;
+               BNE     WHAT_NEXT_BOSS       ;IF RETURN FROM DISK SYSTEM WITH DISK ERROR OR USER
+                                            ;ABORT, DON'T BOTHER TO SHOW DIRECTORY TO USER -
+               BSR     APRES_NON_LOAD       ;ELSE - CLEAN UP FIRST ('COS IT CLEARS SUBFUN_INSTALL),
+               MOVE.L  #DIR_SHOW_SUB,CUR_SUB_BLOCK    ;THEN, BUMP TO DIRECTORY-SHOW SUBFUNCTION -
+               CMP     #3,DIR_INFO_SEL                ;UNLESS WE'RE DOING AN ALL-BANKS DIRECTORY -
+               BNE.S   DO_GTDR_60
+               MOVE.L  #BANK_DIR_SUB,CUR_SUB_BLOCK    ;ALL-BANKS DIR NEEDS DIFFERENT SCREEN SCENE.
+DO_GTDR_60
+               ST      SUBFUN_INSTALL       ;EITHER WAY - INSTALL NEW SCREEN TO DISPLAY DIRECTORY.
+               CLR     DIR_SHOW_SEL         ;ONCE THERE, START WITH SOUND/SEQ/SONG/BANK #1.
+               RTS
+;
+;
+DIR_CODES
+               DC.W    DIR_MASK+SAM_MASK
+               DC.W    DIR_MASK+SEQ_MASK
+               DC.W    DIR_MASK+SONG_MASK
+               DC.W    DIR_MASK+HD_UTIL_MASK
+;
+;
+;
+; ---------------------------------------------- SORTA SEPRIT
+;
+;
+DIR_SHOW_SUB
+               ASC     " :              "
+               ASC     "   #            "
+;
+               DC.B    0                    ;DRIVE DISPLAY FIELD.
+               DC.B    1
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+DIR_PTR
+               DC.W    DRIVE_SEL
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+SIGNED
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_DRIVE
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    F_DRIVE_STRING
+               DC.W    FIELD_END
+;
+               DC.B    2                    ;BANK DISPLAY FIELD.
+               DC.B    3
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+SET_PTR
+               DC.L    SET_BANK_SEL_ACC     ;NOTE: EXPECTS BANK_SEL IN FIELD 1.
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_GET_DIR_BANK
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    FIELD_END
+;
+               DC.B    8                    ;DISK/BANK NAME FIELD.
+               DC.B    8
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+SET_PTR
+               DC.L    SET_ZERO_VAL
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WR_DISK_BANK_NAME
+               DC.W    FIELD_END
+;
+               DC.B    16                   ;SOUND/SEQUENCE/SONG TAG FIELD.
+               DC.B    3
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+DIR_PTR
+               DC.W    DIR_INFO_SEL
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    SND_SEQ_STRING
+               DC.W    FIELD_END
+;
+               DC.B    20                   ;SOUND/SEQUENCE/SONG NUMBER FIELD.
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    DIR_SHOW_SEL
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+TAILOR
+               DC.L    TAILOR_DIR_SHOW
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    CUST_DIR_SHOW
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+;
+               DC.B    24                   ;UNIT NAME FIELD.
+               DC.B    8
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+SET_PTR
+               DC.L    SET_ZERO_VAL
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_DIR_NAME
+               DC.W    SUBFUN_END
+;
+;
+;
+;
+SND_SEQ_STRING
+               ASC     "SNDSEQSNG"
+               EVEN
+;
+;
+; LEADING-ZERO BLANKING FOR SOUND OR SONG NUMBER,
+; BUT NOT FOR SEQUENCE NUMBER.
+;
+TAILOR_DIR_SHOW
+               CMP     #1,DIR_INFO_SEL      ;ARE WE DISPLAYING SEQUENCE DIRECTORY?
+               BNE.S   TDS_EXIT             ;BRANCH IF NOT, LEAVE DEFAULT ZERO-BLANKING IN PLACE.
+               SF      ZERO_BLANKING        ;FOR SEQUENCES - NO LEADING-ZERO BLANKING.
+TDS_EXIT
+               RTS
+;
+;
+; (INTERNALLY) MAX SOUND NUMBER = 31, MAX SEQ NUMBER = 99,
+; MAX SONG NUMBER = 11 -
+; SET PARAM_HI_LIM AS APPROPRIATE.
+;
+CUST_DIR_SHOW
+               TST     DIR_INFO_SEL
+               BNE.S   CDS_10               ;SEQS OR SONGS - GO SEE WHICH.
+               MOVEQ   #31,D0               ;SOUNDS - SET IT TO 31.
+               BRA.S   CDS_30
+CDS_10
+               CMP     #1,DIR_INFO_SEL
+               BEQ.S   CDS_20               ;BRANCH IF SEQUENCES -
+               MOVEQ   #11,D0               ;FOR SONGS, SET LIMIT = 11.
+               BRA.S   CDS_30
+CDS_20
+               MOVEQ   #98,D0               ;SEQUENCES - NO NEED FOR null seq IN DIRECTORY SCREEN.
+CDS_30
+               MOVE    D0,PARAM_HI_LIM
+CDS_EXIT
+               RTS
+;
+;
+;
+WR_DISK_BANK_NAME
+               MOVE    #FD_DISK_NAME,A0     ;ASSUME WE'RE LOOKING AT A FLOPPY DISK -
+               TST     DRIVE_SEL            ;ARE WE LOOKING AT A FLOPPY DISK?
+               BMI.S   WR_DBN_10            ;YES, WE'RE LOOKING AT A FLOPPY DISK.
+               MOVE    #BANK_DESCR_BUF,A0   ;NO - WE MUST BE LOOKING AT A SCSI HARD DISK BANK.
+WR_DBN_10
+               MOVE.L  A0,D0
+               BRA.S   WRITE_NAME_DUDE
+;
+;
+; SET A POINTER TO A FIXED ZERO VALUE TO FACILITATE NAME DISPLAY -
+;
+SET_ZERO_VAL
+               MOVE.L  #ZERO_VALUE,D0
+               RTS
+ZERO_VALUE     DC.W    0
+;
+;
+; SET POINTER TO SELECTED DIRECTORY NAME, DISPLAY IT -
+; PARAM_BUFFER STAYS AT 0 BECAUSE OF NO_EDIT SPEC IN THIS FIELD,
+; SO WRITE_PARAM_STRING SHOULD DISPLAY NAME BEING POINTED AT.
+;
+WRITE_DIR_NAME
+               MOVE    DIR_SHOW_SEL,D0
+               MULU    #8,D0
+               ADD.L   #DIRECTORY_BUF,D0
+WRITE_NAME_DUDE
+               MOVE.L  D0,DISP_STRNG_PTR
+                ABS_LONG
+               JMP     WRITE_PARAM_STRING
+                ABS_SHORT
+;
+;
+;
+; ---------------------------------------------------- ALSO SORTA SEPRIT
+;
+;
+BANK_DIR_SUB
+               ASC     "DRIVE:  BANK:   "
+               ASC     "      :         "
+;
+               DC.B    6                    ;DRIVE DISPLAY FIELD.
+               DC.B    1
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    DRIVE_SEL
+               DC.W    FIELD_END
+;
+               DC.B    13                   ;BANK DISPLAY FIELD.
+               DC.B    3
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    DIR_SHOW_SEL
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    CUST_BANK_DIR
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+;
+               DC.B    16                   ;BANK TYPE DISPLAY FIELD.
+               DC.B    6
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+SET_PTR
+               DC.L    SET_BANK_TYPE_ACC
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    BANK_TYPE_STRING
+               DC.W    FIELD_END
+;
+               DC.B    24                   ;BANK NAME FIELD.
+               DC.B    8
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+SET_PTR
+               DC.L    SET_ZERO_VAL
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_DIR_NAME
+               DC.W    SUBFUN_END
+;
+;
+; BANK NUMBER LIMIT IN ALL-BANKS DIRECTORY SCREEN IS DETERMINED BY THE
+; BANK CAPACITY NUMBER READ FROM THE MAIN DISK DESCRIPTOR (PLACED THERE
+; DURING DIRECTORY INITIALIZATION):
+;
+CUST_BANK_DIR
+               MOVE    HD_CAPACITY,PARAM_HI_LIM
+               SUBQ    #1,PARAM_HI_LIM
+               RTS
+;
+;
+; SET POINTER TO APPROPRIATE CELL IN BANK-TYPE BUFFER ARRAY.
+;
+SET_BANK_TYPE_ACC
+               MOVE    DIR_SHOW_SEL,D0
+               EXT.L   D0
+               ADD.L   #BANK_TYPE_BUF,D0
+               RTS
+;
+;
+BANK_TYPE_STRING
+               ASC     " EMPTY"
+               ASC     "SOUNDS"
+               ASC     "  SEQS"
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+MOVE_UNIT_SUB
+               ASC     "oi! wot the 'ell"
+               ASC     "is 'ap'nin 'ere?"
+;
+               DC.B    0                    ;DISK UNIT INFO SELECTION FIELD.
+               DC.B    4
+               DC.W    ACCESS+DIR_PTR
+               DC.W    UNIT_INFO_SEL
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    UNIT_INFO_HEAD_STRING
+               DC.W    EDIT+LINKED
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    4
+               DC.W    EDIT+ENTR_VEC
+               DC.L    DO_UNIT_MOVE
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    FIELD_END
+;
+               DC.B    4                    ;DISK UNIT INFO TAIL DISPLAY FIELD.
+               DC.B    26
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+DIR_PTR
+               DC.W    UNIT_INFO_SEL
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    UNIT_INFO_TAIL_STRING
+               DC.W    FIELD_END
+;
+               DC.B    14                   ;DISK SOUND/SEQUENCE/SONG NUMBER FIELD.
+               DC.B    2
+               DC.W    ACCESS+SET_PTR
+               DC.L    SET_UNIT_ACCESS
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+TAILOR
+               DC.L    TAILOR_UNIT_DISP
+               DC.W    EDIT+LINKED
+               DC.W    EDIT+ENTR_VEC
+               DC.L    DO_UNIT_MOVE
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    CUST_UNIT_EDIT
+               DC.W    FIELD_END
+;
+               DC.B    30                   ;LOCAL SOUND/SEQUENCE/SONG NUMBER FIELD.
+               DC.B    2
+               DC.W    ACCESS+SET_PTR
+               DC.L    LOCAL_UNIT_ACCESS
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+TAILOR
+               DC.L    TAILOR_UNIT_DISP
+               DC.W    EDIT+LINKED
+               DC.W    EDIT+ENTR_VEC
+               DC.L    DO_UNIT_MOVE
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    CUST_UNIT_EDIT
+               DC.W    SUBFUN_END
+;
+;
+;
+; SET POINTER TO APPROPRIATE (DISK) UNIT-SELECT VARIABLE -
+;
+SET_UNIT_ACCESS
+               MOVE    UNIT_INFO_SEL,D0     ;SOUND, SEQUENCE OR WHAT?
+               BEQ.S   SET_UA_10            ;BRANCH IF SOUND.
+               CMP     #LOADSEQ_VAL,D0      ;BE IT A SEQUENCE?
+               BEQ.S   SET_UA_20            ;BRANCH IF YES.
+               MOVE    #SONG_UNIT_SEL,A0    ;ELSE, IT'S A SONG!
+               BRA.S   SET_UA_30
+SET_UA_10
+               MOVE    #SND_UNIT_SEL,A0     ;IT'S A SOUND!
+               BRA.S   SET_UA_30
+SET_UA_20
+               MOVE    #SEQ_UNIT_SEL,A0     ;IT'S A SEQUENCE!
+SET_UA_30
+               MOVE.L  A0,D0
+               RTS
+;
+;
+; SET POINTER TO APPROPRIATE (LOCAL) UNIT-SELECT VARIABLE -
+;
+LOCAL_UNIT_ACCESS
+               MOVE    UNIT_INFO_SEL,D0     ;SOUND, SEQUENCE OR WHAT?
+               BEQ.S   LOC_UA_10            ;BRANCH IF SOUND.
+               CMP     #LOADSEQ_VAL,D0      ;BE IT A SEQUENCE?
+               BEQ.S   LOC_UA_20            ;BRANCH IF YES.
+               MOVE    #CURRENT_SONG,A0     ;ELSE, IT'S A SONG!
+               BRA.S   LOC_UA_30
+LOC_UA_10
+               MOVE    #CURRENT_SOUND,A0    ;IT'S A SOUND!
+               BRA.S   LOC_UA_30
+LOC_UA_20
+               MOVE    #CURRENT_SEQUENCE,A0 ;IT'S A SEQUENCE!
+               CMPI    #99,(A0)             ;CHECK FOR NULL SEQUENCE
+               BLT.S   LOC_UA_30
+               CLR     CURRENT_SEQUENCE     ;IF NULL THEN CHANGE TO SEQ 01
+LOC_UA_30
+               MOVE.L  A0,D0
+               RTS
+;
+;
+; DISABLE LEADING-ZERO BLANKING IF ACCESSING SEQUENCES.
+;
+TAILOR_UNIT_DISP
+               CMP     #LOADSEQ_VAL,UNIT_INFO_SEL
+               BNE.S   TAIL_UD_EXIT         ;IF NOT SEQS, DEFAULT TO ZERO-BLANKING.
+               SF      ZERO_BLANKING
+TAIL_UD_EXIT
+               RTS
+;
+;
+; SET EDIT HI-LIMIT PER TYPE OF INFO UNIT BEING ACCESSED -
+; ALSO SET ENTER LED INTO FLASH MODE.
+;
+CUST_UNIT_EDIT
+               MOVE    UNIT_INFO_SEL,D0     ;SOUND, SEQUENCE OR WHAT?
+               BEQ.S   CUST_UE_10           ;BRANCH IF SOUND.
+               CMP     #LOADSEQ_VAL,D0      ;SEQUENCES, THEN?
+               BNE.S   CUST_UE_20           ;BRANCH IF NOT - SONGS, THEN.
+               MOVEQ   #98,D0               ;ELSE, IT'S A SEQUENCE.
+               BRA.S   CUST_UE_30
+CUST_UE_10
+               MOVEQ   #31,D0
+               BRA.S   CUST_UE_30
+CUST_UE_20
+               MOVEQ   #11,D0
+CUST_UE_30
+               MOVE    D0,PARAM_HI_LIM
+;
+                ABS_LONG
+               JMP     SET_ENTER_FLASH      ;RETURN THROUGH.
+                ABS_SHORT
+;
+;
+;
+; BOSS-MAN SAY "GO!" SO GO -
+;
+DO_UNIT_MOVE
+               MOVE    UNIT_INFO_SEL,D0     ;SET UP DISK_OP_CODE VALUE -
+;
+               CMP     #1,D0                ;IS THIS THE "LOAD ONE SEQUENCE" VALUE?
+               BNE.S   DO_UM_20             ;BRANCH IF NOT, CONTINUE .... ELSE -
+               JSR     SEQ_RUNNING_TEST     ;IS SEQUENCER RUNNING? (NOT COOL TO AUTO-STOP IT ....)
+               BNE     DISK_THING_STALL     ;EXIT IF YES (MESSAGE IS IN LCD ....)
+;
+DO_UM_20
+               ADD     D0,D0                ;MAKE WORD OFFSET FROM INFO SELECT SETTING,
+               MOVE    UNIT_CODES(PC,D0),DISK_OP_CODE ;LOAD CODE FROM DISK_OP_CODE TABLE,
+               BRA     DO_THAT_DISK_THING             ;HEY GO FOR IT, DUDE.
+;
+;
+;
+UNIT_CODES
+               DC.W    LOAD_MASK+SAM_MASK
+               DC.W    LOAD_MASK+SEQ_MASK
+               DC.W    LOAD_MASK+SONG_MASK
+               DC.W    SAVE_MASK+SONG_MASK
+               DC.W    VERIFY_MASK+SONG_MASK
+;
+;
+UNIT_INFO_HEAD_STRING
+               ASC     "LOAD"
+               ASC     "LOAD"
+               ASC     "LOAD"
+               ASC     "SAVE"
+               ASC     "COMP"
+;
+;
+UNIT_INFO_TAIL_STRING
+               ASC         " DISK SND#  "
+               ASC     "INTO    SOUND#"
+               ASC         " DISK SEQ#  "
+               ASC     "INTO SEQUENCE#"
+               ASC         " DISK SNG#  "
+               ASC     "INTO     SONG#"
+               ASC         " DISK SNG#  "
+               ASC     "FROM     SONG#"
+               ASC         " DISK SNG#  "
+               ASC     "WITH     SONG#"
+;
+               EVEN
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+FORMAT_SUB
+               ASC     " FORMAT FLOPPY  "
+               ASC     " (PRESS ENTER)  "
+;
+               DC.B    32                   ;NON-FIELD.
+               DC.B    1
+               DC.W    ACCESS+DIR_PTR       ;NON-PARAMETER.
+               DC.W    WASTELAND            ;NON-VARIABLE.
+               DC.W    DISPLAY+DISP_VEC     ;NON-DISPLAY ROUTINE.
+               DC.L    NOTHINGNESS
+               DC.W    EDIT+CUSTOMIZE       ;NON-EDIT SETUP.
+               DC.L    CUST_FORMAT
+               DC.W    SUBFUN_END           ;NON, NON, NON.
+;
+CUST_FORMAT
+                ABS_LONG
+               JSR     UNPLUG_ALL_EDITS          ;WELL, NOTHING TO EDIT REALLY.
+                ABS_SHORT
+               MOVE.L  #DO_DISK_FORMAT,ENTER_VEC ;THIS WHAT WE DO WHEN WE DO.
+                ABS_LONG
+               JMP     SET_ENTER_FLASH           ;GIVE 'IM A CLUE ....
+                ABS_SHORT
+;
+;
+;
+; BOSS-MAN SAY "GO!" SO GO -
+;
+DO_DISK_FORMAT
+               MOVE    #-1,DRIVE_SEL                  ;FORCE DRIVE SELECTION TO FLOPPY DRIVE.
+               MOVE    #FORMAT_MASK,DISK_OP_CODE      ;SHOULD BE ALL IT NEEDS.
+               BRA     DO_THAT_DISK_THING             ;GO FOR IT, DUDE.
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;900621DRIVE_SEL_SUB
+;900621               ASC     "DRIVE:          "
+;900621               ASC     "BANK:           "
+;900621;
+;900621               DC.B    7                    ;DRIVE SELECT FIELD.
+;900621               DC.B    6
+;900621               DC.W    ACCESS+DIR_PTR
+;900621               DC.W    DRIVE_SEL
+;900621               DC.W    ACCESS+WORD
+;900621               DC.W    ACCESS+SIGNED
+;900621               DC.W    DISPLAY+DISP_VEC
+;900621               DC.L    WRITE_DRIVE
+;900621               DC.W    DISPLAY+DISP_STRNG
+;900621               DC.L    DRIVE_SEL_STRING
+;900621               DC.W    EDIT+LINKED
+;900621               DC.W    EDIT+LO_LIMIT
+;900621               DC.W    -1
+;900621               DC.W    EDIT+HI_LIMIT
+;900621               DC.W    6
+;900621               DC.W    EDIT+NO_KEYPAD
+;900621               DC.W    FIELD_END
+;900621;
+;900621               DC.B    22              ;BANK SELECT FIELD.
+;900621               DC.B    3
+;900621               DC.W    ACCESS+SET_PTR
+;900621               DC.L    SET_BANK_SEL_ACC     ;NOTE: EXPECTS BANK_SEL IN FIELD 1.
+;900621               DC.W    ACCESS+WORD
+;900621               DC.W    DISPLAY+NO_ZERO_BLANK
+;900621               DC.W    DISPLAY+DISP_OFFSET
+;900621               DC.W    -1
+;900621               DC.W    DISPLAY+DISP_VEC
+;900621               DC.L    WRITE_SCSI_BANK
+;900621               DC.W    SUBFUN_END
+;
+;
+;
+; note - drive_sel_sub removed, but the following subroutines
+; are still needed in other subunctions.
+;
+;
+WRITE_DRIVE
+               ADDQ    #1,PARAM_BUFFER
+;900621                ABS_LONG
+;900621               JSR     WRITE_PARAM_STRING
+;900621                ABS_SHORT
+               CALL    LCD_FUNS,WR_PRM_STRNG
+               SUBQ    #1,PARAM_BUFFER
+               RTS
+;
+;
+WRITE_SCSI_BANK
+               TST     DRIVE_SEL            ;ARE WE LOOKING AT FLOPPY DRIVE?
+               BMI.S   WR_SB_20             ;BRANCH IF YES, SPECIAL CASE.
+;900621                ABS_LONG
+;900621               JMP     WRITE_PARAM_VALUE    ;ELSE DO NORMAL DUMBSHIT PARAMETER DISPLAY.
+;900621                ABS_SHORT
+               JUMP    LCD_FUNS,WR_PRM_VAL  ;ELSE DO NORMAL DUMBSHIT PARAMETER DISPLAY.
+;
+WR_SB_20
+               MOVEM.L D1/A2,-(A7)          ;BANK NUMBER IRRELEVANT TO FLOPPY DRIVE -
+               MOVE    (A1),D1              ;FETCH FIELD POSITION/LENGTH SPEC,
+               MOVE.L  #DASH_STRING,A2      ;FILL FIELD WITH "---".
+;900621                ABS_LONG
+;900621               JSR     WRITE_STRING
+;900621                ABS_SHORT
+               CALL    LCD_FUNS,WR_STRNG
+               MOVEM.L (A7)+,D1/A2
+               RTS
+;
+;
+DRIVE_SEL_STRING
+               ASC     "FLOPPY"
+               ASC     "SCSI 0"
+               ASC     "SCSI 1"
+               ASC     "SCSI 2"
+               ASC     "SCSI 3"
+               ASC     "SCSI 4"
+               ASC     "SCSI 5"
+               ASC     "SCSI 6"
+;
+;
+DASH_STRING
+               ASC     "----"
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+DISK_UTILS_SUB
+               ASC     "DISK UTILITIES: "
+               ASC     "                "
+;
+               DC.B    16                   ;UTILITY SELECTION FIELD.
+               DC.B    16
+               DC.W    ACCESS+DIR_PTR
+               DC.W    DISK_UTIL_SEL
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    DISK_UTIL_STRING
+               DC.W    EDIT+HI_LIMIT
+               DC.W    4
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    EDIT+ENTR_VEC
+               DC.L    GO_TO_DISK_UTIL
+               DC.W    SUBFUN_END
+;
+;
+DISK_UTIL_STRING
+               ASC     " EDIT BANK NAME "
+               ASC     "BANK WRT-PROTECT"
+               ASC     "RESET SCSI DISKS"
+               ASC     "CHANGE DRIVE ID "
+               ASC     "FORMAT SCSI DISK"
+;
+;
+GO_TO_DISK_UTIL
+               MOVE    DISK_UTIL_SEL,D0     ;FETCH UTILITY SELECTION INDEX,
+               LSL     #2,D0                ;CONVERT TO LONG-WORD OFFSET,
+               MOVE.L  DISK_UTIL_FUNS(PC,D0),CUR_SUB_BLOCK      ;FETCH NEW SUBFUNCTION POINTER,
+               ST      SUBFUN_INSTALL                           ;SET FLAG TO INSTALL NEW SUBFUN.
+               MOVE    #-1,CUR_FUN_INDEX    ;ALLOW USER TO UNDO SELECTION WITHOUT ROLLING THROUGH
+                                            ;ALL SCREENS UNDER DISK BUTTON.
+               RTS
+;
+;
+DISK_UTIL_FUNS
+               DC.L    BANK_NAME_SUB
+               DC.L    BANK_PROTECT_SUB
+               DC.L    SCSI_RESET_SUB
+               DC.L    CHANGE_ID_SUB
+               DC.L    INIT_DIR_SUB
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; BANK-NAME EDIT SUBFUNCTION -
+; NOTE: GENERAL NAME-EDIT ROUTINES AND CHARACTER LIST IN THIS SECTION
+; ARE USED FOR ALL NAME-EDIT FUNCTIONS ON THE 440 (THIS INCLUDES SOUND,
+; SEQUENCE AND SONG NAMES).
+;
+BANK_NAME_SUB
+               ASC     "      :         "
+               ASC     " EDIT BANK NAME "
+;
+               DC.B    0                    ;SOUNDS/SEQS BANK NAME SELECTION FIELD.
+               DC.B    6
+               DC.W    ACCESS+DIR_PTR
+               DC.W    BANK_NAME_SEL
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    SNDS_SEQS_STRING
+               DC.W    EDIT+HI_LIMIT
+               DC.W    1
+               DC.W    EDIT+LINKED
+               DC.W    EDIT+CURS_LFT        ;SCROLL FROM SOUND/SEQ SELECT FIELD
+               DC.L    GO_TO_NEXT_FIELD     ;TO FIRST NAME CHAR FIELD
+               DC.W    FIELD_END            ;WITH EITHER SCROLL BUTTON.
+;
+               DC.B    0                    ;NAME-FETCH FIELD - INVISIBLE.
+               DC.B    0
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+SET_PTR
+               DC.L    FETCH_BANK_NAME
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    NOTHINGNESS
+               DC.W    FIELD_END
+;
+               DC.B    8                    ;NAME FIELD.
+               DC.B    8
+               DC.W    ACCESS+SET_PTR
+               DC.L    SET_NAME_BUF_ACC
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_NAME_BUF
+               DC.W    EDIT+NO_KEYPAD       ;SORRY, BUD.
+               DC.W    EDIT+HI_LIMIT
+               DC.W    CHAR_EDIT_LIM
+               DC.W    EDIT+CURS_RGT
+               DC.L    NAME_CURS_RIGHT
+               DC.W    EDIT+CURS_LFT
+               DC.L    NAME_CURS_LEFT
+               DC.W    EDIT+ED_VEC
+               DC.L    NOT_SAVED_WARNING
+               DC.W    EDIT+ENTR_VEC
+               DC.L    STORE_BANK_NAME
+               DC.W    SUBFUN_END
+;
+;
+;
+SET_NAME_BUF_ACC
+               CLR     AUX_ED_PTR_1         ;NAME CHARACTER-POSITION INDEX - CLEAR UPON ENTRY.
+               MOVE.L  #NAME_BUFFER,D0      ;SET PARAMETER EDIT POINTER ACCORDINGLY.
+               RTS
+;
+;
+;
+SNDS_SEQS_STRING
+               ASC     "SOUNDS"
+               ASC     "  SEQS"
+;
+;
+;
+; SET A0 AS POINTER TO SOUND OR SEQUENCE BANK NAME PER BANK_NAME_SEL:
+; SINCE THIS IS DONE AS PART OF FETCHING OR STORING A BANK NAME,
+; AS A BY-PRODUCT WE SET UP TO SETTLE ON FIRST FIELD IN SCREEN -
+; THE SOUNDS/SEQS SELECT FIELD - TO HELP AVERT ACCIDENTAL NAME EDITS.
+;
+GET_BANKNAME_PTR
+               CLR     CUR_FLD_INDEX        ;WHEN SUBFUN INSTALLED, SETTLE ON UNIT SELECTION FIELD.
+               MOVE    #CUR_BANK_NAME,A0    ;A0 POINTS TO SOUND BANK NAME -
+               TST     BANK_NAME_SEL        ;IS THIS THE ONE WE WANT?
+               BEQ.S   GET_BNP_EXIT         ;EXIT IF YES,
+               ADDQ    #8,A0                ;ELSE, STEP UP TO SEUQENCE BANK NAME, THEN EXIT.
+GET_BNP_EXIT
+               RTS
+;
+;
+; FETCH BANK NAME FROM CUR_BANK_NAME ARRAY INTO NAME EDIT BUFFER:
+; AS A BY-PRODUCT, WE SET UP TO SETTLE ON FIRST FIELD IN SCREEN -
+; THE SOUNDS/SEQS SELECT FIELD - TO HELP AVERT ACCIDENTAL NAME EDITS.
+;
+FETCH_BANK_NAME
+               BSR     GET_BANKNAME_PTR     ;SET A0 AS POINTER TO NAME,
+                                            ;FALL THROUGH INTO GENERAL NAME-FETCH PROCEDURE.
+;
+;
+;
+; GENERAL NAME-FETCH PROCEDURE -
+; ENTER WITH A0 POINTING DIRECTLY TO NAME TO BE EDITED.
+; ENCODES IT INTO A STRING OF INDEXES INTO NAME_CHAR_STRING,
+; DROPS IT INTO NAME_BUFFER WHERE IT WILL BE EDITED.
+; NOTE: FETCH_BANK_NAME FALLS IN HERE FROM ABOVE, TAKE CARE IF MOVING.
+; PRESERVES ALL REGISTERS.
+;
+FETCH_NAME
+               MOVEM.L D0-D2/A0-A2,-(A7)
+               MOVE    #NAME_BUFFER,A1      ;A1 POINTS TO NAME-EDIT BUFFER.
+               MOVE.L  #NAME_CHAR_STRING,A2 ;A2 POINTS TO NAME CHARACTER TABLE.
+               MOVEQ   #7,D0                ;DO IT UP FOR 8 CHARACTERS.
+FIND_CHAR_INDEX
+               CLR     D1                   ;WORK UP FROM BOTTOM OF THE LIST.
+               MOVE.B  0(A0,D0),D2          ;CURRENT NAME CHARACTER TO ENCODE.
+INDEX_NOT_FOUND
+               CMP.B   0(A2,D1),D2          ;FIND CHARACTER IN TABLE -
+               BEQ.S   FOUND_CHAR_INDEX     ;IF MATCH, GO RECORD ITS TABLE INDEX.
+               ADDQ    #1,D1                ;IF NOT, KEEP TRYING -
+               CMP.W   #MAX_CHAR_INDEX,D1   ;DEFAULT TO SPACE CHAR IF NO OTHER MATCH FOUND.
+               BLT     INDEX_NOT_FOUND
+               MOVE.W  #CHAR_EDIT_LIM,D1
+FOUND_CHAR_INDEX
+               MOVE.B  D1,0(A1,D0)          ;WHEN INDEX FOUND, PUT IT INTO NAME_BUFFER.
+               DBRA    D0,FIND_CHAR_INDEX   ;LOOP UNTIL 8 CHARS PROCESSED.
+;
+               MOVEM.L (A7)+,D0-D2/A0-A2
+FET_NAME_EXIT
+               RTS
+;
+;
+;
+; NAME-EDIT CURSOR-LEFT VECTOR:
+;
+NAME_CURS_LEFT
+               SUBQ    #1,AUX_ED_PTR_1      ;ADVANCE NAME_BUFFER CELL INDEX -
+               BPL.S   NAME_JIVE            ;IF NOT OVER THE EDGE, SET UP NEW CURSOR POSITION -
+               ST      SUBFUN_INSTALL       ;ELSE, REINSTALL (ABORT EDIT, RETURN TO SELECT FIELD).
+               RTS
+;
+;
+;
+; NAME-EDIT CURSOR-RIGHT VECTOR:
+;
+NAME_CURS_RIGHT
+               ADDQ    #1,AUX_ED_PTR_1      ;ADVANCE NAME_BUFFER CELL INDEX -
+               CMP     #8,AUX_ED_PTR_1      ;OVER THE EDGE?
+               BCS.S   NAME_JIVE            ;IF NOT OVER THE EDGE, SET UP NEW CURSOR POSITION -
+               MOVE.L  ENTER_VEC,A0         ;ELSE, STORE NAME AND REINSTALL SCREEN.
+               JMP     (A0)
+;
+;
+;
+; COUPLA OTHER THINGS SOMETIMES NEEDING TO BE DONE:
+; MOSTLY IN RELATION TO MOVING CURSOR TO NEW NAME CHARACTER POSITION.
+; LOOK OUT!  NAME_CURS_RIGHT FALLS THROUGH INTO US.
+;
+NAME_JIVE
+               MOVE    #NAME_BUFFER,A0      ;SET POINTER TO NAME_BUFFER CELL BEING EDITED.
+               ADD     AUX_ED_PTR_1,A0      ;THIS IS THE INDEX FOR THAT CELL, IN FACT.
+               MOVE.L  A0,PARAM_POINTER
+               MOVE.B  (A0),PARAM_BUFFER+1  ;THIS IS THE CURRENT VALUE IN INDEXED CELL.
+NAME_JIVE_20
+               TST     CUR_FLD_INDEX        ;ARE WE IN UNIT-SELECT FIELD AT PRESENT?
+               BEQ.S   NAME_JIVE_EXIT       ;BRANCH IF YES, ALLOW NORMAL CURSOR POSITIONING.
+               MOVE    AUX_ED_PTR_1,D0      ;ELSE - FETCH NAME CHARACTER-POSITION INDEX,
+               ADDQ    #1,D0                ;ADD OFFSET NEEDED BY CURSOR-POSITIONING ROUTINE.
+               MOVE.B  D0,POSITION_CURS     ;SET FLAG - IT'LL BE PICKED UP BY BACKGROUND ROTATION.
+NAME_JIVE_EXIT
+               RTS
+;
+;
+;
+; WRITE NAME_BUFFER CONTENTS (ASCII FORMAT) TO SCREEN_BUFFER NAME FIELD:
+; ALSO, SET POSITION_CURS TO PLANT CURSOR UNDER CHARACTER BEING EDITED.
+;
+WRITE_NAME_BUF
+               MOVE.L  CUR_FLD_BLOCK,A0     ;SET POINTER TO NAME-FIELD POSITION SPEC,
+               MOVE.B  (A0),D0              ;FETCH NAME-FIELD POSITION,
+               EXT.W   D0
+               MOVE    #SCREEN_BUFFER,A0    ;SET POINTER TO THIS FIELD IN SCREEN_BUFFER,
+               ADD     D0,A0
+               BSR.S   STORE_NAME_BUF       ;DECODE NAME-BUFFER CONTENTS, WRITE 'EM THERE.
+               BRA     NAME_JIVE_20         ;SET FLAG TO REPOSITION CURSOR AFTER STRING WRITE -
+                                            ;RETURN THROUGH FROM THERE.
+;
+;
+;
+; STORE BUFFERED/EDITED BANK NAME BACK INTO CORRECT CUR_BANK_NAME SLOT:
+; AS A BY-PRODUCT, WE SET UP TO SETTLE ON FIRST FIELD IN SCREEN -
+; THE SOUNDS/SEQS SELECT FIELD - TO HELP AVERT ACCIDENTAL NAME EDITS.
+;
+STORE_BANK_NAME
+               ST      SUBFUN_INSTALL       ;AFTER WE'RE DONE HERE, REINSTALL SUBFUNCTION.
+               BSR     GET_BANKNAME_PTR     ;SET A0 AS POINTER TO NAME SLOT,
+                                            ;FALL THROUGH INTO GENERAL NAME-STORE PROCEDURE.
+;
+;
+;
+; GENERAL NAME-BUFFER WRITE/STORE PROCEDURE -
+; ENTER WITH A0 POINTING DIRECTLY TO WHERE NAME IS TO BE STORED.
+; DECODES STRING OF CHARACTER INDEXES BACK INTO ASCII CHARACTERS.
+; NOTE: STORE_BANK_NAME FALLS IN HERE FROM ABOVE, TAKE CARE IF MOVING.
+; PRESERVES ALL REGISTERS.
+;
+STORE_NAME_BUF
+               MOVEM.L D0-D1/A0-A2,-(A7)
+               MOVEQ   #7,D0                ;YAH, YAH, EIGHT CHARACTERS.
+               MOVE    #NAME_BUFFER,A1      ;GET 'EM FROM ....
+               MOVE.L  #NAME_CHAR_STRING,A2 ;WITH THE HELP OF ....
+STO_NAME_10
+               MOVE.B  0(A1,D0),D1          ;FETCH A CHARACTER INDEX.
+               EXT.W   D1
+               MOVE.B  0(A2,D1),0(A0,D0)    ;STORE ASSOCIATED CHARACTER TO CONTROL BLOCK.
+               DBRA    D0,STO_NAME_10       ;LOOP UNTIL ALL EIGHT ARE DONE.
+;
+               MOVEM.L (A7)+,D0-D1/A0-A2
+STO_NAME_EXIT
+               RTS
+;
+;
+;
+; AS SOON AS NAME EDIT OCCURS, MAKE USER (DIMLY) AWARE THAT WHAT HE IS
+; LOOKING AT IS ONLY TEMPORARY UNTIL HE SAVES IT.
+;
+NOT_SAVED_WARNING
+               MOVEM.L D1/A2,-(A7)
+               MOVE    #1010H,D1            ;SEND A VERBAL MESSAGE ....
+               MOVE.L  #NOT_SVD_STRING,A2
+                ABS_LONG
+               JSR     WRITE_STRING
+                ABS_SHORT
+               ST      UPDATE_LCD
+                ABS_LONG
+               JSR     SET_ENTER_FLASH      ;MAKE THE LIGHT WINK IF IT WARN'T ALREADY.
+                ABS_SHORT
+               MOVEM.L (A7)+,D1/A2
+NOT_SVD_EXIT
+               RTS
+;
+NOT_SVD_STRING
+               ASC     "(NOT YET SAVED) "
+;
+;
+;
+; CHARACTERS AVAILABLE FOR SOUND NAMES -
+; SPACE CHARACTER IS AT HIGH END FOR EASY DATA SLIDER ACCESS.
+; SPACE AND 0-9 ARE GROUPED AT HIGH END TO ALLOW THEM TO BE EASILY
+; EXCLUDED FROM EDIT RANGE VIA HI_LIMIT SPEC (E.G. FOR FIRST CHARACTER).
+; CHARACTER SET AND FIRST-CHARACTER RESTRICTION GUARANTEE SOUND NAMES
+; WILL BE COMPUTER-FILENAME-COMPATIBLE (AS IF THAT MATTERED ....)
+;
+NAME_CHAR_STRING
+               ASC     "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+CHAR_EDIT_LIM  EQU     *-NAME_CHAR_STRING
+               ASC     " abcdefghijklmnopqrstuvwxy"
+MAX_CHAR_INDEX EQU     *-NAME_CHAR_STRING
+               ASC     "z"
+               EVEN
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+BANK_PROTECT_SUB
+               ASC     "DRIVE:  BANK:   "
+               ASC     "      WR-PROTECT"
+;
+               DC.B    6                    ;DRIVE SELECT FIELD.
+               DC.B    1
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+SIGNED
+               DC.W    ACCESS+DIR_PTR
+               DC.W    DRIVE_SEL
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_DRIVE
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    F_DRIVE_STRING
+               DC.W    EDIT+LINKED
+               DC.W    EDIT+LO_LIMIT
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    6
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    EDIT+ENTR_VEC
+               DC.L    DO_WRITE_PROTECT
+               DC.W    FIELD_END
+;
+               DC.B    13                   ;BANK SELECT FIELD.
+               DC.B    3
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+SET_PTR
+               DC.L    SET_BANK_SEL_ACC     ;NOTE: EXPECTS BANK_SEL IN FIELD 1.
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_SCSI_BANK
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    EDIT+ENTR_VEC
+               DC.L    DO_WRITE_PROTECT
+               DC.W    FIELD_END
+;
+               DC.B    16                   ;CHECK/SET/REMOV SELECT FIELD.
+               DC.B    5
+               DC.W    ACCESS+DIR_PTR
+               DC.W    PROTECT_SEL
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    PROT_SEL_STRING
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    2
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    EDIT+ENTR_VEC
+               DC.L    DO_WRITE_PROTECT
+               DC.W    SUBFUN_END
+;
+;
+PROT_SEL_STRING
+               ASC     "CHECK"
+               ASC     "  SET"
+               ASC     "REMOV"
+               EVEN
+;
+;
+DO_WRITE_PROTECT
+               MOVE    #HD_UTIL_MASK+SAVE_MASK,DISK_OP_CODE     ;THIS BE ALL IT NEED.
+               BRA     DO_THAT_DISK_THING
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+SCSI_RESET_SUB
+               ASC     " RESET ALL SCSI "
+               ASC     "    DEVICES     "
+;
+               DC.B    32                   ;NON-FIELD.
+               DC.B    1
+               DC.W    ACCESS+DIR_PTR       ;NON-PARAMETER.
+               DC.W    WASTELAND            ;NON-VARIABLE.
+               DC.W    DISPLAY+DISP_VEC     ;NON-DISPLAY ROUTINE.
+               DC.L    NOTHINGNESS
+               DC.W    EDIT+CUSTOMIZE       ;NON-EDIT SETUP.
+               DC.L    CUST_SCSI_RESET
+               DC.W    SUBFUN_END           ;NON, NON, NON.
+;
+CUST_SCSI_RESET
+                ABS_LONG
+               JSR     UNPLUG_ALL_EDITS          ;WELL, NOTHING TO EDIT REALLY.
+                ABS_SHORT
+               MOVE.L  #DO_SCSI_RESET,ENTER_VEC  ;THIS WHAT WE DO WHEN WE DO.
+                ABS_LONG
+               JMP     SET_ENTER_FLASH           ;GIVE 'IM A CLUE ....
+                ABS_SHORT
+;
+;
+;
+; BOSS-MAN SAY "GO!" SO GO -
+;
+DO_SCSI_RESET
+               MOVE    #ALT_MASK,DISK_OP_CODE    ;GO THIS WAY (DON'T BOTHER WITH DESCRIPTOR READ).
+               MOVE    #SCSI_RESET,D1            ;ALTERNATE-FUNCTION OPERATION CODE.
+               BRA     DO_THAT_DISK_THING                       ;GO FOR IT, DOOD.
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;900424;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;900424;
+;900424INIT_DIR_SUB
+;900424;
+;900424;31MAR               ASC     "CREATE DIRECTORY"
+;900424;31MAR               ASC     "  ON SCSI DISK  "
+;900424;31MAR;
+;900424;31MAR               DC.B    32                   ;NON-FIELD.
+;900424;31MAR               DC.B    1
+;900424;31MAR               DC.W    ACCESS+DIR_PTR       ;NON-PARAMETER.
+;900424;31MAR               DC.W    WASTELAND            ;NON-VARIABLE.
+;900424;31MAR               DC.W    DISPLAY+DISP_VEC     ;NON-DISPLAY ROUTINE.
+;900424;31MAR               DC.L    NOTHINGNESS
+;900424;31MAR               DC.W    EDIT+CUSTOMIZE       ;NON-EDIT SETUP.
+;900424;31MAR               DC.L    CUST_SCSI_DIR
+;900424;31MAR               DC.W    SUBFUN_END           ;NON, NON, NON.
+;900424;31MAR;
+;900424;31MARCUST_SCSI_DIR
+;900424;31MAR                ABS_LONG
+;900424;31MAR               JSR     UNPLUG_ALL_EDITS          ;WELL, NOTHING TO EDIT REALLY.
+;900424;31MAR                ABS_SHORT
+;900424;31MAR               MOVE.L  #DO_SCSI_DIR,ENTER_VEC    ;THIS WHAT WE DO WHEN WE DO.
+;900424;31MAR                ABS_LONG
+;900424;31MAR               JMP     SET_ENTER_FLASH           ;GIVE 'IM A CLUE ....
+;900424;31MAR                ABS_SHORT
+;900424;
+;900424;
+;900424               ASC     " FORMAT DRIVE:  "
+;900424               ASC     "TYPE:DATAFRAME  "
+;900424;
+;900424               DC.B    14                   ;DRIVE SELECT FIELD.
+;900424               DC.B    1
+;900424               DC.W    ACCESS+WORD
+;900424               DC.W    ACCESS+SIGNED
+;900424               DC.W    ACCESS+DIR_PTR
+;900424               DC.W    DRIVE_SEL
+;900424               DC.W    DISPLAY+DISP_VEC
+;900424               DC.L    WRITE_DRIVE
+;900424               DC.W    DISPLAY+DISP_STRNG
+;900424               DC.L    F_DRIVE_STRING
+;900424               DC.W    EDIT+LO_LIMIT
+;900424               DC.W    -1
+;900424               DC.W    EDIT+HI_LIMIT
+;900424               DC.W    6
+;900424               DC.W    EDIT+ENTR_VEC
+;900424               DC.L    DO_SCSI_FORMAT
+;900424               DC.W    EDIT+CUSTOMIZE
+;900424               DC.L    SET_ENTER_FLASH
+;900424               DC.W    FIELD_END
+;900424;
+;900424               DC.B    30                   ;DRIVE TYPE SELECT FIELD.
+;900424               DC.B    2
+;900424               DC.W    ACCESS+DIR_PTR
+;900424               DC.W    NEW_DRIVE_SIZE       ;ACTUALLY SELECTS 20 MEG OR 40 MEG DIRECTORY SIZE.
+;900424               DC.W    ACCESS+WORD
+;900424               DC.W    DISPLAY+DISP_VEC
+;900424               DC.L    WRITE_PARAM_STRING
+;900424               DC.W    DISPLAY+DISP_STRNG
+;900424               DC.L    TWENTY_FORTY_STRING
+;900424               DC.W    EDIT+HI_LIMIT
+;900424               DC.W    1
+;900424               DC.W    EDIT+NO_KEYPAD
+;900424               DC.W    EDIT+ENTR_VEC
+;900424               DC.L    DO_SCSI_FORMAT
+;900424               DC.W    EDIT+CUSTOMIZE
+;900424               DC.L    SET_ENTER_FLASH
+;900424               DC.W    SUBFUN_END
+;900424;
+;900424;
+;900424TWENTY_FORTY_STRING
+;900424               ASC     "2040"
+;900424;
+;900424;
+;900424;
+;900424; BOSS-MAN SAY "GO!" SO GO -
+;900424;
+;900424DO_SCSI_FORMAT
+;900424               MOVE    #HD_UTIL_MASK+FORMAT_MASK,DISK_OP_CODE   ;SHOULD BE ALL IT NEEDS.
+;900424               BRA     DO_THAT_DISK_THING                       ;GO FOR IT, DOOD.
+;900424;
+;900424;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+INIT_DIR_SUB
+;
+;31MAR               ASC     "CREATE DIRECTORY"
+;31MAR               ASC     "  ON SCSI DISK  "
+;31MAR;
+;31MAR               DC.B    32                   ;NON-FIELD.
+;31MAR               DC.B    1
+;31MAR               DC.W    ACCESS+DIR_PTR       ;NON-PARAMETER.
+;31MAR               DC.W    WASTELAND            ;NON-VARIABLE.
+;31MAR               DC.W    DISPLAY+DISP_VEC     ;NON-DISPLAY ROUTINE.
+;31MAR               DC.L    NOTHINGNESS
+;31MAR               DC.W    EDIT+CUSTOMIZE       ;NON-EDIT SETUP.
+;31MAR               DC.L    CUST_SCSI_DIR
+;31MAR               DC.W    SUBFUN_END           ;NON, NON, NON.
+;31MAR;
+;31MARCUST_SCSI_DIR
+;31MAR                ABS_LONG
+;31MAR               JSR     UNPLUG_ALL_EDITS          ;WELL, NOTHING TO EDIT REALLY.
+;31MAR                ABS_SHORT
+;31MAR               MOVE.L  #DO_SCSI_DIR,ENTER_VEC    ;THIS WHAT WE DO WHEN WE DO.
+;31MAR                ABS_LONG
+;31MAR               JMP     SET_ENTER_FLASH           ;GIVE 'IM A CLUE ....
+;31MAR                ABS_SHORT
+;
+;
+               dc.b    " Format drive:  "
+               dc.b    "type: xxxxxxxxxx"
+;
+               DC.B    14                   ;DRIVE SELECT FIELD.
+               DC.B    1
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+SIGNED
+               DC.W    ACCESS+DIR_PTR
+               DC.W    DRIVE_SEL
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_DRIVE
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    F_DRIVE_STRING
+               DC.W    EDIT+LO_LIMIT
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    6
+               DC.W    EDIT+ENTR_VEC
+               DC.L    DO_SCSI_FORMAT
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    FIELD_END
+;
+;900424               DC.B    30                   ;DRIVE TYPE SELECT FIELD.
+;900424               DC.B    2
+;900424               DC.W    ACCESS+DIR_PTR
+;900424               DC.W    NEW_DRIVE_SIZE       ;ACTUALLY SELECTS 20 MEG OR 40 MEG DIRECTORY SIZE.
+;900424               DC.W    ACCESS+WORD
+;900424               DC.W    DISPLAY+DISP_VEC
+;900424               DC.L    WRITE_PARAM_STRING
+;900424               DC.W    DISPLAY+DISP_STRNG
+;900424               DC.L    TWENTY_FORTY_STRING
+;900424               DC.W    EDIT+HI_LIMIT
+;900424               DC.W    1
+;900424               DC.W    EDIT+NO_KEYPAD
+;900424               DC.W    EDIT+ENTR_VEC
+;900424               DC.L    DO_SCSI_FORMAT
+;900424               DC.W    EDIT+CUSTOMIZE
+;900424               DC.L    SET_ENTER_FLASH
+;900424               DC.W    SUBFUN_END
+;
+;
+               DC.B    22                   ;DRIVE TYPE SELECT FIELD.
+               DC.B    10
+               DC.W    ACCESS+DIR_PTR
+               DC.W    new_drive_type
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    new_drive_string
+               DC.W    EDIT+HI_LIMIT
+               DC.W    2
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+ENTR_VEC
+               DC.L    DO_SCSI_FORMAT
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    SUBFUN_END
+;
+;
+;900424;
+;900424TWENTY_FORTY_STRING
+;900424               ASC     "2040"
+;900424;
+;
+;
+new_drive_string
+               dc.b    " Standard "
+               dc.b    "Datafram20"
+               dc.b    "Datafram40"
+;
+;
+;
+; BOSS-MAN SAY "GO!" SO GO -
+;
+DO_SCSI_FORMAT
+               MOVE    #HD_UTIL_MASK+FORMAT_MASK,DISK_OP_CODE   ;SHOULD BE ALL IT NEEDS.
+               BRA     DO_THAT_DISK_THING                       ;GO FOR IT, DOOD.
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+CHANGE_ID_SUB
+               ASC     " CHANGE SCSI ID "
+               ASC     "ON DRIVE:   TO: "
+;
+               DC.B    25                   ;DRIVE SELECT FIELD.
+               DC.B    1
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+SIGNED
+               DC.W    ACCESS+DIR_PTR
+               DC.W    DRIVE_SEL
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_DRIVE
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    F_DRIVE_STRING
+               DC.W    EDIT+LO_LIMIT
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    6
+               DC.W    EDIT+ENTR_VEC
+               DC.L    DO_SCSI_ID_CHANGE
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    FIELD_END
+;
+               DC.B    31                   ;NEW SCSI ID SELECT FIELD.
+               DC.B    1
+               DC.W    ACCESS+DIR_PTR
+               DC.W    NEW_SCSI_ID
+               DC.W    ACCESS+WORD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    6
+               DC.W    EDIT+ENTR_VEC
+               DC.L    DO_SCSI_ID_CHANGE
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    SUBFUN_END
+;
+;
+;
+; BOSS-MAN SAY "GO!" SO GO -
+;
+DO_SCSI_ID_CHANGE
+               MOVE    #HD_UTIL_MASK+CONTROL_MASK,DISK_OP_CODE  ;SHOULD BE ALL IT NEEDS.
+               BRA     DO_THAT_DISK_THING                       ;GO FOR IT, DOOD.
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+

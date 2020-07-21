@@ -1,0 +1,60 @@
+               .OPTION LIST=SHOW_INCLUDES
+
+*****     G_V_BLK - MODEL 440 VOICE BLOCK GLOBAL DECLARATIONS     *****
+*****                 FOR INCLUSION INTO RAM_440.                 *****
+*****     NOTE - MACHINE-GENERATED FILE, DON'T BOTHER EDITING.    *****
+;
+               .EXPORT V_PRIO_VEC
+               .EXPORT V_PRIO_TIME
+               .EXPORT V_PRIO_FLAG
+               .EXPORT V_CUE_LIST_FLAG
+               .EXPORT V_CHIP_ADDR
+               .EXPORT V_CHIP_CHAN
+               .EXPORT V_CHIP_MISC
+               .EXPORT V_THIS_VOICE
+               .EXPORT V_ACTIVE_SUB
+               .EXPORT V_IDLE_SUB
+               .EXPORT V_CTRL_ADDR
+               .EXPORT V_PAD_VAL_PTR
+               .EXPORT V_VEL_LIST
+               .EXPORT V_NON_VEL_LIST
+               .EXPORT V_VELOCITY
+               .EXPORT V_PITCH_DELTA
+               .EXPORT V_LEVEL
+               .EXPORT V_PAN
+               .EXPORT V_SOUND_ALT
+               .EXPORT V_P_OFF_TIME
+               .EXPORT V_IDENTITY
+               .EXPORT V_COMMON_SIZE
+               .EXPORT V_SOUND_COM
+               .EXPORT V_SOUND_SUB
+               .EXPORT V_N_OFF_TIME
+               .EXPORT V_VCA_VECTOR
+               .EXPORT V_CUR_VCA
+               .EXPORT V_A_ATT_RATE
+               .EXPORT V_A_ATT_TIME
+               .EXPORT V_A_SUS_LEVEL
+               .EXPORT V_A_SUS_TIME
+               .EXPORT V_A_REL_RATE
+               .EXPORT V_A_REL_TIME
+               .EXPORT V_A_REL_INDEX
+               .EXPORT V_VCF_VECTOR
+               .EXPORT V_CUR_VCF
+               .EXPORT V_F_ATT_RATE
+               .EXPORT V_F_SUS_LEVEL
+               .EXPORT V_F_SUS_TIME
+               .EXPORT V_F_REL_RATE
+               .EXPORT V_F_CUTOFF
+               .EXPORT V_BEND_VECTOR
+               .EXPORT V_BEND_RATE
+               .EXPORT V_BEND_LEVEL
+               .EXPORT V_FIN_PITCH
+               .EXPORT V_CUR_PITCH
+               .EXPORT V_PITCH_PAN
+               .EXPORT V_START_ADDR
+               .EXPORT V_SUB_SIZE
+               .EXPORT V_SUB_0
+               .EXPORT V_SUB_1
+               .EXPORT V_BLOCK_SIZE
+               .OPTION LIST="ON"
+

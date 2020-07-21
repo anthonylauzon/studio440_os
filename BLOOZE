@@ -1,0 +1,2563 @@
+               INCLUDE HPFIXUPS
+               TITLE   "NOTES-CURRENTLY-ON BUFFER HANDLERS"
+***************************************************************************************************
+***************************************************************************************************
+***                                                                                             ***
+***            NOTES_PADS_ON - UTILITIES FOR MAINTAINING SEQUENCER NOTE-ON STATUS               ***
+***                                                                                             ***
+***************************************************************************************************
+***************************************************************************************************
+;
+NEG_EXT        EQU     0FFFFFF00H      ;USE IN MOVEQ INSTRUCTIONS WHERE ARG IS
+                                       ;80H OR LARGER - HP XASM DOES NOT HANDLE
+                                       ;SIGN-EXTEND CORRECTLY.  COSMETIC, KEEPS
+                                       ;ACTUAL BYTE VALUE CLEARER.
+;
+                ABS_SHORT
+;
+               GLB     LOG_IN_OLD_MIDI
+               GLB     LOG_OUT_OLD_MIDI
+               GLB     LOG_IN_NEW_MIDI
+               GLB     LOG_OUT_NEW_MIDI
+               GLB     LOG_IN_OLD_PAD
+               GLB     LOG_OUT_OLD_PAD
+               GLB     LOG_IN_NEW_PAD
+               GLB     LOG_OUT_NEW_PAD
+               GLB     LOG_OUT_PITCH_NEW_PAD
+               GLB     LOG_OUT_PAD_NEW_PAD
+               GLB     FLUSH_OLD_MIDI
+               GLB     FLUSH_NEW_MIDI
+               GLB     WRITE_OLD_M_OFFS
+               GLB     WRITE_OLD_M_ONS
+               GLB     WRITE_NEW_M_OFFS
+               GLB     WRITE_NEW_M_ONS
+               GLB     XMIT_OLD_M_OFFS
+               GLB     XMIT_OLD_M_ONS
+               GLB     FLUSH_OLD_PADS
+               GLB     FLUSH_NEW_PADS
+               GLB     BLIND_FLUSH_NOTE_BUFS
+               GLB     WRITE_OLD_P_OFFS
+               GLB     WRITE_OLD_P_ONS
+               GLB     WRITE_NEW_P_OFFS
+               GLB     WRITE_NEW_P_ONS
+               GLB     XMIT_OLD_P_OFFS
+               GLB     XMIT_OLD_P_ONS
+               GLB     OLD_MIDI_DIRECTORY
+               GLB     NEW_MIDI_DIRECTORY
+               GLB     OLD_PAD_DIRECTORY
+               GLB     NEW_PAD_DIRECTORY
+               GLB     D_WRITE_OLD_M_OFFS
+               GLB     D_WRITE_NEW_M_OFFS
+               GLB     D_WRITE_OLD_P_OFFS
+               GLB     D_WRITE_NEW_P_OFFS
+               GLB     CHECK_OLD_MIDI
+;02AUG               GLB     CHECK_NEW_MIDI
+               GLB     CHECK_OLD_PADS
+;02AUG               GLB     CHECK_NEW_PADS
+               GLB     STASH_OLD_MIDI_ONS
+               GLB     STASH_OLD_PAD_ONS
+               GLB     M_WIPE_AND_FLUSH
+               GLB     P_WIPE_AND_FLUSH
+               GLB     MIDI_UNSTASH
+               GLB     PADS_UNSTASH
+;
+                                            ;EXTERNAL ROM-THINGS.
+               EXTERNAL  XMIT_2_PA,XMIT_2_PB
+               EXTERNAL  SEQ_WRITE
+               EXTERNAL  TYPE_1_XMIT
+               EXTERNAL  TYPE_2_XMIT
+               EXTERNAL  TYPE_3_XMIT
+               EXTERNAL  SEQ_ON_INTERNAL,SEQ_OFF_INTERNAL
+               EXTERNAL  TRACK_MUTE_CHECK
+;
+                                            ;EXTERNAL RAM, GUY.
+               EXTERNAL  OLD_MIDI_BUFS
+               EXTERNAL  NEW_MIDI_BUFS
+               EXTERNAL  OLD_PAD_BUFS
+               EXTERNAL  NEW_PAD_BUFS
+               EXTERNAL  RP_ST_M_DEPTH
+               EXTERNAL  RP_ST_MIDI_ON
+               EXTERNAL  RP_ST_P_DEPTH
+               EXTERNAL  RP_ST_PADS_ON
+               EXTERNAL  O_M_D_1A,N_M_D_1A
+               EXTERNAL  O_P_D_1,O_P_D_3,O_P_D_5,O_P_D_7
+               EXTERNAL  N_P_D_1,N_P_D_3,N_P_D_5,N_P_D_7
+               EXTERNAL  END_OF_OLD_MIDI,END_OF_NEW_MIDI,END_OF_OLD_PADS
+               EXTERNAL  SEQ_WR_PTR,TRACKS_MUTED
+               EXTERNAL  BG_TEMP_1_B,BG_TEMP_2_B,BG_TEMP_3_B,BG_TEMP_5_B
+               EXTERNAL  OLD_MIDI_DEPTH
+               EXTERNAL  NEW_MIDI_DEPTH
+               EXTERNAL  OLD_PAD_DEPTH
+               EXTERNAL  NEW_PAD_DEPTH
+               EXTERNAL  XMIT_TEMP_2
+               EXTERNAL  XMIT_TEMP_1
+               EXTERNAL  SEQ_XMIT_EVENT
+               EXTERNAL  CUEING_TO_SPP
+               EXTERNAL  CHASING_SMPTE
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             YES, YES, YES - WELCOME TO THE VARIOUS NOTES_CURRENTLY_ON UTILITIES.  THERE ARE
+;              4 NOTES_CURRENTLY_ON LISTS - OLD (PREVIOUSLY RECORDED) MIDI NOTES, NEW (FRESHLY
+;              RECEIVED) MIDI NOTES, OLD PADS, AND NEW PADS.  WHEN AN 'ON' IS CROSSED, THE EVENT
+;              IS PUT IN DAMN CLOSE TO SEQUENCER FORMAT.  WHEN AN 'OFF' IS ENCOUNTERED, WE GO
+;              LOOKING FOR IT TO PULL IT BACK OUT.  WE PLACE THEM BY A WEAK HASHING FORMULA -
+;              FOR MIDI, WE FIND A SUB-POCKET BY THE CHANNEL, AND TRY TO PLACE PER KEYNUM.  FOR
+;              PADS, WE FIND A SUB-POCKET BY PADNUM, AND PLACE BY DRUMNUM (OLD EVENTS) OR PITCH
+;              (NEW EVENTS).  IF THAT SLOT IS OCCUPIED, WE MOVE UP BY ONE, AND ROTATE INSIDE THIS
+;              SUB-POCKET 'TILL WE FIND AN EMPTY ONE (OR A MATCH, IN THE CASE OF OFF's).  IF THERE
+;              IS NO ROOM (OR AN OFF MATCH IS NOT FOUND), RET w/ A 'Z' CONDITION (ELSE, NOT Z).
+;
+;             ALL REGISTERS PROTECTED.  ASSUMES YOU ENTER w/ D7.L = THE EVENT IN SEQUENCER FORMAT
+;              (IN THE CASE OF PAD ONS, IGNORE THE THIRD WORD).
+;
+;             A SET OF UTILITIES ARE ALSO PROVIDED, FOR FLUSHING ANY LIST, OR CONVERTING ANY OF
+;              THE LISTS INTO SEQUENCER OR MIDI ONs OR OFFs (WITH THE EXCEPTION OF NEW STUFF TO
+;              MIDI, AND ANY PADS TO MIDI).
+;
+;             TO SUMMARIZE THE ROUTINES CONTAINED HEREIN:
+;
+;              LOG_IN_OLD_MIDI         - FOR SEQUENCER MIDI NOTE ONS
+;              LOG_OUT_OLD_MIDI        -  "      "      "    "   OFFS
+;              LOG_IN_NEW_MIDI         -  "  LIVE MIDI NOTE ONS
+;              LOG_OUT_NEW_MIDI        -  "   "    "    "   OFFS
+;              LOG_IN_OLD_PAD          -  "  SEQUENCER PAD ONS
+;              LOG_OUT_OLD_PAD         -  "      "      "  OFFS
+;              LOG_IN_NEW_PAD          -  "  LIVE PAD ONS
+;              LOG_OUT_NEW_PAD         -  "   "    "  OFFS
+;              LOG_OUT_PITCH_NEW_PAD   -  "   "    "   "  , WHEN YOU KNOW ONLY PADNUM & PITCH (ie. MIDI)
+;
+;              (UTILITIES:)
+;
+;              FLUSH_OLD_MIDI          - CLEAR OUT OLD MIDI NOTES BUFFER
+;              FLUSH_NEW_MIDI          -   "    "  NEW  "     "     "
+;              WRITE_OLD_M_OFFS        - CONVERT OLD MIDI NOTES TO OFFS, WRITE TO SEQUENCER
+;              WRITE_OLD_M_ONS         -    "     "   "     "   "  ONS,    "   "      "
+;              WRITE_NEW_M_OFFS        -    "    NEW  "     "   "  OFFS,   "   "      "
+;              WRITE_NEW_M_ONS         -    "     "   "     "   "  ONS,    "   "      "
+;              XMIT_OLD_M_OFFS         -    "    OLD  "     "   "  OFFS, TRANSMIT OVER MIDI
+;              XMIT_OLD_M_ONS          -    "     "   "     "   "  ONS,     "      "    "
+;              FLUSH_OLD_PADS          - CLEAR OUT OLD PAD EVENT BUFFER
+;              FLUSH_NEW_PADS          -   "    "  NEW  "    "     "
+;              WRITE_OLD_P_OFFS        - CONVERT OLD PAD EVENTS TO OFFS, WRITE TO SEQUENCER
+;              WRITE_OLD_P_ONS         -    "     "   "    "    "  ONS,    "   "      "
+;              WRITE_NEW_P_OFFS        -    "    NEW  "    "    "  OFFS,   "   "      "
+;              WRITE_NEW_P_ONS         -    "     "   "    "    "  ONS,    "   "      "
+;              XMIT_OLD_P_OFFS         -    "    OLD  "    "    "  OFFS, XMIT OVER MIDI
+;              XMIT_OLD_P_ONS          -    "     "   "    "    "  ONS,   "    "    "
+;
+;              AND MORE .... MUCH MORE.
+;
+;             YES, IT WAS HAIRY TO CONCEIVE.  YES, IT IS NECESSARY.
+;
+;             ANYWAY....
+;
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             SEQUENCER PLAYBACK ENCOUNTERS A MIDI NOTE ON.  CALL THIS w/ D7.L = :
+;
+;                       1001 aaaa b ccc 0011 0ddddddd 0eeeeeee
+;
+;                      aaa = CHANNEL           b = A/B UART BIT (1=B)
+;                      ccc = TRACKNUM    ddddddd = KEYNUM
+;                            eeeeeeee = VELOCITY
+;
+;             (TRIES TO) STUFF IN OLD_MIDI_DIRECTORY (OLD_MIDI_1A -> OLD_MIDI_16B).  IF NO ROOM,
+;              RET's w/ 'Z' CONDITON - ELSE, NOT-Z.  INCREMENTS OLD_MIDI_DEPTH (COUNT OF RESIDENTS).
+;
+LOG_IN_OLD_MIDI
+               MOVEM.L D5-D7/A0-A1,-(A7)    ;PROTECT REGISTERS
+;
+               MOVE.L  D7,D6                ;MAKE COPY
+               SWAP    D6                   ; ISOLATE CHANNEL & UART FOR FINDING SUB-POCKET.
+               AND.L   #0F80H,D6            ;  MASK CLEAN...
+               LSR     #5,D6                ;            ...AND ROTATE INTO A LONG-WORD OFFSET.
+               MOVE.L  #OLD_MIDI_DIRECTORY,A0    ;POINT TO START OF SUB-POCKET.
+               MOVE.L  0(A0,D6),A0
+;
+               MOVE.L  #O_M_D_1A,A1         ;POINT TO COUNT OF HOW MANY ON IN THIS SLOT
+               LSR     #1,D6                ; (WORD, NOT LONG OFFSET - KNOCK DOWN INDEX)
+               ADD.L   D6,A1                ;  A1 -> CORRECT COUNTER
+;
+               MOVE    D7,D6                ;ISOLATE & USE KEYNUM FOR SLOTTING
+               AND.L   #0FF00H,D6           ; MASK OUT VELOCITY
+               LSR     #6,D6                ;  ROTATE DOWN INTO A LONG-WORD OFFSET
+;
+               MOVEQ   #127,D5              ;SUB-POCKET IS 128 SLOTS BIG - LOOK THRU ALMOST ALL
+L_I_O_M_LOOP
+               TST     0(A0,D6)             ;SOMEONE OCCUPYING THIS SLOT?
+               BEQ.S   SLOT_OLD_MIDI        ;    IF NO, FOUND OUR HOME
+               ADDQ    #4,D6                ;         ELSE, LOOK AT NEXT SLOT
+               AND     #(128*4)-1,D6        ;         (INC & MASK - KEEP INSIDE POCKET)
+               DBRA    D5,L_I_O_M_LOOP      ;         TRY AGAIN...
+;
+               CMP     D5,D5                ;IF DIDN'T FIND A SLOT, SET 'Z' & RET
+               MOVEM.L (A7)+,D5-D7/A0-A1
+               RTS
+;
+SLOT_OLD_MIDI  ; FOUND A HOME - SAVE THERE
+               MOVE.L  D7,0(A0,D6)
+               ADDQ    #1,OLD_MIDI_DEPTH    ;INC COUNT OF EVENTS IN HERE (AUTOMATIC NOT-Z)
+               ADDQ    #1,0(A1)             ; ALSO INC COUNT IN THIS SPECIFIC POCKET
+               MOVEQ   #1,D5                ;SET Z-FLAG FALSE TO INDICATE SUCCESSFUL LOG-IN.
+               MOVEM.L (A7)+,D5-D7/A0-A1
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             SEQUENCER PLAYBACK ENCOUNTERS A MIDI NOTE OFF.  CALL THIS w/ D7.L = :
+;
+;                       1001 aaaa b ccc 0011 0ddddddd 00000000
+;
+;                      aaa = CHANNEL           b = A/B UART BIT (1=B)
+;                      ccc = TRACKNUM    ddddddd = KEYNUM
+;
+;             TRIES TO FIND A MATCH IN OLD_MIDI_DIRECTORY (OLD_MIDI_1A -> OLD_MIDI_16B).  IF NOT
+;              THERE, RET's w/ 'Z' CONDITON - ELSE, NOT-Z, CLEARS OUT THE EVENT, AND DECs OLD_MIDI_DEPTH.
+;
+LOG_OUT_OLD_MIDI
+               MOVEM.L D4-D7/A0-A1,-(A7)    ;PROTECT REGISTERS
+;
+               MOVE.L  D7,D6                ;MAKE COPY
+               SWAP    D6                   ; ISOLATE CHANNEL & UART FOR FINDING SUB-POCKET.
+               AND.L   #0F80H,D6            ;  MASK CLEAN...
+               LSR     #5,D6                ;            ...AND ROTATE INTO A LONG-WORD OFFSET.
+               MOVE.L  #OLD_MIDI_DIRECTORY,A0    ;POINT TO START OF SUB-POCKET.
+               MOVE.L  0(A0,D6),A0
+;
+               MOVE.L  #O_M_D_1A,A1         ;POINT TO COUNT OF HOW MANY ON IN THIS SLOT
+               LSR     #1,D6                ; (WORD, NOT LONG OFFSET - KNOCK DOWN INDEX)
+               ADD.L   D6,A1                ;  A1 -> CORRECT COUNTER
+;
+               MOVE    D7,D6                ;ISOLATE & USE KEYNUM FOR SLOTTING
+               AND.L   #0FF00H,D6           ; MASK OUT VELOCITY
+               LSR     #6,D6                ; ROTATE DOWN INTO A LONG-WORD OFFSET
+;
+               MOVEQ   #127,D5              ;SUB-POCKET IS 128 SLOTS BIG - LOOK THRU ALMOST ALL
+               AND.L   #0FF0FF00H,D7        ;MASK OUT STAT, ID, AND VELOCITY FOR MATCHING
+L_O_O_M_LOOP
+               MOVE.L  0(A0,D6),D4          ;GRAB EVENT IN THIS SLOT
+               AND.L   #0FF0FF00H,D4        ; MASK OUT STAT, ID, AND VELOCITY FOR MATCHING
+               CMP.L   D4,D7                ;  WELL - MATCH?
+               BEQ.S   UNSLOT_OLD_MIDI      ;    IF YES, COOL!
+               ADDQ    #4,D6                ;         ELSE, CONTINUE SEARCH
+               AND     #(128*4)-1,D6        ;         (INC & MASK - KEEP INSIDE POCKET)
+               DBRA    D5,L_O_O_M_LOOP      ;         TRY AGAIN...
+;
+               CMP     D5,D5                ;IF DIDN'T IT, SET 'Z' & RET
+               MOVEM.L (A7)+,D4-D7/A0-A1
+               RTS
+;
+UNSLOT_OLD_MIDI ; FOUND IT - ERASE IT.
+               CLR.L   0(A0,D6)
+               SUBQ    #1,OLD_MIDI_DEPTH    ;DEC COUNT OF EVENTS IN HERE
+               SUBQ    #1,0(A1)             ; ALSO DEC COUNT OF THIS SPECIFIC SUBPOCKET
+               MOVEQ   #1,D5                ;  (BLOW AWAY 'Z' FLAG)
+               MOVEM.L (A7)+,D4-D7/A0-A1
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             MIDI RECEIVED A MIDI NOTE ON.  CALL THIS w/ D7.L = :
+;
+;                       1001 aaaa b ccc 0011 0ddddddd 0eeeeeee
+;
+;                      aaa = CHANNEL           b = A/B UART BIT (1=B)
+;                      ccc = TRACKNUM    ddddddd = KEYNUM
+;                            eeeeeeee = VELOCITY
+;
+;             (TRIES TO) STUFF IN NEW_MIDI_DIRECTORY (NEW_MIDI_1A -> NEW_MIDI_16B).  IF NO ROOM,
+;              RET's w/ 'Z' CONDITON - ELSE, NOT-Z.  INCREMENTS NEW_MIDI_DEPTH (COUNT OF RESIDENTS).
+;
+LOG_IN_NEW_MIDI
+               MOVEM.L D5-D7/A0-A1,-(A7)    ;PROTECT REGISTERS
+;
+               MOVE.L  D7,D6                ;MAKE COPY
+               SWAP    D6                   ; ISOLATE CHANNEL & UART FOR FINDING SUB-POCKET.
+               AND.L   #0F80H,D6            ;  MASK CLEAN...
+               LSR     #5,D6                ;            ...AND ROTATE INTO A LONG-WORD OFFSET.
+               MOVE.L  #NEW_MIDI_DIRECTORY,A0    ;POINT TO START OF SUB-POCKET.
+               MOVE.L  0(A0,D6),A0
+;
+               MOVE.L  #N_M_D_1A,A1         ;POINT TO COUNT OF HOW MANY ON IN THIS SLOT
+               LSR     #1,D6                ; (WORD, NOT LONG OFFSET - KNOCK DOWN INDEX)
+               ADD.L   D6,A1                ;  A1 -> CORRECT COUNTER
+;
+               MOVE    D7,D6                ;ISOLATE & USE KEYNUM FOR SLOTTING
+               AND.L   #0FF00H,D6           ; MASK OUT VELOCITY
+               LSR     #6,D6                ; ROTATE DOWN INTO A LONG-WORD OFFSET
+;
+               MOVEQ   #127,D5              ;SUB-POCKET IS 128 SLOTS BIG - LOOK THRU ALMOST ALL
+L_I_N_M_LOOP
+               TST     0(A0,D6)             ;SOMEONE OCCUPYING THIS SLOT?
+               BEQ.S   SLOT_NEW_MIDI        ;    IF NO, FOUND OUR HOME
+               ADDQ    #4,D6                ;         ELSE, LOOK AT NEXT SLOT
+               AND     #(128*4)-1,D6        ;         (INC & MASK - KEEP INSIDE POCKET)
+               DBRA    D5,L_I_N_M_LOOP      ;         TRY AGAIN...
+;
+               CMP     D5,D5                ;IF DIDN'T FIND A SLOT, SET 'Z' & RET
+               MOVEM.L (A7)+,D5-D7/A0-A1
+               RTS
+;
+SLOT_NEW_MIDI  ; FOUND A HOME - SAVE THERE
+               MOVE.L  D7,0(A0,D6)
+               ADDQ    #1,NEW_MIDI_DEPTH    ;INC COUNT OF EVENTS IN HERE (AUTOMATIC NOT-Z)
+               ADDQ    #1,0(A1)             ; ALSO INC COUNT IN THIS SPECIFIC POCKET
+               MOVEQ   #1,D5                ;SET Z-FLAG FALSE TO INDICATE SUCCESSFUL LOG-IN.
+               MOVEM.L (A7)+,D5-D7/A0-A1
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             MIDI RECEIVES A MIDI NOTE OFF.  CALL THIS w/ D7.L = :
+;
+;                       1001 aaaa b ccc 0011 0ddddddd 00000000
+;
+;                      aaa = CHANNEL           b = A/B UART BIT (1=B)
+;                      ccc = TRACKNUM    ddddddd = KEYNUM
+;
+;             TRIES TO FIND A MATCH IN NEW_MIDI_DIRECTORY (NEW_MIDI_1A -> NEW_MIDI_16B).  IF NOT
+;              THERE, RET's w/ 'Z' CONDITON - ELSE, NOT-Z, CLEARS OUT THE EVENT, AND DECs NEW_MIDI_DEPTH.
+;
+LOG_OUT_NEW_MIDI
+               MOVEM.L D4-D7/A0-A1,-(A7)    ;PROTECT REGISTERS
+;
+               MOVE.L  D7,D6                ;MAKE COPY
+               SWAP    D6                   ; ISOLATE CHANNEL & UART FOR FINDING SUB-POCKET.
+               AND.L   #0F80H,D6            ;  MASK CLEAN...
+               LSR     #5,D6                ;            ...AND ROTATE INTO A LONG-WORD OFFSET.
+               MOVE.L  #NEW_MIDI_DIRECTORY,A0    ;POINT TO START OF SUB-POCKET.
+               MOVE.L  0(A0,D6),A0
+;
+               MOVE.L  #N_M_D_1A,A1         ;POINT TO COUNT OF HOW MANY ON IN THIS SLOT
+               LSR     #1,D6                ; (WORD, NOT LONG OFFSET - KNOCK DOWN INDEX)
+               ADD.L   D6,A1                ;  A1 -> CORRECT COUNTER
+;
+               MOVE    D7,D6                ;ISOLATE & USE KEYNUM FOR SLOTTING
+               AND.L   #0FF00H,D6           ; MASK OUT VELOCITY
+               LSR     #6,D6                ; ROTATE DOWN INTO A LONG-WORD OFFSET
+;
+               MOVEQ   #127,D5              ;SUB-POCKET IS 128 SLOTS BIG - LOOK THRU ALMOST ALL
+               AND.L   #0FF0FF00H,D7        ;MASK OUT STAT, ID, AND VELOCITY FOR MATCHING
+L_O_N_M_LOOP
+               MOVE.L  0(A0,D6),D4          ;GRAB EVENT IN THIS SLOT
+               AND.L   #0FF0FF00H,D4        ; MASK OUT STAT, ID, AND VELOCITY FOR MATCHING
+               CMP.L   D4,D7                ;  WELL - MATCH?
+               BEQ.S   UNSLOT_NEW_MIDI      ;    IF YES, COOL!
+               ADDQ    #4,D6                ;         ELSE, CONTINUE SEARCH
+               AND     #(128*4)-1,D6        ;         (INC & MASK - KEEP INSIDE POCKET)
+               DBRA    D5,L_O_N_M_LOOP      ;         TRY AGAIN...
+;
+               CMP     D5,D5                ;IF DIDN'T IT, SET 'Z' & RET
+               MOVEM.L (A7)+,D4-D7/A0-A1
+               RTS
+;
+UNSLOT_NEW_MIDI ; FOUND IT - ERASE IT.
+               CLR.L   0(A0,D6)
+               SUBQ    #1,NEW_MIDI_DEPTH    ;DEC COUNT OF EVENTS IN HERE
+               SUBQ    #1,0(A1)             ; ALSO DEC COUNT FOR THIS SPECIFIC SUBPOCKET
+               MOVEQ   #1,D5                ;  (BLOW AWAY 'Z' FLAG)
+               MOVEM.L (A7)+,D4-D7/A0-A1
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+                SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; SEQUENCER PLAYBACK ENCOUNTERS A PAD ON.  CALL THIS w/ D7.L = :
+;
+;           aaa bbbbb c ddd 0001 0 eeeee fffff ggggg
+;
+;          aaa = PADNUM        bbbbb = SAMPLE NUMBER
+;            c = ALT PARAM BIT   ddd = TRACKNUM
+;        eeeee = PITCH         fffff = PAN
+;                   ggggg = VELOCITY
+;
+; (TRIES TO) STORE EVENT IN OLD_PAD_BUFS, IN ONE OF 8 PAD SUB-POCKETS.
+; RETURNS Z-FLAG FALSE TO INDICATE SUCCESSFUL LOG-IN - IN THIS CASE,
+; BOTH OVERALL AND SPECIFIC SUB-POCKET BUFFER COUNTS ARE INCREMENTED.
+; IF THE SUB-POCKET FOR THIS PAD IS ALREADY FULL (32 EVENTS!), RETURNS
+; Z-FLAG TRUE.
+;
+; IMPORTANT NOTE:
+; EVENTS WHICH COME IN WITH VELOCITY = 0 ARE REJECTED (RETURNS "Z") -
+; THIS IS DONE AS SHIELDING AGAINST BOGUS SEQUENCE DATA SUSPECTED OF
+; BEING CAUSED BY SOME SORT OF BUG IN ONE OF THE MIDI-TO-PADS MAPPING
+; SYSTEMS - EVEN IF THIS BUG IS FIXED, BOGUS SEQUENCE DATA WILL REMAIN.
+;
+; ALL REGISTERS ARE PRESERVED.
+;
+LOG_IN_OLD_PAD
+               MOVEM.L D5-D7/A0-A1,-(A7)    ;PROTECT REGISTERS
+;
+               MOVE.L  D7,D6                ;MAKE COPY OF EVENT.
+               AND     #1FH,D6              ;HOW ABOUT THAT NOTE-ON VELOCITY?
+               BEQ.S   LIOP_NFG_EXIT        ;EXIT IF ZERO (AS DISCUSSED ABOVE).
+               SWAP    D6                   ;COOL - MAKE PAD NUMBER INTO LONG-WORD OFFSET.
+               ROL     #5,D6
+               AND     #1CH,D6
+               MOVE    D6,A0                ;USE OFFSET TO LOOK UP POINTER TO PAD'S SUB-POCKET.
+               ADD.L   #OLD_PAD_DIRECTORY,A0
+               MOVE.L  (A0),A0              ;FETCH POINTER TO OLD PAD SUB-POCKET FOR THIS PAD.
+;
+               MOVE    #O_P_D_1,A1          ;POINT TO COUNT OF HOW MANY ON IN THIS SLOT
+               LSR     #1,D6                ; (WORD, NOT LONG OFFSET - KNOCK DOWN INDEX)
+               ADD     D6,A1                ;  A1 -> CORRECT COUNTER
+;
+               MOVE.L  D7,D6                ;ISOLATE & USE SAMPLE NUMBER FOR SLOTTING
+               SWAP    D6                   ; WORK ON UPPER WORD (LOWER IT)
+               LSR     #6,D6
+               AND     #7CH,D6
+;
+               MOVEQ   #31,D5               ;SUB-POCKET IS 32 SLOTS BIG - LOOK ALL, IF NEEDED
+L_I_O_P_LOOP
+               TST     0(A0,D6)             ;SOMEONE OCCUPYING THIS SLOT?
+               BEQ.S   SLOT_OLD_PAD         ;    IF NO, FOUND OUR HOME
+               ADDQ    #4,D6                ;         ELSE, LOOK AT NEXT SLOT
+               AND     #(32*4)-1,D6         ;         (INC & MASK - KEEP INSIDE POCKET)
+               DBRA    D5,L_I_O_P_LOOP      ;         TRY AGAIN...
+;
+LIOP_NFG_EXIT
+               CMP     D5,D5                ;SUB-POCKET FULL, OR EVENT IS BOGUS - RETURN "Z" TRUE.
+               MOVEM.L (A7)+,D5-D7/A0-A1
+               RTS
+;
+SLOT_OLD_PAD   ; FOUND A HOME - SAVE THERE
+               MOVE.L  D7,0(A0,D6)
+               ADDQ    #1,OLD_PAD_DEPTH     ;INC COUNT OF EVENTS IN HERE (AUTOMATIC NOT-Z)
+               ADDQ    #1,0(A1)             ; ALSO INC COUNT IN THIS SPECIFIC POCKET
+               MOVEQ   #1,D5                ;SET Z-FLAG FALSE TO INDICATE SUCCESSFUL LOG-IN.
+               MOVEM.L (A7)+,D5-D7/A0-A1
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+                SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             SEQUENCER PLAYBACK ENCOUNTERS A PAD OFF.  CALL THIS w/ D7.L = :
+;
+;                       aaa bbbbb c ddd 0001 0 eeeee fffff ggggg
+;
+;                      aaa = PADNUM        bbbbb = SAMPLE NUMBER
+;                        c = ALT PARAM BIT   ddd = TRACKNUM
+;                    eeeee = PITCH         fffff = PAN
+;                               ggggg = VELOCITY
+;
+;             TRIES TO FIND A MATCH IN NEW_PAD_DIRECTORY (OLD_PAD_1 -> OLD_PAD_8).  IF NOT
+;              THERE, RET's w/ 'Z' CONDITON - ELSE, NOT-Z, CLEARS OUT THE EVENT, AND DECs NEW_MIDI_DEPTH.
+;
+LOG_OUT_OLD_PAD
+               MOVEM.L D4-D7/A0-A1,-(A7)    ;PROTECT REGISTERS
+;
+               MOVE.L  D7,D6                ;MAKE COPY
+               CLR     D6                   ;FASTER VERSION OF ABOVE ....
+               ROL.L   #5,D6                ;PAD NUMBER BECOMES LONG-WORD OFFSET.
+               AND.L   #1CH,D6              ;  (MASK OUT LOWER BITS)
+               MOVE    D6,A0
+               ADD.L   #OLD_PAD_DIRECTORY,A0
+               MOVE.L  (A0),A0              ;FETCH POINTER TO OLD PAD SUB-POCKET FOR THIS PAD.
+;
+               MOVE.L  #O_P_D_1,A1          ;POINT TO COUNT OF HOW MANY ON IN THIS SLOT
+               LSR     #1,D6                ; (WORD, NOT LONG OFFSET - KNOCK DOWN INDEX)
+               ADD.L   D6,A1                ;  A1 -> CORRECT COUNTER
+;
+               MOVE.L  D7,D6                ;ISOLATE & USE SAMPLE NUMBER FOR SLOTTING
+               SWAP    D6                   ; WORK ON UPPER WORD (LOWER IT)
+               AND.L   #1F00H,D6            ;  MASK CLEAN
+               LSR     #6,D6                ;   ROTATE DOWN INTO A LONG-WORD OFFSET
+;
+               MOVEQ   #31,D5               ;SUB-POCKET IS 32 SLOTS BIG - LOOK ALL, IF NEEDED
+               BCLR    #17,D7               ;NULL OUT PAD-OFF ID FOR MATCHING TO PAD-ON EVENT.
+L_O_O_P_LOOP
+               MOVE.L  0(A0,D6),D4          ;EXTRACT EVENT FOR INSPECTION
+               BEQ.S   LOOP_EMPTY_SLOT      ;IF SLOT EMPTY, SKIP IT.
+               BCLR    #16,D4               ;NULL OUT PAD-ON ID FOR MATCHING.
+               CMP.L   D4,D7                ;  MATCH?
+               BEQ.S   UNSLOT_OLD_PAD       ;    IF YES, THEN CLEAR OUT
+LOOP_EMPTY_SLOT
+               ADDQ    #4,D6                ;         ELSE, CONTINUE SEARCH
+               AND     #(32*4)-1,D6         ;         (INC & MASK - KEEP INSIDE POCKET)
+               DBRA    D5,L_O_O_P_LOOP      ;         TRY AGAIN...
+;
+               CMP     D5,D5                ;IF DIDN'T FIND A SLOT, SET 'Z' & RET
+               MOVEM.L (A7)+,D4-D7/A0-A1
+               RTS
+;
+UNSLOT_OLD_PAD ; FOUND IT - KILL IT.
+               CLR.L   0(A0,D6)
+               SUBQ    #1,OLD_PAD_DEPTH     ;DEC COUNT OF EVENTS IN HERE (AUTOMATIC NOT-Z)
+               SUBQ    #1,0(A1)             ; ALSO DEC COUNT IN THIS SPECIFIC POCKET
+               MOVEQ   #1,D4                ;  SET AS 'NOT-Z'
+               MOVEM.L (A7)+,D4-D7/A0-A1
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+                SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; LIVE PLAYING PRODUCES A PAD ON.  CALL THIS w/ D7.L = :
+;
+;           aaa bbbbb c ddd 0001 0 eeeee fffff ggggg
+;
+;          aaa = PADNUM        bbbbb = SAMPLE NUMBER
+;            c = ALT PARAM BIT   ddd = TRACKNUM
+;        eeeee = PITCH         fffff = PAN
+;                   ggggg = VELOCITY
+;
+; (TRIES TO) STORE EVENT IN NEW_PAD_BUFS, IN ONE OF 8 PAD SUB-POCKETS.
+; RETURNS Z-FLAG FALSE TO INDICATE SUCCESSFUL LOG-IN - IN THIS CASE,
+; BOTH OVERALL AND SPECIFIC SUB-POCKET BUFFER COUNTS ARE INCREMENTED.
+; IF THE SUB-POCKET FOR THIS PAD IS ALREADY FULL (8 EVENTS!), RETURNS
+; Z-FLAG FALSE.
+;
+; NOTE: EVENTS WITH VELOCITY = 0 ARE IGNORED, JUST OUT OF SPITE.
+;
+;
+LOG_IN_NEW_PAD
+               MOVEM.L D5-D7/A0-A1,-(A7)    ;PROTECT REGISTERS
+;
+               MOVE.L  D7,D6                ;MAKE COPY
+               AND     #1FH,D6              ;HOW ABOUT THAT NOTE-ON VELOCITY?
+               BEQ.S   LINP_NFG_EXIT        ;EXIT IF ZERO (AS DISCUSSED ABOVE).
+               SWAP    D6                   ;COOL - MAKE PAD NUMBER INTO LONG-WORD OFFSET.
+               ROL     #5,D6
+               AND     #1CH,D6
+               MOVE    D6,A0                ;USE OFFSET TO LOOK UP POINTER TO PAD'S SUB-POCKET.
+               ADD.L   #NEW_PAD_DIRECTORY,A0
+               MOVE.L  (A0),A0              ;FETCH POINTER TO OLD PAD SUB-POCKET FOR THIS PAD.
+;
+               MOVE    #N_P_D_1,A1          ;POINT TO COUNT OF HOW MANY ON IN THIS SLOT
+               LSR     #1,D6                ; (WORD, NOT LONG OFFSET - KNOCK DOWN INDEX)
+               ADD     D6,A1                ;  A1 -> CORRECT COUNTER
+;
+               MOVE.L  D7,D6                ;ISOLATE & USE SAMPLE NUMBER MODULA 8 FOR SLOTTING
+               SWAP    D6                   ; WORK ON UPPER WORD (LOWER IT)
+               LSR     #6,D6
+               AND     #1CH,D6
+;
+               MOVEQ   #7,D5                ;SUB-POCKET IS 8 SLOTS BIG - LOOK ALL, IF NEEDED
+L_I_N_P_LOOP
+               TST     0(A0,D6)             ;SOMEONE OCCUPYING THIS SLOT?
+               BEQ.S   SLOT_NEW_PAD         ;    IF NO, FOUND OUR HOME
+               ADDQ    #4,D6                ;         ELSE, LOOK AT NEXT SLOT
+               AND     #(8*4)-1,D6          ;         (INC & MASK - KEEP INSIDE POCKET)
+               DBRA    D5,L_I_N_P_LOOP      ;         TRY AGAIN...
+;
+LINP_NFG_EXIT
+               CMP     D5,D5                ;SUB-POCKET FULL, OR EVENT IS BOGUS - RETURN "Z" TRUE.
+               MOVEM.L (A7)+,D5-D7/A0-A1
+               RTS
+;
+SLOT_NEW_PAD   ; FOUND A HOME - SAVE THERE
+               MOVE.L  D7,0(A0,D6)
+               ADDQ    #1,NEW_PAD_DEPTH     ;INC COUNT OF EVENTS IN HERE (AUTOMATIC NOT-Z)
+               ADDQ    #1,0(A1)             ; ALSO IN COUNT FOR THIS SPECIFIC POCKET
+               MOVEQ   #1,D5                ;SET Z-FLAG FALSE TO INDICATE SUCCESSFUL LOG-IN.
+               MOVEM.L (A7)+,D5-D7/A0-A1
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+                SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             LIVE PLAYING PRODUCES A PAD OFF.  CALL THIS w/ D7.L = :
+;
+;                       aaa bbbbb c ddd 0001 0 eeeee fffff ggggg
+;
+;                      aaa = PADNUM        bbbbb = SAMPLE NUMBER
+;                        c = ALT PARAM BIT   ddd = TRACKNUM
+;                    eeeee = PITCH         fffff = PAN
+;                               ggggg = VELOCITY
+;
+;             TRIES TO FIND A MATCH IN NEW_PAD_DIRECTORY (NEW_PAD_1 -> NEW_PAD_8).  IF NOT
+;              THERE, RET's w/ 'Z' CONDITON - ELSE, NOT-Z, CLEARS OUT THE EVENT, AND DECs NEW_MIDI_DEPTH.
+;
+LOG_OUT_NEW_PAD
+               MOVEM.L D4-D7/A0-A1,-(A7)    ;PROTECT REGISTERS
+;
+               MOVE.L  D7,D6                ;MAKE COPY
+               CLR     D6                   ;FASTER VERSION OF ABOVE ....
+               ROL.L   #5,D6                ;PAD NUMBER BECOMES LONG-WORD OFFSET.
+               AND.L   #1CH,D6              ;  (MASK OUT LOWER BITS)
+               MOVE    D6,A0
+               ADD.L   #NEW_PAD_DIRECTORY,A0
+               MOVE.L  (A0),A0              ;FETCH POINTER TO OLD PAD SUB-POCKET FOR THIS PAD.
+;
+               MOVE.L  #N_P_D_1,A1          ;POINT TO COUNT OF HOW MANY ON IN THIS SLOT
+               LSR     #1,D6                ; (WORD, NOT LONG OFFSET - KNOCK DOWN INDEX)
+               ADD.L   D6,A1                ;  A1 -> CORRECT COUNTER
+;
+               MOVE.L  D7,D6                ;ISOLATE & USE SAMPLE NUMBER MODULA 8 FOR SLOTTING
+               SWAP    D6                   ; WORK ON UPPER WORD (LOWER IT)
+               AND.L   #0700H,D6            ;  MASK CLEAN
+               LSR     #6,D6                ;   ROTATE DOWN INTO A LONG-WORD OFFSET
+;
+               MOVEQ   #7,D5                ;SUB-POCKET IS 8 SLOTS BIG - LOOK ALL, IF NEEDED
+               BCLR    #17,D7               ;NULL OUT PAD-OFF ID FOR MATCHING TO PAD-ON EVENT.
+L_O_N_P_LOOP
+               MOVE.L  0(A0,D6),D4          ;EXTRACT EVENT FOR INSPECTION
+               BEQ.S   LONP_EMPTY_SLOT      ;IF SLOT EMPTY, SKIP IT.
+               BCLR    #16,D4               ;NULL OUT PAD-ON ID FOR MATCHING.
+               CMP.L   D4,D7                ;  MATCH?
+               BEQ.S   UNSLOT_NEW_PAD       ;    IF YES, THEN CLEAR OUT
+LONP_EMPTY_SLOT
+               ADDQ    #4,D6                ;         ELSE, CONTINUE SEARCH
+               AND     #(8*4)-1,D6          ;         (INC & MASK - KEEP INSIDE POCKET)
+               DBRA    D5,L_O_N_P_LOOP      ;         TRY AGAIN...
+;
+               CMP     D5,D5                ;IF DIDN'T FIND A SLOT, SET 'Z' & RET
+               MOVEM.L (A7)+,D4-D7/A0-A1
+               RTS
+;
+UNSLOT_NEW_PAD ; FOUND IT - KILL IT.
+               CLR.L   0(A0,D6)
+               SUBQ    #1,NEW_PAD_DEPTH     ;DEC COUNT OF EVENTS IN HERE (AUTOMATIC NOT-Z)
+               SUBQ    #1,0(A1)             ; ALSO DEC HOW MANY EVENTS LEFT IN THIS SPECIFIC POCKET
+               MOVEQ   #1,D4                ; SET AS 'NOT-Z'
+               MOVEM.L (A7)+,D4-D7/A0-A1
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+                SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; MIDI IS FAKING PADS, AND HAS ENCOUNTERED A PAD OFF.  UNFORTUNATELY, MIDI ONLY KNOWS
+;  THE PADNUM (IN D0) AND THE PITCH (IN D1).  TRY TO MATCH THAT.  REMEBER THAT THE DATA
+;  IN THE NOTES_CURRENTLY_ON LIST LOOKS LIKE:
+;
+;           aaa bbbbb c ddd 0001 0 eeeee fffff ggggg
+;
+;          aaa = PADNUM        bbbbb = SAMPLE NUMBER
+;            c = ALT PARAM BIT   ddd = TRACKNUM
+;        eeeee = PITCH         fffff = PAN
+;                   ggggg = VELOCITY
+;
+; TRIES TO FIND A MATCH IN NEW_PAD_DIRECTORY (NEW_PAD_1A -> NEW_PAD_16B).  IF NOT
+;  THERE, RET's w/ 'Z' CONDITON - ELSE, NOT-Z, CLEARS OUT THE EVENT, AND DECs NEW_MIDI_DEPTH.
+;
+; ALSO RETURN WITH IMAGE OF FULL PAD-ON IN D7.L, FOR CONVERTING TO A PAD OFF & WRITING.
+;
+; IN THIS CASE (MIDI POSING AS A PAD) WE DON'T KNOW WHAT VELOCITY WE ARE
+; TRYING TO MATCH, THUS WE MUST IGNORE VELOCITY ALTOGETHER.
+;
+LOG_OUT_PITCH_NEW_PAD
+               MOVEM.L D0-D4/A0-A1,-(A7)    ;PROTECT REGISTERS
+;
+               AND     #7,D0                ;CLEAN UP WORD PADNUM HIDING IN
+               MOVE    D1,D2                ; MAKE COPY OF PITCH FOR MATCHING
+               ROR     #6,D2                ;  PRE-ROTATE PITCH FOR MATCHING
+               AND     #7C00H,D2            ;JUST TO BE SAFE - WIPE OUT ANY OTHER TRASH HERE.
+;
+               MOVE    #N_P_D_1,A1          ;POINT TO COUNT OF HOW MANY ON IN THIS SLOT -
+               ADD     D0,D0                ;CONVERT PAD NUMBER TO WORD OFFSET.
+               ADD     D0,A1                ;  A1 -> CORRECT COUNTER
+;
+               ADD     D0,D0                ;NOW - PAD NUMBER BECOMES LONG-WORD OFFSET -
+               MOVE.L  #NEW_PAD_DIRECTORY,A0
+               MOVE.L  0(A0,D0),A0          ;OKAY - A0 POINTS TO POCKET FOR THIS PAD.
+;
+               AND     #7,D1                ;SINCE 8 SLOTS, START w/ PITCH MODULA 8
+               LSL     #2,D1                ; TURN PITCH INTO LONG-WORD OFFSET TO START SEARCH
+               MOVEQ   #7,D4                ;  SEARCH 8 SLOTS FOR THIS SUCKER
+;
+;
+; AT THIS POINT, KNOW PAD MATCHES - THAT's WHAT WE'RE DOING IN THIS POCKET.  LOOKING TO MATCH PITCH -
+;
+PITCH_PAD_SEEK
+               MOVE    2(A0,D1),D3          ;GET WORD WITH PITCH IN IT
+               BEQ.S   TRY_AGAIN_CHARLIE    ;IF SLOT EMPTY (VELOCITY MUST BE NON-ZERO), SKIP IT.
+               AND     #7C00H,D3            ; MASK OUT UNWANTED GARBAGE
+               CMP     D2,D3                ;PITCH MATCH?
+               BEQ.S   UNSLOT_PITCH_NEW_PAD ;    IF YES, COOL
+TRY_AGAIN_CHARLIE
+               ADDQ    #4,D1                ;         ELSE, CONTINUE SEARCH...
+               AND     #(8*4)-1,D1          ;         (INC & WRAP)
+               DBRA    D4,PITCH_PAD_SEEK
+;
+               CMP     D4,D4                ;IF NO FIND, SET 'Z' AND SPLIT!
+               MOVEM.L (A7)+,D0-D4/A0-A1
+               RTS
+;
+UNSLOT_PITCH_NEW_PAD
+               SUBQ    #1,NEW_PAD_DEPTH     ;DEC COUNT OF RESIDENTS
+               SUBQ    #1,0(A1)             ; ALSO DEC COUNT OF RESIDENTS IN SPECIFIC CELL BLOCK
+               MOVE.L  0(A0,D1),D7          ;  EXTRACT COPY OF FULL EVENT, FOR WRITING TO SEQUENCER
+               ADD.L   #10000H,D7           ;  BUMP TYPE TO A PAD OFF
+               CLR.L   0(A0,D1)             ;  AND CLEAR OUT OF LIST
+               MOVEQ   #1,D0                ;   SET 'NOT-Z' AND GO HOME.
+               MOVEM.L (A7)+,D0-D4/A0-A1
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+                SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; MIDI IS FAKING PADS, AND HAS ENCOUNTERED A PAD OFF.  UNFORTUNATELY, MIDI ONLY KNOWS
+;  THE PADNUM (IN D0 AND D1 - MAPPED CASE).  TRY TO MATCH THAT.  REMEBER THAT THE DATA
+;  IN THE NOTES_CURRENTLY_ON LIST LOOKS LIKE:
+;
+;           aaa bbbbb c ddd 0001 0 eeeee fffff ggggg
+;
+;          aaa = PADNUM        bbbbb = SAMPLE NUMBER
+;            c = ALT PARAM BIT   ddd = TRACKNUM
+;        eeeee = PITCH         fffff = PAN
+;                   ggggg = VELOCITY
+;
+; TRIES TO FIND A MATCH IN NEW_PAD_DIRECTORY (NEW_PAD_1A -> NEW_PAD_16B).  IF NOT
+;  THERE, RET's w/ 'Z' CONDITON - ELSE, NOT-Z, CLEARS OUT THE EVENT, AND DECs NEW_MIDI_DEPTH.
+;
+; ALSO RETURN WITH IMAGE OF FULL PAD-ON IN D7.L, FOR CONVERTING TO A PAD OFF & WRITING.
+;
+; IN THIS CASE (MIDI POSING AS A PAD) WE DON'T KNOW WHAT VELOCITY WE ARE
+; TRYING TO MATCH, THUS WE MUST IGNORE VELOCITY ALTOGETHER.
+; THIS BEING MAPPED-MODE AUTOREPEAT, WE DON'T EVEN KNOW THE PITCH WE ARE
+; TRYING TO MATCH .... YOIKS!
+;
+LOG_OUT_PAD_NEW_PAD
+               MOVEM.L D0-D4/A0-A1,-(A7)    ;PROTECT REGISTERS
+;
+               AND     #7,D0                ;CLEAN UP WORD PADNUM HIDING IN
+               MOVE    D0,D2                ;  COPY OF PAD FOR MATCHING
+               ROR     #3,D2                ;   PRE-ROTATE PADNUM FOR MATCHING
+;
+               MOVE    #N_P_D_1,A1          ;POINT TO COUNT OF HOW MANY ON IN THIS SLOT -
+               ADD     D0,D0                ;CONVERT PAD NUMBER TO WORD OFFSET.
+               ADD     D0,A1                ;  A1 -> CORRECT COUNTER
+;
+               ADD     D0,D0                ;NOW - PAD NUMBER BECOMES LONG-WORD OFFSET -
+               MOVE.L  #NEW_PAD_DIRECTORY,A0
+               MOVE.L  0(A0,D0),A0          ;OKAY - A0 POINTS TO POCKET FOR THIS PAD.
+;
+;21JUL               LSL     #2,D0                ;FIRST - FIND SUB-POCKET WITH THE PADNUM (LONG WORD OFFSET)
+;21JUL               MOVE.L  #NEW_PAD_DIRECTORY,A0
+;21JUL               MOVE.L  0(A0,D0),A0          ;OKAY - POINTING TO SUB-POCKET
+;21JUL;
+;21JUL               MOVE.L  #N_P_D_1,A1          ;POINT TO COUNT OF HOW MANY ON IN THIS SLOT
+;21JUL               LSR     #1,D0                ; (WORD, NOT LONG OFFSET - KNOCK DOWN INDEX)
+;21JUL               ADD.L   D0,A1                ;  A1 -> CORRECT COUNTER
+;
+               CLR.L   D1
+               MOVEQ   #7,D4                ;SEARCH 8 SLOTS FOR THIS SUCKER
+;
+;
+; AT THIS POINT, KNOW PAD MATCHES - THAT's WHAT WE'RE DOING IN THIS POCKET.  LOOKING TO MATCH PITCH -
+; (SO, THEORETICALLY, ALL WE CAN LOOK FOR IS A NON-EMPTY SLOT ....
+; WE HAVE NO OTHER MATCH KEY ..... RIGHT?)
+;
+PAD_PAD_SEEK
+               MOVE    0(A0,D1),D3          ;GET WORD WITH PITCH IN IT
+               BEQ.S   CHARLIE_TRY_AGAIN    ;IF SLOT EMPTY (EVENT ID MUST BE NON-ZERO), SKIP IT.
+               AND     #0E000H,D3           ; MASK OUT UNWANTED GARBAGE
+               CMP     D2,D3                ;PAD NUMBER MATCH?
+                                            ; (SORT OF ABSURD - HOW COULD IT NOT?)
+               BEQ.S   UNSLOT_PAD_NEW_PAD   ;    IF YES, COOL
+CHARLIE_TRY_AGAIN
+               ADDQ    #4,D1                ;         ELSE, CONTINUE SEARCH...
+               AND     #(8*4)-1,D1          ;         (INC & WRAP)
+               DBRA    D4,PAD_PAD_SEEK
+;
+               CMP     D4,D4                ;IF NO FIND, SET 'Z' AND SPLIT!
+               MOVEM.L (A7)+,D0-D4/A0-A1
+               RTS
+;
+UNSLOT_PAD_NEW_PAD
+               SUBQ    #1,NEW_PAD_DEPTH     ;DEC COUNT OF RESIDENTS
+               SUBQ    #1,0(A1)             ; ALSO DEC COUNT OF RESIDENTS IN SPECIFIC CELL BLOCK
+               MOVE.L  0(A0,D1),D7          ;  EXTRACT COPY OF FULL EVENT, FOR WRITING TO SEQUENCER
+               ADD.L   #10000H,D7           ;  BUMP TYPE UP TO A PAD OFF
+               CLR.L   0(A0,D1)             ;  AND CLEAR OUT OF LIST
+               MOVEQ   #1,D0                ;   SET 'NOT-Z' AND GO HOME.
+               MOVEM.L (A7)+,D0-D4/A0-A1
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               TITLE   "MIDI_CURRENTLY_ON UTILITIES"
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             AND NOW FOR THE UTILITIES TO DO SUDDEN THINGS WITH THE ABOVE LISTS.
+;
+;             THEY WERE OPTIMISED 10/28 FOR SPEED BY LOOKING AT HOW MANY EVENTS ARE ON WITIHIN
+;              EACH SUB-POCKET.  THIS MAKES THE ROUTINES A BIT MORE UNWEIDLY, BUT CUTS DOWN ON
+;              THE SIZE OF BLIND SEARCHES.
+;
+;             ALL ARE FAIRLY CARELESS ABOUT REGISTER USEAGE.
+;
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             UTILITIES FOR MIDI NOTES.  INCLUDE FLUSHING THE LISTS, STUFFING LINGERING NOTES TO
+;              THE SEQUENCER AS NOTE ONS OR OFFS, AND STUFFING LINGERING SEQUENCER NOTES TO MIDI
+;              AS ONS OR OFFS.
+;
+;
+;
+; BRUTE-FORCE WIPE-CLEAN OF ALL NOTE-ON BUFFERS:
+;
+BLIND_FLUSH_NOTE_BUFS
+               BSR.S   BLIND_FLUSH_O_M      ;FLATTEN "OLD" MIDI BUFFER.
+               BSR.S   BLIND_FLUSH_N_M      ;FLATTEN "NEW" MIDI BUFFER.
+               BSR     BLIND_FLUSH_O_P      ;FLATTEN "OLD" PADS BUFFER.
+               BRA     BLIND_FLUSH_N_P      ;FLATTEN "NEW" PADS BUFFER - RETURN THROUGH.
+;
+;
+;
+;;;;;;;;;;
+FLUSH_OLD_MIDI         ; CLEAR OUT ENTIRE LIST OF SEQUENCER MIDI NOTES CURRENTLY ON.
+               TST     OLD_MIDI_DEPTH       ;ANYBODY HOME?
+               BEQ.S   EXIT_FLUSH_O_M       ;    IF NOT, SPLIT
+BLIND_FLUSH_O_M
+               CLR     OLD_MIDI_DEPTH       ;   CLEAR COUNT (NOTE - IF YOU ENTER BELOW, THIS BLOWN)
+               MOVEQ   #15,D1               ;     WOMP INDIVIDUAL POCKET COUNTS
+               MOVEQ   #0,D2
+               MOVE    #O_M_D_1A,A0
+WOMP_O_M_LOOP
+               CLR.L   0(A0,D2)
+               ADDQ    #4,D2
+               DBRA    D1,WOMP_O_M_LOOP
+;
+               MOVE.L  #OLD_MIDI_BUFS,A0    ;START AT FIRST SUB-POCKET
+               CLR.L   D1                   ; START AT FIRST SLOT
+               MOVE    #(32*128)-1,D2       ;  DESIRE TO CLEAR OUT 32 POCKETS OF 128 SLOTS EACH
+;
+L_FLUSH_OLD_MIDI
+               CLR.L   0(A0,D1)             ;CLEAR EVENT
+               ADDQ.L  #4,D1                ; INC UP TO THE NEXT ONE
+               DBRA    D2,L_FLUSH_OLD_MIDI  ;  GO 'TILL DONE
+EXIT_FLUSH_O_M
+               RTS
+;
+;
+;;;;;;;;;;
+FLUSH_NEW_MIDI         ; CLEAR OUT ENTIRE LIST OF NEW, LIVE MIDI NOTES CURRENTLY ON.
+               TST     NEW_MIDI_DEPTH       ;ANYBODY HOME?
+               BEQ.S   EXIT_FLUSH_N_M       ;    IF NOT, SPLIT
+BLIND_FLUSH_N_M
+               CLR     NEW_MIDI_DEPTH       ;   CLEAR COUNT (NOTE - IF YOU ENTER BELOW, THIS BLOWN)
+               MOVEQ   #15,D1               ;     WOMP INDIVIDUAL POCKET COUNTS
+               MOVEQ   #0,D2
+               MOVE    #N_M_D_1A,A0
+WOMP_N_M_LOOP
+               CLR.L   0(A0,D2)
+               ADDQ    #4,D2
+               DBRA    D1,WOMP_N_M_LOOP
+;
+               MOVE.L  #NEW_MIDI_BUFS,A0    ;START AT FIRST SUB-POCKET
+               CLR.L   D1                   ; START AT FIRST SLOT
+               MOVE    #(32*128)-1,D2       ;  DESIRE TO CLEAR OUT 32 POCKETS OF 128 SLOTS EACH
+;
+L_FLUSH_NEW_MIDI
+               CLR.L   0(A0,D1)             ;CLEAR EVENT
+               ADDQ.L  #4,D1                ; INC UP TO THE NEXT ONE
+               DBRA    D2,L_FLUSH_NEW_MIDI  ;GO 'TILL DONE
+EXIT_FLUSH_N_M
+               RTS
+;
+;
+;;;;;;;;;;
+WRITE_OLD_M_OFFS       ; FOR TAKING LINGERING SEQUENCER MIDI ON's, TURNING THEM INTO OFF's, AND
+;WRITING THEM TO THE SEQUENCER.  ASSUMES THAT YOU HAVE ALREADY INITIALIZED THE SEQ_WRITE.
+;
+;              FLUSHES THE LIST!!!!
+;
+; NOTE - IF WE RAN OUT OF SEQUENCE MEMORY, RETURNS AT THAT POINT w/ 'Z' - ELSE, 'NOT-Z'.
+;
+               MOVE.L  SEQ_WR_PTR,A6        ;SET UP WRITE POINTER
+;
+               MOVE.L  #OLD_MIDI_BUFS,A0    ;POINT TO FIRST POCKET
+               MOVE.L  #O_M_D_1A,A1         ; POINT TO COUNT IN FIRST POCKET
+               BRA.S   DOWN_11              ;  JUMP IN & GO
+L_DOWN_11
+               ADD.L   #(128*4),A0          ;POINT TO NEXT POCKET
+               CMP.L   #END_OF_OLD_MIDI,A0  ; IF PAST LAST POCKET
+               BEQ.S   DOORS_21             ;    THEN QUIT
+               ADD.L   #2,A1                ;POINT TO COUNT IN NEXT POCKET
+DOWN_11
+               TST     OLD_MIDI_DEPTH       ;ANYBODY LEFT OVERALL?
+               BEQ.S   DOORS_21             ;    IF NOT, SPLIT NOW
+;
+               MOVE    0(A1),D3             ;SEE HOW MANY IN THIS POCKET
+               BEQ.S   L_DOWN_11            ;    IF NONE, THEN MOVE ON TO THE NEXT POCKET
+;
+               MOVEQ   #0,D1                ;INIT SLOT POINTER OFFSET
+               MOVEQ   #127,D2              ; INIT SLOT COUNTDOWN
+L_DOWN_12
+               MOVE.L  0(A0,D1),D7          ;EXTRACT EVENT FORM LIST
+               BEQ.S   DOORS_1              ;    IF EMPTY SLOT, MOVE ON
+               CLR.B   D7                   ;         ELSE, CONVERT TO NOTE OFF.  WOMP VELOCITY...
+               SWAP    D7
+               ADDQ    #1,D7                ;         AND BUMP ID UP TO NOTE OFF
+                ABS_LONG
+               JSR     SEQ_WRITE            ;         ELSE, WRITE TO SEQUENCER
+               SWAP    D7
+               JSR     SEQ_WRITE
+                ABS_SHORT
+               BNE.S   OUT_OF_ROOM_1        ;IF OUT OF ROOM, QUIT NOW & SAY SO.
+               CLR.L   0(A0,D1)             ;FLUSH EVENT OUT OF SLOT
+               SUBQ    #1,OLD_MIDI_DEPTH    ; ONE LESS EVENT OVERALL
+               SUBQ    #1,0(A1)             ;  RECORD ONE LESS EVENT IN THIS POCKET
+               BEQ     L_DOWN_11            ;   IF POCKET NOW EMPTY, MOVE ON TO NEXT
+DOORS_1
+               ADDQ.L  #4,D1                ;INDEX UP TO NEXT SLOT
+               DBRA    D2,L_DOWN_12         ; KEEP GOIN' THROUGHOUT POCKET
+               BRA     L_DOWN_11            ;  WHEN POCKET DONE, GO ON TO NEXT
+;
+DOORS_21
+               MOVE.L  A6,SEQ_WR_PTR        ;RESAVE UPDATED WRITE POINTER
+               MOVEQ   #1,D1                ;WHEN DONE, SET 'NOT-Z' AND SPLIT
+               RTS
+;
+;
+OUT_OF_ROOM_1  ;(ENTRY FOR RET w/ Z)
+               MOVE.L  A6,SEQ_WR_PTR        ;RESAVE UPDATED WRITE POINTER
+               CMP     D1,D1
+               RTS
+;
+;
+;
+;;;;;;;;;;
+D_WRITE_OLD_M_OFFS     ; FOR TAKING LINGERING SEQUENCER MIDI ON's, TURNING THEM INTO OFF's, AND
+;WRITING THEM TO THE SEQUENCER.  ASSUMES THAT YOU HAVE ALREADY INITIALIZED THE SEQ_WRITE.
+;
+;              DOESN'T FLUSH THE LIST!!!!
+;
+; NOTE - IF WE RAN OUT OF SEQUENCE MEMORY, RETURNS AT THAT POINT w/ 'Z' - ELSE, 'NOT-Z'.
+;
+               MOVE.L  SEQ_WR_PTR,A6        ;SET UP WRITE POINTER
+;
+               MOVE.L  #OLD_MIDI_BUFS,A0    ;POINT TO FIRST POCKET
+               MOVE.L  #O_M_D_1A,A1         ; POINT TO COUNT IN FIRST POCKET
+               BRA.S   DOWN_21              ;  JUMP IN & GO
+L_DOWN_21
+               ADD.L   #(128*4),A0          ;POINT TO NEXT POCKET
+               CMP.L   #END_OF_OLD_MIDI,A0  ; IF PAST LAST POCKET
+               BEQ.S   DOOR2_21             ;    THEN QUIT
+               ADD.L   #2,A1                ;POINT TO COUNT IN NEXT POCKET
+DOWN_21
+               TST     OLD_MIDI_DEPTH       ;ANYBODY LEFT OVERALL?
+               BEQ.S   DOOR2_21             ;    IF NOT, SPLIT NOW
+;
+               MOVE    0(A1),D3             ;SEE HOW MANY IN THIS POCKET
+               BEQ.S   L_DOWN_21            ;    IF NONE, THEN MOVE ON TO THE NEXT POCKET
+;
+               MOVEQ   #0,D1                ;INIT SLOT POINTER OFFSET
+               MOVEQ   #127,D2              ; INIT SLOT COUNTDOWN
+L_DOWN_22
+               MOVE.L  0(A0,D1),D7          ;EXTRACT EVENT FORM LIST
+               BEQ.S   DOOR2_2              ;    IF EMPTY SLOT, MOVE ON
+               CLR.B   D7                   ;         ELSE, CONVERT TO NOTE OFF.  WOMP VELOCITY...
+               SWAP    D7
+               ADDQ    #1,D7                ;         AND BUMP ID UP TO NOTE OFF
+                ABS_LONG
+               JSR     SEQ_WRITE            ;         ELSE, WRITE TO SEQUENCER
+               SWAP    D7
+               JSR     SEQ_WRITE
+                ABS_SHORT
+               BNE.S   OUT_OF_ROOM_2        ;IF OUT OF ROOM, QUIT NOW & SAY SO.
+DOOR2_2
+               ADDQ.L  #4,D1                ;INDEX UP TO NEXT SLOT
+               DBRA    D2,L_DOWN_22         ; KEEP GOIN' THROUGHOUT POCKET
+               BRA     L_DOWN_21            ;  WHEN POCKET DONE, GO ON TO NEXT
+;
+DOOR2_21
+               MOVE.L  A6,SEQ_WR_PTR        ;RESAVE UPDATED WRITE POINTER
+               MOVEQ   #1,D1                ;WHEN DONE, SET 'NOT-Z' AND SPLIT
+               RTS
+;
+;
+OUT_OF_ROOM_2  ;(ENTRY FOR RET w/ Z)
+               MOVE.L  A6,SEQ_WR_PTR        ;RESAVE UPDATED WRITE POINTER
+               CMP     D1,D1
+               RTS
+;
+;
+;
+;;;;;;;;;;
+WRITE_OLD_M_ONS        ; FOR TAKING LINGERING SEQUENCER MIDI ON's AND STUFFING THEM AS ON's
+;INTO THE SEQUENCER.  ASSUMES THAT YOU HAVE ALREADY INITIALIZED THE SEQ_WRITE.
+;
+;              DOES NOT FLUSH THE LIST!!!!!
+;
+; NOTE - IF WE RAN OUT OF SEQUENCE MEMORY, RETURNS AT THAT POINT w/ 'Z' - ELSE, 'NOT-Z'.
+;
+               MOVE.L  SEQ_WR_PTR,A6        ;SET UP WRITE POINTER
+;
+               MOVE.L  #OLD_MIDI_BUFS,A0    ;POINT TO FIRST POCKET
+               MOVE.L  #O_M_D_1A,A1         ; POINT TO COUNT IN FIRST POCKET
+               BRA.S   DOWN_31              ;  JUMP IN & GO
+L_DOWN_31
+               ADD.L   #(128*4),A0          ;POINT TO NEXT POCKET
+               CMP.L   #END_OF_OLD_MIDI,A0  ; IF PAST LAST POCKET
+               BEQ.S   DOWN_33              ;    THEN QUIT
+               ADD.L   #2,A1                ;POINT TO COUNT IN NEXT POCKET
+DOWN_31
+               TST     OLD_MIDI_DEPTH       ;ANYBODY LEFT OVERALL?
+               BEQ.S   DOWN_33              ;    IF NOT, SPLIT NOW
+;
+               MOVE    0(A1),D3             ;SEE HOW MANY IN THIS POCKET
+               BEQ.S   L_DOWN_31            ;    IF NONE, THEN MOVE ON TO THE NEXT POCKET
+;
+               MOVEQ   #0,D1                ;INIT SLOT POINTER OFFSET
+               MOVEQ   #127,D2              ; INIT SLOT COUNTDOWN
+L_DOWN_32
+               MOVE.L  0(A0,D1),D7          ;EXTRACT EVENT FROM LIST
+               BEQ.S   DOWN_34              ;    IF EMPTY SLOT, MOVE ON
+                ABS_LONG
+               SWAP    D7
+               JSR     SEQ_WRITE            ;         ELSE, WRITE TO SEQUENCER
+               SWAP    D7
+               JSR     SEQ_WRITE
+                ABS_SHORT
+               BNE.S   OUT_OF_ROOM_3        ;IF OUT OF ROOM, QUIT NOW & SAY SO.
+DOWN_34
+               ADDQ.L  #4,D1                ;INDEX UP TO NEXT SLOT
+               DBRA    D2,L_DOWN_32         ; KEEP GOIN' THROUGHOUT POCKET
+               BRA     L_DOWN_31            ;  WHEN POCKET DONE, GO ON TO NEXT
+;
+DOWN_33
+               MOVE.L  A6,SEQ_WR_PTR        ;RESAVE UPDATED WRITE POINTER
+               MOVEQ   #1,D1                ;WHEN DONE, SET 'NOT-Z' AND SPLIT
+               RTS
+;
+;
+OUT_OF_ROOM_3  ;(ENTRY FOR RET w/ Z)
+               MOVE.L  A6,SEQ_WR_PTR        ;RESAVE UPDATED WRITE POINTER
+               CMP     D1,D1
+               RTS
+;
+;
+;;;;;;;;;;
+WRITE_NEW_M_OFFS       ; FOR TAKING LINGERING LIVE MIDI ON's, TURNING THEM INTO OFF's, AND
+;WRITING THEM TO THE SEQUENCER.  ASSUMES THAT YOU HAVE ALREADY INITIALIZED THE SEQ_WRITE.
+;
+;              FLUSHES THE LIST!!!!
+;
+; NOTE - IF WE RAN OUT OF SEQUENCE MEMORY, RETURNS AT THAT POINT w/ 'Z' - ELSE, 'NOT-Z'.
+;
+               MOVE.L  SEQ_WR_PTR,A6        ;SET UP WRITE POINTER
+;
+               MOVE.L  #NEW_MIDI_BUFS,A0    ;POINT TO FIRST POCKET
+               MOVE.L  #N_M_D_1A,A1         ; POINT TO COUNT IN FIRST POCKET
+               BRA.S   DOWN_41              ;  JUMP IN & GO
+L_DOWN_41
+               ADD.L   #(128*4),A0          ;POINT TO NEXT POCKET
+               CMP.L   #END_OF_NEW_MIDI,A0  ; IF PAST LAST POCKET
+               BEQ.S   DOWN_43              ;    THEN QUIT
+               ADD.L   #2,A1                ;POINT TO COUNT IN NEXT POCKET
+DOWN_41
+               TST     NEW_MIDI_DEPTH       ;ANYBODY LEFT OVERALL?
+               BEQ.S   DOWN_43              ;    IF NOT, SPLIT NOW
+;
+               MOVE    0(A1),D3             ;SEE HOW MANY IN THIS POCKET
+               BEQ.S   L_DOWN_41            ;    IF NONE, THEN MOVE ON TO THE NEXT POCKET
+;
+               MOVEQ   #0,D1                ;INIT SLOT POINTER OFFSET
+               MOVEQ   #127,D2              ; INIT SLOT COUNTDOWN
+L_DOWN_42
+               MOVE.L  0(A0,D1),D7          ;EXTRACT EVENT FROM LIST
+               BEQ.S   DOWN_44              ;    IF EMPTY SLOT, MOVE ON
+               CLR.B   D7                   ;         ELSE, CONVERT TO NOTE OFF.  WOMP VELOCITY...
+               SWAP    D7
+               ADDQ    #1,D7                ;         AND BUMP ID UP TO NOTE OFF
+                ABS_LONG
+               JSR     SEQ_WRITE            ;         ELSE, WRITE TO SEQUENCER
+               SWAP    D7
+               JSR     SEQ_WRITE
+                ABS_SHORT
+               BNE.S   OUT_OF_ROOM_4        ;IF OUT OF ROOM, QUIT NOW & SAY SO.
+               CLR.L   0(A0,D1)             ;WOMP EVENT FROM LIST
+               SUBQ    #1,NEW_MIDI_DEPTH    ; ONE LESS EVENT OVERALL
+               SUBQ    #1,0(A1)             ;  ONE LESS EVENT IN THIS POCKET
+               BEQ     L_DOWN_41            ;    IF POCKET EMPTY, ROTATE UP TO NEXT POCKET
+DOWN_44
+               ADDQ.L  #4,D1                ;INDEX UP TO NEXT SLOT
+               DBRA    D2,L_DOWN_42         ; KEEP GOIN' THROUGHOUT POCKET
+               BRA     L_DOWN_41            ;  WHEN POCKET DONE, GO ON TO NEXT
+;
+DOWN_43
+               MOVE.L  A6,SEQ_WR_PTR        ;RESAVE UPDATED WRITE POINTER
+               MOVEQ   #1,D1                ;WHEN DONE, SET 'NOT-Z' AND SPLIT
+               RTS
+;
+;
+OUT_OF_ROOM_4  ;(ENTRY FOR RET w/ Z)
+               MOVE.L  A6,SEQ_WR_PTR        ;RESAVE UPDATED WRITE POINTER
+               CMP     D1,D1
+               RTS
+;
+;
+;
+;;;;;;;;;;
+D_WRITE_NEW_M_OFFS     ; FOR TAKING LINGERING LIVE MIDI ON's, TURNING THEM INTO OFF's, AND
+;WRITING THEM TO THE SEQUENCER.  ASSUMES THAT YOU HAVE ALREADY INITIALIZED THE SEQ_WRITE.
+;
+;              DOESN'T FLUSH THE LIST!!!!
+;
+; NOTE - IF WE RAN OUT OF SEQUENCE MEMORY, RETURNS AT THAT POINT w/ 'Z' - ELSE, 'NOT-Z'.
+;
+               MOVE.L  SEQ_WR_PTR,A6        ;SET UP WRITE POINTER
+;
+               MOVE.L  #NEW_MIDI_BUFS,A0    ;POINT TO FIRST POCKET
+               MOVE.L  #N_M_D_1A,A1         ; POINT TO COUNT IN FIRST POCKET
+               BRA.S   DOWN_51              ;  JUMP IN & GO
+L_DOWN_51
+               ADD.L   #(128*4),A0          ;POINT TO NEXT POCKET
+               CMP.L   #END_OF_NEW_MIDI,A0  ; IF PAST LAST POCKET
+               BEQ.S   DOWN_53              ;    THEN QUIT
+               ADD.L   #2,A1                ;POINT TO COUNT IN NEXT POCKET
+DOWN_51
+               TST     NEW_MIDI_DEPTH       ;ANYBODY LEFT OVERALL?
+               BEQ.S   DOWN_53              ;    IF NOT, SPLIT NOW
+;
+               MOVE    0(A1),D3             ;SEE HOW MANY IN THIS POCKET
+               BEQ.S   L_DOWN_51            ;    IF NONE, THEN MOVE ON TO THE NEXT POCKET
+;
+               MOVEQ   #0,D1                ;INIT SLOT POINTER OFFSET
+               MOVEQ   #127,D2              ; INIT SLOT COUNTDOWN
+L_DOWN_52
+               MOVE.L  0(A0,D1),D7          ;EXTRACT EVENT FROM LIST
+               BEQ.S   DOWN_54              ;    IF EMPTY SLOT, MOVE ON
+               CLR.B   D7                   ;         ELSE, CONVERT TO NOTE OFF.  WOMP VELOCITY...
+               SWAP    D7
+               ADDQ    #1,D7                ;         AND BUMP ID UP TO NOTE OFF
+                ABS_LONG
+               JSR     SEQ_WRITE            ;         ELSE, WRITE TO SEQUENCER
+               SWAP    D7
+               JSR     SEQ_WRITE
+                ABS_SHORT
+               BNE.S   OUT_OF_ROOM_5        ;IF OUT OF ROOM, QUIT NOW & SAY SO.
+DOWN_54
+               ADDQ.L  #4,D1                ;INDEX UP TO NEXT SLOT
+               DBRA    D2,L_DOWN_52         ; KEEP GOIN' THROUGHOUT POCKET
+               BRA     L_DOWN_51            ;  WHEN POCKET DONE, GO ON TO NEXT
+;
+DOWN_53
+               MOVE.L  A6,SEQ_WR_PTR        ;RESAVE UPDATED WRITE POINTER
+               MOVEQ   #1,D1                ;WHEN DONE, SET 'NOT-Z' AND SPLIT
+               RTS
+;
+;
+OUT_OF_ROOM_5  ;(ENTRY FOR RET w/ Z)
+               MOVE.L  A6,SEQ_WR_PTR        ;RESAVE UPDATED WRITE POINTER
+               CMP     D1,D1
+               RTS
+;
+;
+;
+;;;;;;;;;;
+WRITE_NEW_M_ONS        ; FOR TAKING LINGERING LIVE MIDI ON's AND STUFFING THEM AS ON's
+;INTO THE SEQUENCER.  ASSUMES THAT YOU HAVE ALREADY INITIALIZED THE SEQ_WRITE.
+;
+;              DOES NOT FLUSH THE LIST!!!!!
+;
+; NOTE - IF WE RAN OUT OF SEQUENCE MEMORY, RETURNS AT THAT POINT w/ 'Z' - ELSE, 'NOT-Z'.
+; NOTE - AT PRESENT (REV 1.83), USED ONLY BY SEQFUNS4 EDITING ROUTINES.
+;
+               MOVE.L  SEQ_WR_PTR,A6        ;SET UP WRITE POINTER
+;
+               MOVE.L  #NEW_MIDI_BUFS,A0    ;POINT TO FIRST POCKET
+               MOVE.L  #N_M_D_1A,A1         ; POINT TO COUNT IN FIRST POCKET
+               BRA.S   DOWN_61              ;  JUMP IN & GO
+L_DOWN_61
+               ADD.L   #(128*4),A0          ;POINT TO NEXT POCKET
+               CMP.L   #END_OF_NEW_MIDI,A0  ; IF PAST LAST POCKET
+               BEQ.S   DOWN_63              ;    THEN QUIT
+               ADD.L   #2,A1                ;POINT TO COUNT IN NEXT POCKET
+DOWN_61
+               TST     NEW_MIDI_DEPTH       ;ANYBODY LEFT OVERALL?
+               BEQ.S   DOWN_63              ;    IF NOT, SPLIT NOW
+;
+               MOVE    0(A1),D3             ;SEE HOW MANY IN THIS POCKET
+               BEQ.S   L_DOWN_61            ;    IF NONE, THEN MOVE ON TO THE NEXT POCKET
+;
+               MOVEQ   #0,D1                ;INIT SLOT POINTER OFFSET
+               MOVEQ   #127,D2              ; INIT SLOT COUNTDOWN
+L_DOWN_62
+               MOVE.L  0(A0,D1),D7          ;EXTRACT EVENT FROM LIST
+               BEQ.S   DOWN_64              ;    IF EMPTY SLOT, MOVE ON
+                ABS_LONG
+               SWAP    D7
+               JSR     SEQ_WRITE            ;         ELSE, WRITE TO SEQUENCER
+               SWAP    D7
+               JSR     SEQ_WRITE
+               BNE.S   OUT_OF_ROOM_6        ;IF OUT OF ROOM, QUIT NOW & SAY SO.
+                ABS_SHORT
+DOWN_64
+               ADDQ.L  #4,D1                ;INDEX UP TO NEXT SLOT
+               DBRA    D2,L_DOWN_62         ; KEEP GOIN' THROUGHOUT POCKET
+               BRA     L_DOWN_61            ;  WHEN POCKET DONE, GO ON TO NEXT
+;
+DOWN_63
+               MOVE.L  A6,SEQ_WR_PTR        ;RESAVE UPDATED WRITE POINTER
+               MOVEQ   #1,D1                ;WHEN DONE, SET 'NOT-Z' AND SPLIT
+               RTS
+;
+;
+OUT_OF_ROOM_6  ;(ENTRY FOR RET w/ Z)
+               MOVE.L  A6,SEQ_WR_PTR        ;RESAVE UPDATED WRITE POINTER
+               CMP     D1,D1
+               RTS
+;
+;
+;
+;;;;;;;;;;
+XMIT_OLD_M_OFFS        ; TAKE LINGERING SEQUENCER MIDI NOTE ONS, CONVERT THEM INTO NOTE OFFS,
+;AND TRANSMIT THEM OVER MIDI.  DOES NOT FLUSH LIST.
+               MOVE.L  #OLD_MIDI_BUFS,A0    ;POINT TO FIRST POCKET
+               MOVE.L  #O_M_D_1A,A1         ; POINT TO COUNT IN FIRST POCKET
+               BRA.S   DOWN_71              ;  JUMP IN & GO
+L_DOWN_71
+               ADD.L   #(128*4),A0          ;POINT TO NEXT POCKET
+               CMP.L   #END_OF_OLD_MIDI,A0  ; IF PAST LAST POCKET
+               BEQ.S   DOWN_73              ;    THEN QUIT
+               ADD.L   #2,A1                ;POINT TO COUNT IN NEXT POCKET
+DOWN_71
+               TST     OLD_MIDI_DEPTH       ;ANYBODY LEFT OVERALL?
+               BEQ.S   DOWN_73              ;    IF NOT, SPLIT NOW
+;
+               MOVE    0(A1),D3             ;SEE HOW MANY IN THIS POCKET
+               BEQ.S   L_DOWN_71            ;    IF NONE, THEN MOVE ON TO THE NEXT POCKET
+;
+               MOVEQ   #0,D1                ;INIT SLOT POINTER OFFSET
+               MOVEQ   #127,D2              ; INIT SLOT COUNTDOWN
+L_DOWN_72
+               MOVE.L  0(A0,D1),BG_TEMP_1_B ;EXTRACT EVENT FROM LIST
+               BEQ.S   DOWN_74              ;    IF EMPTY SLOT, MOVE ON
+;
+               MOVE    BG_TEMP_1_B,D0       ;TRACKNUM UNMUTED?
+               AND     #70H,D0
+               LSR     #4,D0
+               BTST    D0,TRACKS_MUTED
+               BNE.S   DOWN_74
+;
+               MOVE.B  2(A0,D1),XMIT_TEMP_2 ;         ELSE... LOAD KEYNUM
+               CLR.B   XMIT_TEMP_1          ;         AND CLEAR VELOCITY (NOTE OFF, REMEMBER)
+               MOVE.B  BG_TEMP_1_B,D0       ;         AND LOAD STATUS BYTE/CHANNEL
+;
+               BTST    #7,BG_TEMP_2_B       ;SEE WHICH UART IT'S SUPPOSED TO GO OUT OVER
+               BNE.S   DOORS_7_UART_B
+               MOVEM.L D1-D2/A0-A1,-(A7)    ;PROTECT REGISTER
+                ABS_LONG
+               JSR     XMIT_2_PA
+                ABS_SHORT
+               MOVEM.L (A7)+,D1-D2/A0-A1
+               BRA.S   DOWN_74
+;
+DOORS_7_UART_B
+               MOVEM.L D1-D2/A0-A1,-(A7)    ;PROTECT REGISTER
+                ABS_LONG
+               JSR     XMIT_2_PB
+                ABS_SHORT
+               MOVEM.L (A7)+,D1-D2/A0-A1
+DOWN_74
+               ADDQ.L  #4,D1                ;INDEX UP TO NEXT SLOT
+               DBRA    D2,L_DOWN_72         ; KEEP GOIN' THROUGHOUT POCKET
+               BRA     L_DOWN_71            ;  WHEN POCKET DONE, GO ON TO NEXT
+DOWN_73
+               RTS
+;
+;
+;
+;;;;;;;;;;
+XMIT_OLD_M_ONS         ; TAKE LINGERING SEQUENCER MIDI NOTE ONS AND TRANSMIT A COPY OF THEM
+;OVER MIDI.  DOES NOT FLUSH LIST.
+               MOVE.L  #OLD_MIDI_BUFS,A0    ;POINT TO FIRST POCKET
+               MOVE.L  #O_M_D_1A,A1         ; POINT TO COUNT IN FIRST POCKET
+               BRA.S   DOWN_81              ;  JUMP IN & GO
+L_DOWN_81
+               ADD.L   #(128*4),A0          ;POINT TO NEXT POCKET
+               CMP.L   #END_OF_OLD_MIDI,A0  ; IF PAST LAST POCKET
+               BEQ.S   DOWN_83              ;    THEN QUIT
+               ADD.L   #2,A1                ;POINT TO COUNT IN NEXT POCKET
+DOWN_81
+               TST     OLD_MIDI_DEPTH       ;ANYBODY LEFT OVERALL?
+               BEQ.S   DOWN_83              ;    IF NOT, SPLIT NOW
+;
+               MOVE    0(A1),D3             ;SEE HOW MANY IN THIS POCKET
+               BEQ.S   L_DOWN_81            ;    IF NONE, THEN MOVE ON TO THE NEXT POCKET
+;
+               MOVEQ   #0,D1                ;INIT SLOT POINTER OFFSET
+               MOVEQ   #127,D2              ; INIT SLOT COUNTDOWN
+L_DOWN_82
+               MOVE.L  0(A0,D1),BG_TEMP_1_B ;EXTRACT EVENT FROM LIST
+               BEQ.S   DOWN_84              ;    IF EMPTY SLOT, MOVE ON
+;
+               MOVE    BG_TEMP_1_B,D0       ;TRACKNUM UNMUTED?
+               AND     #70H,D0
+               LSR     #4,D0
+               BTST    D0,TRACKS_MUTED
+               BNE.S   DOWN_84
+;
+               MOVE.B  2(A0,D1),XMIT_TEMP_2 ;         ELSE... LOAD KEYNUM
+               MOVE.B  3(A0,D1),XMIT_TEMP_1 ;         AND VELOCITY
+               MOVE.B  BG_TEMP_1_B,D0       ;         AND LOAD STATUS BYTE/CHANNEL
+;
+               BTST    #7,BG_TEMP_2_B       ;SEE WHICH UART IT'S SUPPOSED TO GO OUT OVER
+               BNE.S   DOORS_8_UART_B
+               MOVEM.L D1-D2/A0-A1,-(A7)    ;PROTECT REGISTER
+                ABS_LONG
+               JSR     XMIT_2_PA
+                ABS_SHORT
+               MOVEM.L (A7)+,D1-D2/A0-A1
+               BRA.S   DOWN_84
+;
+DOORS_8_UART_B
+               MOVEM.L D1-D2/A0-A1,-(A7)    ;PROTECT REGISTER
+                ABS_LONG
+               JSR     XMIT_2_PB
+                ABS_SHORT
+               MOVEM.L (A7)+,D1-D2/A0-A1
+DOWN_84
+               ADDQ.L  #4,D1                ;INDEX UP TO NEXT SLOT
+               DBRA    D2,L_DOWN_82         ; KEEP GOIN' THROUGHOUT POCKET
+               BRA     L_DOWN_81            ;  WHEN POCKET DONE, GO ON TO NEXT
+DOWN_83
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               TITLE   "PADS_CURRENTLY_ON UTILITIES"
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             UTILITIES FOR PADS.  INCLUDE FLUSHING THE LISTS & STUFFING LINGERING PADS TO THE
+;              SEQUENCER AS PAD ONS OR OFFS.  NOTE - NO DUMPING TO MIDI IN MODES 1 OR 3; TOO HARD
+;              TO RECONSTRUCT WHAT KIT THEY CAME FROM, ETC.
+;
+;;;;;;;;;;
+FLUSH_OLD_PADS         ; CLEAR OUT ENTIRE LIST OF SEQUENCER PADS CURRENTLY ON.
+               TST     OLD_PAD_DEPTH        ;ANYBODY HOME?
+               BEQ.S   EXIT_FLUSH_O_P       ;    IF NOT, SPLIT
+BLIND_FLUSH_O_P
+               MOVE.L  #OLD_PAD_BUFS,A0     ;START AT FIRST SUB-POCKET
+               CLR.L   D1                   ; START AT FIRST SLOT
+               MOVE    #(8*32)-1,D2         ;  DESIRE TO CLEAR OUT 32 POCKETS OF 128 SLOTS EACH
+               CLR     OLD_PAD_DEPTH        ;   CLEAR COUNT (NOTE - IF YOU ENTER BELOW, THIS BLOWN)
+               CLR.L   O_P_D_1              ;    BOMP POCKET COUNTS
+               CLR.L   O_P_D_3
+               CLR.L   O_P_D_5
+               CLR.L   O_P_D_7
+;
+L_FLUSH_OLD_PADS
+               CLR.L   0(A0,D1)             ;CLEAR EVENT
+               ADDQ.L  #4,D1                ; INC UP TO THE NEXT ONE
+               DBRA    D2,L_FLUSH_OLD_PADS  ;  GO 'TILL DONE
+EXIT_FLUSH_O_P
+               RTS
+;
+;
+;;;;;;;;;;
+FLUSH_NEW_PADS         ; CLEAR OUT ENTIRE LIST OF NEW, LIVE PADS CURRENTLY ON.
+               TST     NEW_PAD_DEPTH        ;ANYBODY HOME?
+               BEQ.S   EXIT_FLUSH_N_P       ;    IF NOT, SPLIT
+BLIND_FLUSH_N_P
+               MOVE.L  #NEW_PAD_BUFS,A0     ;START AT FIRST SUB-POCKET
+               CLR.L   D1                   ; START AT FIRST SLOT
+               MOVE    #(8*32)-1,D2         ;  DESIRE TO CLEAR OUT 32 POCKETS OF 128 SLOTS EACH
+               CLR     NEW_PAD_DEPTH        ;   CLEAR COUNT (NOTE - IF YOU ENTER BELOW, THIS BLOWN)
+               CLR.L   N_P_D_1              ;    BOMP POCKET COUNTS
+               CLR.L   N_P_D_3
+               CLR.L   N_P_D_5
+               CLR.L   N_P_D_7
+;
+L_FLUSH_NEW_PADS
+               CLR.L   0(A0,D1)             ;CLEAR EVENT
+               ADDQ.L  #4,D1                ; INC UP TO THE NEXT ONE
+               DBRA    D2,L_FLUSH_NEW_PADS  ;GO 'TILL DONE
+EXIT_FLUSH_N_P
+               RTS
+;
+;
+;;;;;;;;;;
+WRITE_OLD_P_OFFS       ; FOR TAKING LINGERING SEQUENCER PAD ON's, TURNING THEM INTO OFF's, AND
+;WRITING THEM TO THE SEQUENCER.  ASSUMES THAT YOU HAVE ALREADY INITIALIZED THE SEQ_WRITE.
+;
+;              FLUSHES THE LIST!!!
+;
+; NOTE - IF WE RAN OUT OF SEQUENCE MEMORY, RETURNS AT THAT POINT w/ 'Z' - ELSE, 'NOT-Z'.
+;
+               MOVE.L  SEQ_WR_PTR,A6        ;SET UP WRITE POINTER
+;
+               MOVE.L  #OLD_PAD_BUFS,A0     ;POINT TO FIRST POCKET
+               MOVE.L  #O_P_D_1,A1          ; POINT TO COUNT IN FIRST POCKET
+               BRA.S   DOWN_91              ;  JUMP IN & GO
+L_DOWN_91
+               ADD.L   #(32*4),A0           ;POINT TO NEXT POCKET
+               CMP.L   #END_OF_OLD_PADS,A0  ; IF PAST LAST POCKET
+               BEQ.S   DOWN_93              ;    THEN QUIT
+               ADD.L   #2,A1                ;POINT TO COUNT IN NEXT POCKET
+DOWN_91
+               TST     OLD_PAD_DEPTH        ;ANYBODY LEFT OVERALL?
+               BEQ.S   DOWN_93              ;    IF NOT, SPLIT NOW
+;
+               MOVE    0(A1),D3             ;SEE HOW MANY IN THIS POCKET
+               BEQ.S   L_DOWN_91            ;    IF NONE, THEN MOVE ON TO THE NEXT POCKET
+;
+               MOVEQ   #0,D1                ;INIT SLOT POINTER OFFSET
+               MOVEQ   #31,D2               ; INIT SLOT COUNTDOWN
+L_DOWN_92
+               MOVE.L  0(A0,D1),D7          ;EXTRACT EVENT FROM LIST
+               BEQ.S   DOWN_94              ;    IF EMPTY SLOT, MOVE ON
+               SWAP    D7
+               ADDQ    #1,D7                ;         ELSE, BUMP ID UP TO NOTE OFF
+                ABS_LONG
+               JSR     SEQ_WRITE            ;         AND WRITE TO SEQUENCER
+               SWAP    D7
+               JSR     SEQ_WRITE
+                ABS_SHORT
+               BNE.S   OUT_OF_ROOM_9        ;IF OUT OF ROOM, QUIT NOW & SAY SO.
+               CLR.L   0(A0,D1)             ;WOMP EVENT FROM LIST
+               SUBQ    #1,OLD_PAD_DEPTH     ; ONE LESS EVENT OVERALL
+               SUBQ    #1,0(A1)             ;  ONE LESS EVENT IN THIS POCKET
+               BEQ     L_DOWN_91            ;    IF POCKET EMPTY, ROTATE UP TO NEXT POCKET
+DOWN_94
+               ADDQ.L  #4,D1                ;INDEX UP TO NEXT SLOT
+               DBRA    D2,L_DOWN_92         ; KEEP GOIN' THROUGHOUT POCKET
+               BRA     L_DOWN_91            ;  WHEN POCKET DONE, GO ON TO NEXT
+;
+DOWN_93
+               MOVE.L  A6,SEQ_WR_PTR        ;RESAVE UPDATED WRITE POINTER
+               MOVEQ   #1,D1                ;WHEN DONE, SET 'NOT-Z' AND SPLIT
+               RTS
+;
+;
+OUT_OF_ROOM_9  ;(ENTRY FOR RET w/ Z)
+               MOVE.L  A6,SEQ_WR_PTR        ;RESAVE UPDATED WRITE POINTER
+               CMP     D1,D1
+               RTS
+;
+;
+;
+;;;;;;;;;;
+D_WRITE_OLD_P_OFFS     ; FOR TAKING LINGERING SEQUENCER PAD ON's, TURNING THEM INTO OFF's, AND
+;WRITING THEM TO THE SEQUENCER.  ASSUMES THAT YOU HAVE ALREADY INITIALIZED THE SEQ_WRITE.
+;
+;              DOESN'T FLUSH THE LIST!!!
+;
+; NOTE - IF WE RAN OUT OF SEQUENCE MEMORY, RETURNS AT THAT POINT w/ 'Z' - ELSE, 'NOT-Z'.
+;
+               MOVE.L  SEQ_WR_PTR,A6        ;SET UP WRITE POINTER
+;
+               MOVE.L  #OLD_PAD_BUFS,A0     ;POINT TO FIRST POCKET
+               MOVE.L  #O_P_D_1,A1          ; POINT TO COUNT IN FIRST POCKET
+               BRA.S   DOWN_A1              ;  JUMP IN & GO
+L_DOWN_A1
+               ADD.L   #(32*4),A0           ;POINT TO NEXT POCKET
+               CMP.L   #END_OF_OLD_PADS,A0  ; IF PAST LAST POCKET
+               BEQ.S   DOWN_A3              ;    THEN QUIT
+               ADD.L   #2,A1                ;POINT TO COUNT IN NEXT POCKET
+DOWN_A1
+               TST     OLD_PAD_DEPTH        ;ANYBODY LEFT OVERALL?
+               BEQ.S   DOWN_A3              ;    IF NOT, SPLIT NOW
+;
+               MOVE    0(A1),D3             ;SEE HOW MANY IN THIS POCKET
+               BEQ.S   L_DOWN_A1            ;    IF NONE, THEN MOVE ON TO THE NEXT POCKET
+;
+               MOVEQ   #0,D1                ;INIT SLOT POINTER OFFSET
+               MOVEQ   #31,D2               ; INIT SLOT COUNTDOWN
+L_DOWN_A2
+               MOVE.L  0(A0,D1),D7          ;EXTRACT EVENT FROM LIST
+               BEQ.S   DOWN_A4              ;    IF EMPTY SLOT, MOVE ON
+               SWAP    D7
+               ADDQ    #1,D7                ;         ELSE, BUMP ID UP TO NOTE OFF
+                ABS_LONG
+               JSR     SEQ_WRITE            ;         AND WRITE TO SEQUENCER
+               SWAP    D7
+               JSR     SEQ_WRITE
+                ABS_SHORT
+               BNE.S   OUT_OF_ROOM_A        ;IF OUT OF ROOM, QUIT NOW & SAY SO.
+DOWN_A4
+               ADDQ.L  #4,D1                ;INDEX UP TO NEXT SLOT
+               DBRA    D2,L_DOWN_A2         ; KEEP GOIN' THROUGHOUT POCKET
+               BRA     L_DOWN_A1            ;  WHEN POCKET DONE, GO ON TO NEXT
+;
+DOWN_A3
+               MOVE.L  A6,SEQ_WR_PTR        ;RESAVE UPDATED WRITE POINTER
+               MOVEQ   #1,D1                ;WHEN DONE, SET 'NOT-Z' AND SPLIT
+               RTS
+;
+;
+OUT_OF_ROOM_A  ;(ENTRY FOR RET w/ Z)
+               MOVE.L  A6,SEQ_WR_PTR        ;RESAVE UPDATED WRITE POINTER
+               CMP     D1,D1
+               RTS
+;
+;
+;
+;;;;;;;;;;
+WRITE_OLD_P_ONS        ; FOR TAKING LINGERING SEQUENCER PAD ON's AND STUFFING THEM AS ON's
+;INTO THE SEQUENCER.  ASSUMES THAT YOU HAVE ALREADY INITIALIZED THE SEQ_WRITE.
+;
+;              DOES NOT FLUSH THE LIST!!!!!
+;
+; NOTE - IF WE RAN OUT OF SEQUENCE MEMORY, RETURNS AT THAT POINT w/ 'Z' - ELSE, 'NOT-Z'.
+               MOVE.L  SEQ_WR_PTR,A6        ;SET UP WRITE POINTER
+;
+               MOVE.L  #OLD_PAD_BUFS,A0     ;POINT TO FIRST POCKET
+               MOVE.L  #O_P_D_1,A1          ; POINT TO COUNT IN FIRST POCKET
+               BRA.S   DOWN_B1              ;  JUMP IN & GO
+L_DOWN_B1
+               ADD.L   #(32*4),A0           ;POINT TO NEXT POCKET
+               CMP.L   #END_OF_OLD_PADS,A0  ; IF PAST LAST POCKET
+               BEQ.S   DOWN_B3              ;    THEN QUIT
+               ADD.L   #2,A1                ;POINT TO COUNT IN NEXT POCKET
+DOWN_B1
+               TST     OLD_PAD_DEPTH        ;ANYBODY LEFT OVERALL?
+               BEQ.S   DOWN_B3              ;    IF NOT, SPLIT NOW
+;
+               MOVE    0(A1),D3             ;SEE HOW MANY IN THIS POCKET
+               BEQ.S   L_DOWN_B1            ;    IF NONE, THEN MOVE ON TO THE NEXT POCKET
+;
+               MOVEQ   #0,D1                ;INIT SLOT POINTER OFFSET
+               MOVEQ   #31,D2               ; INIT SLOT COUNTDOWN
+L_DOWN_B2
+               MOVE.L  0(A0,D1),D7          ;EXTRACT EVENT FROM LIST
+               BEQ.S   DOWN_B4              ;    IF EMPTY SLOT, MOVE ON
+               SWAP    D7
+                ABS_LONG
+               JSR     SEQ_WRITE            ;         ELSE, WRITE TO SEQUENCER
+               SWAP    D7
+               JSR     SEQ_WRITE
+               MOVEQ   #1FH,D7
+               JSR     SEQ_WRITE            ;(FAKE A LEVEL HERE - DON'T HAVE THE INFO)
+                ABS_SHORT
+               BNE.S   OUT_OF_ROOM_B        ;IF OUT OF ROOM, QUIT NOW & SAY SO.
+DOWN_B4
+               ADDQ.L  #4,D1                ;INDEX UP TO NEXT SLOT
+               DBRA    D2,L_DOWN_B2         ; KEEP GOIN' THROUGHOUT POCKET
+               BRA     L_DOWN_B1            ;  WHEN POCKET DONE, GO ON TO NEXT
+;
+DOWN_B3
+               MOVE.L  A6,SEQ_WR_PTR        ;RESAVE UPDATED WRITE POINTER
+               MOVEQ   #1,D1                ;WHEN DONE, SET 'NOT-Z' AND SPLIT
+               RTS
+;
+;
+OUT_OF_ROOM_B  ;(ENTRY FOR RET w/ Z)
+               MOVE.L  A6,SEQ_WR_PTR        ;RESAVE UPDATED WRITE POINTER
+               CMP     D1,D1
+               RTS
+;
+;
+;
+;;;;;;;;;;
+WRITE_NEW_P_OFFS       ; FOR TAKING LINGERING LIVE PAD ON's, TURNING THEM INTO OFF's, AND
+;WRITING THEM TO THE SEQUENCER.  ASSUMES THAT YOU HAVE ALREADY INITIALIZED THE SEQ_WRITE.
+;
+;              FLUSHES THE LIST!!!!
+;
+; NOTE - IF WE RAN OUT OF SEQUENCE MEMORY, RETURNS AT THAT POINT w/ 'Z' - ELSE, 'NOT-Z'.
+;
+               TST     NEW_PAD_DEPTH        ;ARE THERE ANY EVENTS HERE TO WORRY ABOUT?
+               BEQ.S   EXIT_RIGHT_3         ;    IF NOT, SPLIT NOW WITH NO ACTION
+;
+               MOVE.L  SEQ_WR_PTR,A6        ;SET UP WRITE POINTER
+;
+               MOVE.L  #NEW_PAD_BUFS,A0     ;POINT TO BOTTOM OF THE LIST -
+******
+******                 NOTE - IDEALLY SHOULD SET UP AN INNER LOOP
+******                 BASED ON SUB-POCKET COUNT FOR OPTIMUM SPEED ....
+******
+               CLR.L   N_P_D_1              ;BUT SINCE WE HAVE NO INNER LOOP,
+               CLR.L   N_P_D_1+2            ;CLEAR SUB-POCKET COUNTS RIGHT NOW.
+               CLR.L   N_P_D_1+4
+               CLR.L   N_P_D_1+6
+;
+               CLR.L   D1                   ; INITIALIZE SLOT COUNT
+               MOVE    #(8*8)-1,D2          ;  SET COUNT TO DO ALL
+;
+L_WRTE_NEW_P_OFFS
+               MOVE.L  0(A0,D1),D7          ;EXTRACT EVENT FROM LIST
+               BEQ.S   DOORS_03             ; IF NO EVENT HERE, GO ON....
+;
+               SWAP    D7
+               ADDQ    #1,D7                ;    ELSE, INC TYPE ID TO A PAD OFF.
+;
+                ABS_LONG
+               JSR     SEQ_WRITE            ;WRITE TO SEQUENCER
+               SWAP    D7                   ;         ELSE, WRITE SECOND WORD
+               JSR     SEQ_WRITE
+               BNE.S   OUT_OF_ROOM_03       ;         (MAKE SAME OUT-OF-ROOM CHECK)
+                ABS_SHORT
+               CLR.L   0(A0,D1)             ;FLUSH THE EVENT
+               SUBQ    #1,NEW_PAD_DEPTH     ; ONE LESS EVENT
+               BEQ.S   DOORS_203            ;    IF LAST ONE, QUIT
+DOORS_03
+               ADDQ.L  #4,D1                ;BUMP UP TO NEXT SLOT
+               DBRA    D2,L_WRTE_NEW_P_OFFS     ;GO 'TILL DONE
+;
+DOORS_203
+               MOVE.L  A6,SEQ_WR_PTR        ;RESAVE WRITE POINTER
+EXIT_RIGHT_3
+               MOVEQ   #1,D1                ;WHEN DONE, SET 'NOT-Z' AND SPLIT
+               RTS
+;
+;
+OUT_OF_ROOM_03 ;(ENTRY FOR RET w/ Z)
+               MOVE.L  A6,SEQ_WR_PTR        ;RESAVE WRITE POINTER
+               CLR     NEW_PAD_DEPTH        ;SAY LIST IS FLUSHED, EVEN IF WE TOOK EMERGENCY EXIT.
+               CMP     D1,D1
+               RTS
+;
+;
+;
+;;;;;;;;;;
+D_WRITE_NEW_P_OFFS     ; FOR TAKING LINGERING LIVE MIDI ON's, TURNING THEM INTO OFF's, AND
+;WRITING THEM TO THE SEQUENCER.  ASSUMES THAT YOU HAVE ALREADY INITIALIZED THE SEQ_WRITE.
+;
+;              DOESN'T FLUSH THE LIST!!!!
+;
+; NOTE - IF WE RAN OUT OF SEQUENCE MEMORY, RETURNS AT THAT POINT w/ 'Z' - ELSE, 'NOT-Z'.
+;
+               TST     NEW_PAD_DEPTH        ;ARE THERE ANY EVENTS HERE TO WORRY ABOUT?
+               BEQ.S   D_EXIT_RIGHT_3       ;    IF NOT, SPLIT NOW WITH NO ACTION
+;
+               MOVE.L  SEQ_WR_PTR,A6        ;SET UP WRITE POINTER
+;
+               MOVE.L  #NEW_PAD_BUFS,A0     ;POINT TO FIRST POCKET
+               CLR.L   D1                   ; INITIALIZE SLOT COUNT
+               MOVE    #(8*8)-1,D2          ;  SET COUNT TO DO ALL
+;
+L_DRTE_NEW_P_OFFS
+               MOVE.L  0(A0,D1),D7          ;EXTRACT EVENT FROM LIST
+               BEQ.S   D_DOORS_03           ; IF NO EVENT HERE, GO ON....
+;
+               SWAP    D7
+               ADDQ    #1,D7                ;    ELSE, INC TYPE ID TO A PAD OFF.
+;
+                ABS_LONG
+               JSR     SEQ_WRITE            ;WRITE TO SEQUENCER
+               SWAP    D7                   ;         ELSE, WRITE SECOND WORD
+               JSR     SEQ_WRITE
+               BNE.S   DUT_OF_ROOM_03       ;         (MAKE SAME OUT-OF-ROOM CHECK)
+                ABS_SHORT
+D_DOORS_03
+               ADDQ.L  #4,D1                ;BUMP UP TO NEXT SLOT
+               DBRA    D2,L_DRTE_NEW_P_OFFS     ;GO 'TILL DONE
+;
+D_DOORS_203
+               MOVE.L  A6,SEQ_WR_PTR        ;RESAVE WRITE POINTER
+D_EXIT_RIGHT_3
+               MOVEQ   #1,D1                ;WHEN DONE, SET 'NOT-Z' AND SPLIT
+               RTS
+;
+;
+DUT_OF_ROOM_03 ;(ENTRY FOR RET w/ Z)
+               MOVE.L  A6,SEQ_WR_PTR        ;RESAVE WRITE POINTER
+               CMP     D1,D1
+               RTS
+;
+;
+;
+;;;;;;;;;;
+WRITE_NEW_P_ONS        ; FOR TAKING LINGERING LIVE PAD ON's AND STUFFING THEM AS ON's
+;INTO THE SEQUENCER.  ASSUMES THAT YOU HAVE ALREADY INITIALIZED THE SEQ_WRITE.
+;
+;              DOES NOT FLUSH THE LIST!!!!!
+;
+; NOTE - IF WE RAN OUT OF SEQUENCE MEMORY, RETURNS AT THAT POINT w/ 'Z' - ELSE, 'NOT-Z'.
+; NOTE - AT PRESENT (REV 1.83), USED ONLY BY SEQFUNS4 EDITING ROUTINES.
+;
+               MOVE.L  #NEW_PAD_BUFS,A0     ;POINT TO FIRST POCKET
+               CLR.L   D1                   ; INITIALIZE SLOT COUNT
+               MOVE    #(8*8)-1,D2          ;  SET COUNT TO DO ALL
+;
+L_WRTE_NEW_P_ONS
+               MOVE.L  0(A0,D1),D7          ;EXTRACT EVENT FROM LIST
+               BEQ.S   DOORS_04             ; IF NO EVENT HERE, GO ON....
+;
+               SWAP    D7                   ;    ELSE, WRITE TO SEQUENCER - HIGH WORD FIRST
+               JSR     SEQ_WRITE
+               SWAP    D7                   ;         ELSE, WRITE SECOND WORD
+               JSR     SEQ_WRITE
+               MOVEQ   #1FH,D7              ;    WRITE A FAKE LEVEL TO ROUND OUT EVENT
+               JSR     SEQ_WRITE
+;19JUN               BNE.S   OUT_OF_ROOM_04
+;                                      NOT COOL, EXITS WITH Z FALSE!
+               BEQ.S   DOORS_04             ;CONTINUE IF NOT OUT OF ROOM IN SEQ MEMORY,
+               CMP     D1,D1                ;ELSE SET Z FLAG TO SIGNAL "OUT OF ROOM",
+               BRA.S   OUT_OF_ROOM_04       ;EXIT WITH THIS PIECE OF NEWS.
+;
+DOORS_04
+               ADDQ.L  #4,D1                ;BUMP UP TO NEXT SLOT
+               DBRA    D2,L_WRTE_NEW_P_ONS      ;GO 'TILL DONE
+;
+               MOVEQ   #1,D1                ;WHEN DONE, SET 'NOT-Z' AND SPLIT
+OUT_OF_ROOM_04 ;(ENTRY FOR RET w/ Z)
+               RTS
+;
+;
+;;;;;;;;;;
+XMIT_OLD_P_OFFS        ; TAKE LINGERING SEQUENCER PAD NOTE ONS, CONVERT THEM INTO NOTE OFFS,
+;AND TRANSMIT THEM OVER MIDI.  DOES NOT FLUSH LIST.
+               TST     OLD_PAD_DEPTH        ;ANY EVENTS HERE TO XMIT?
+               BEQ.S   EXIT_RIGHT_4         ;    IF NOT, GIT
+;
+               MOVE.L  #OLD_PAD_BUFS,A0     ;START AT FIRST POCKET
+               CLR.L   D1                   ; START IN FIRST SLOT
+               MOVE    #(8*32)-1,D2         ;  DO ENTIRE LIST
+;
+L_XMIT_OLD_P_OFFS
+               MOVE.L  0(A0,D1),BG_TEMP_1_B ;GET THIS EVENT
+               BEQ.S   DOORS_05             ;    IF NOBODY HOME, GO ON TO THE NEXT ONE
+;
+               MOVE    BG_TEMP_1_B,D0       ;TRACKNUM UNMUTED?
+               AND     #70H,D0
+               LSR     #4,D0
+               BTST    D0,TRACKS_MUTED
+               BNE.S   DOORS_05
+;
+               MOVE    #1FH,BG_TEMP_5_B     ;FAKE FULL LEVEL (NOT IN BUFFER)
+;
+                ABS_LONG
+               MOVEM.L D1-D2/A0,-(A7)
+               JSR     SEQ_OFF_INTERNAL     ;TURN OFF INTERNAL VOICE
+               JSR     TYPE_2_XMIT          ;XMIT OVER MIDI
+               MOVEM.L  (A7)+,D1-D2/A0
+                ABS_SHORT
+;
+DOORS_05
+               ADDQ    #4,D1                ;GO ON TO LOOK AT NEXT EVENT
+               DBRA    D2,L_XMIT_OLD_P_OFFS ; GO 'TILL FINISHED
+EXIT_RIGHT_4
+               RTS                          ;    ELSE - DONE!!!!!
+;
+;
+;;;;;;;;;;
+XMIT_OLD_P_ONS         ; TAKE LINGERING SEQUENCER PADE ONS AND TRANSMIT A COPY OF THEM
+;OVER MIDI.  DOES NOT FLUSH LIST.
+               TST     OLD_PAD_DEPTH        ;ANY PADS ON TO XMIT?
+               BEQ.S   EXIT_RIGHT_5         ;    IF NOT, SPLIT NOW
+;
+               MOVE.L  #OLD_PAD_BUFS,A0     ;START AT FIRST POCKET
+               CLR.L   D1                   ; START IN FIRST SLOT
+               MOVE    #(8*32)-1,D2         ;  DO ENTIRE LIST
+;
+L_XMIT_OLD_P_ONS
+               MOVE.L  0(A0,D1),BG_TEMP_1_B ;GET THIS EVENT
+               BEQ.S   DOORS_07             ;    IF NOBODY HOME, GO ON TO THE NEXT ONE
+;
+               MOVE    BG_TEMP_1_B,D0       ;TRACKNUM UNMUTED?
+               AND     #70H,D0
+               LSR     #4,D0
+               BTST    D0,TRACKS_MUTED
+               BNE.S   DOORS_07
+;
+               MOVE    #1FH,BG_TEMP_5_B     ;FAKE FULL LEVEL (NOT IN BUFFER)
+;
+                ABS_LONG
+               MOVEM.L D1-D2/A0,-(A7)
+               JSR     SEQ_ON_INTERNAL      ;PLAY ON INTERNALLY
+               JSR     TYPE_1_XMIT          ;XMIT OVER MIDI
+               MOVEM.L  (A7)+,D1-D2/A0
+                ABS_SHORT
+;
+DOORS_07
+               ADDQ    #4,D1                ;GO ON TO LOOK AT NEXT EVENT
+               DBRA    D2,L_XMIT_OLD_P_ONS  ; GO 'TILL FINISHED
+EXIT_RIGHT_5
+               RTS                          ;    ELSE - DONE!!!!!
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;871007;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;871007;
+;871007; CHECK FOR PRESENCE OF A PARTICULAR MIDI NOTE IN "OLD" BUFFER -
+;871007; CALL WITH A SEQUENCER MIDI NOTE-OFF EVENT IN D7(.L), AS FOLLOWS:
+;871007;
+;871007;                 1001 aaaa bccc 0100 0ddd dddd 0000 0000
+;871007;
+;871007;              aaa = MIDI CHANNEL      b = A/B UART BIT (1=B)
+;871007;              ccc = TRACK NUMBER      0100 = TYPE ID FOR MIDI NOTE-OFF
+;871007;              ddddddd = KEY NUMBER    (L.S.BYTE IS VELOCITY FIELD)
+;871007;
+;871007; RETURNS "NOT-Z" IF A MATCH IS FOUND, ELSE RETURNS "Z".
+;871007; PRESERVES ALL REGISTERS.
+;871007;
+;871007;
+;871007CHECK_OLD_MIDI
+;871007               MOVEM.L D4-D7/A0,-(A7)
+;871007;
+;871007               MOVE.L  D7,D6                ;MAKE COPY
+;871007               SWAP    D6                   ; ISOLATE CHANNEL & UART FOR FINDING SUB-POCKET.
+;871007               AND     #0F80H,D6            ;  MASK CLEAN...
+;871007               LSR     #5,D6                ;            ...AND ROTATE INTO A LONG-WORD OFFSET.
+;871007               MOVE.L  #OLD_MIDI_DIRECTORY,A0    ;POINT TO START OF SUB-POCKET.
+;871007               MOVE.L  0(A0,D6),A0
+;871007;
+;871007               MOVE    D7,D6                ;ISOLATE & USE KEYNUM FOR SLOTTING
+;871007               AND     #0FF00H,D6           ; MASK OUT VELOCITY
+;871007               LSR     #6,D6                ; ROTATE DOWN INTO A LONG-WORD OFFSET
+;871007;
+;871007               MOVEQ   #127,D5              ;SUB-POCKET IS 128 SLOTS BIG - LOOK THRU ALMOST ALL
+;871007               SUB.L   #10000H,D7           ;CONVERT TYPE CODE FROM NOTE-OFF TO NOTE-ON FOR MATCH -
+;871007                                            ;I.E., CHANGE xxx4xxxxH TO xxx3xxxxH.
+;871007               SF      D7                   ;MASK OUT VELOCITY - USE STATUS NIBBLE, EVENT ID CODE,
+;871007                                            ;CHANNEL/UART, TRACK, KEY NUMBER FOR MATCHING.
+;871007                                            ;NOTE: USE OF STATUS AND ID PREVENTS ACCIDENTAL MATCH
+;871007                                            ;WITH AN EMPTY (0) BUFFER SLOT, SINCE IT IS POSSIBLE
+;871007                                            ;THAT ALL OTHER FIELDS COULD LEGITIMATELY BE ZERO.
+;871007L_CHK_M_OLD
+;871007               MOVE.L  0(A0,D6),D4          ;GRAB EVENT IN THIS SLOT
+;871007               SF      D4                   ;MASK OUT VELOCITY (AS PER ABOVE).
+;871007               CMP.L   D4,D7                ;  WELL - MATCH?
+;871007               BEQ.S   CHK_OLD_M_X          ;    IF YES, COOL!
+;871007               ADDQ    #4,D6                ;         ELSE, CONTINUE SEARCH
+;871007               AND     #(128*4)-1,D6        ;         (INC & MASK - KEEP INSIDE POCKET)
+;871007               DBRA    D5,L_CHK_M_OLD       ;         TRY AGAIN...
+;871007;
+;871007               CMP     D5,D5                ;IF DIDN'T IT, SET 'Z' & RET
+;871007               MOVEM.L (A7)+,D4-D7/A0
+;871007               RTS
+;871007;
+;871007CHK_OLD_M_X
+;871007               MOVEQ   #1,D6
+;871007               MOVEM.L (A7)+,D4-D7/A0
+;871007               RTS
+;871007;
+;871007;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; CHECK FOR PRESENCE OF A PARTICULAR MIDI NOTE IN "OLD" BUFFER -
+; CALL WITH A SEQUENCER MIDI NOTE-OFF EVENT IN D7(.L).
+;
+; AS OF THIS WRITING (07-OCT-87) THIS IS USED ONLY BY SEQUENCE EDITING
+; UTILITIES SUCH AS CHANNELIZE, TRANSPOSE, AND BOUNCE, WHICH ALTER SOME
+; PARAMETER OF AN EXISTING MIDI EVENT AND MUST PERFORM THE SAME
+; ALTERATION ON BOTH THE NOTE-ON AND THE NOTE-OFF ASSOCIATED WITH THAT
+; EVENT.
+; ALSO AS OF 07-OCT-87:  CHECKING IS DONE BY BRUTE FORCE SEARCH AND
+; MATCH METHOD ONLY - WE DO NOT MAKE USE OF EVENT-BUFFER COUNTS WHICH
+; TELL US THE NUMBER OF EVENTS IN EACH EVENT BUFFER (PER MIDI CHANNEL
+; AND UART), HENCE THE ENTIRE BUFFER IS SEARCHED FOR EACH EVENT WHICH
+; DOES NOT HAVE A MATCH.  IN SOME CASES A GREAT PROPROTION OF TIME WOULD
+; BE SAVED BY CHECKING FOR ZERO COUNTS BEFORE UNDERTAKING A SEARCH.
+; IT'S NOT THAT BIG A DEAL RIGHT NOW, BUT POSSIBLE FUTURE EDITING
+; UTILITIES COULD MAKE IT SEEM MORE IMPORTANT.  OKAY, ENOUGH COMMENTARY.
+;
+; REMEMBER (LEARN FROM MY MISTAKE!) THERE ARE TWO TYPES OF NOTE-OFF -
+; THE "NOTE-ON WITH ZERO VELOCITY" FORMAT WHICH IS USED BY NEARLY
+; EVERYTHING, AND THE "REAL" NOTE-OFF MESSAGE WHICH IS GENERALLY USED
+; ONLY BY ODDBALL KEYBOARDS (SUCH AS THE ENSONIQ MIRAGE, OUR OWN T8 AND
+; PROBABLY A FEW OF THE HIGH-END CONTROLLER KEYBOARDS) WHICH ACTUALLY
+; SENSE AND TRANSMIT A VARIABLE KEY-RELEASE VELOCITY.
+;
+; HERE IN 440 LAND, THESE MESSAGES APPEAR AS FOLLOWS:
+;
+; "NOTE-ON" FORMAT:    1001 cccc uttt 0100 0kkk kkkk 0000 0000
+;
+; "NOTE-OFF" FORMAT:   1000 cccc uttt 0100 0kkk kkkk 0vvv vvvv
+;
+; WHERE:
+;              cccc = MIDI CHANNEL     u = A/B UART BIT (1=B)
+;              ttt = TRACK NUMBER      0100 = TYPE ID FOR MIDI NOTE-OFF
+;              kkkkkkk = KEY NUMBER    vvvvvvv = KEY RELEASE VELOCITY
+;                                              = 0 IN NOTE-ON FORMAT
+;
+; RETURNS "NOT-Z" IF A MATCH IS FOUND, ELSE RETURNS "Z".
+; PRESERVES ALL REGISTERS.
+;
+;
+CHECK_OLD_MIDI
+               MOVEM.L D4-D7/A0,-(A7)
+;
+               MOVE.L  D7,D6                ;COPY THE WHOLE EVENT INTO D6,
+               SWAP    D6                   ;CONVERT MIDI CHANNEL / UART BIT INTO LONG-WORD INDEX -
+               AND     #0F80H,D6            ;USE IT TO ACCESS ASSOCIATED EVENT BUFFER.
+               LSR     #5,D6
+               MOVE.L  #OLD_MIDI_DIRECTORY,A0    ;FETCH POINTER TO "OLD MIDI" BUFFER DIRECTORY,
+               MOVE.L  0(A0,D6),A0               ;LOAD POINTER TO DESIRED EVENT BUFFER INTO A0.
+;
+               MOVE    D7,D6                ;"HASH" THE KEY NUMBER FOR SEARCH START INDEX -
+               AND     #0FF00H,D6           ;MASK OUT VELOCITY (IF ANY),
+               LSR     #6,D6                ;ROTATE KEY NUMBER DOWN INTO A LONG-WORD OFFSET.
+;
+               MOVEQ   #127,D5              ;128 SLOTS PER EVENT BUFFER - SEARCH ALL IF NECESSARY.
+               AND.L   #0EFFFFF00H,D7       ;WIPE OUT INDETERMINATE INFO - L.S.BIT OF STATUS NIBBLE
+                                            ;(SO WE CAN MATCH EITHER TYPE OF NOTE-OFF EVENT) AND
+                                            ;VELOCITY (SINCE WE HAVE NO IDEA OF NOTE-ON VELOCITY).
+               SUB.L   #10000H,D7           ;CONVERT TYPE CODE FROM NOTE-OFF TO NOTE-ON FOR MATCH -
+                                            ;I.E., CHANGE xxx4xxxxH TO xxx3xxxxH.
+                                            ;SO - WE'LL USE (PARTIAL) STATUS NIBBLE, EVENT ID CODE,
+                                            ;CHANNEL/UART, TRACK, KEY NUMBER FOR MATCHING.
+;
+                                            ;START CHECKING, ALREADY:
+CHK_OM_20
+               MOVE.L  0(A0,D6),D4          ;FETCH THE EVENT IN THE CURRENT SLOT.
+               BEQ.S   CHK_OM_30            ;IF SLOT IS EMPTY, WASTE NO FURTHER TIME ON IT.
+               AND.L   #0EFFFFF00H,D4       ;ELSE - MODIFY STATUS NIBBLE, BLOT OUT VELOCITY -
+               CMP.L   D4,D7                ;DO WE GOTS A MATCH?
+               BEQ.S   CHK_OM_40            ;BRANCH IF YES - SET "NOT-Z" STATUS AND RETURN.
+CHK_OM_30
+               ADDQ    #4,D6                ;ELSE - BUMP SEARCH UP TO NEXT SLOT IN EVENT BUFFER,
+               AND     #(128*4)-1,D6        ;WRAPPING AROUND IF NECESSARY.
+               DBRA    D5,CHK_OM_20         ;LOOP AND TRY AGAIN, IF WE HAVEN'T ALREADY TRIED ALL -
+;
+               CMP     D5,D5                ;ELSE, SET "Z" FLAG AND RETURN.
+               BRA.S   CHK_OM_Z0
+;
+CHK_OM_40
+               MOVEQ   #1,D6                ;RETURN "NOT-Z" TO INDICATE MATCH FOUND.
+;
+CHK_OM_Z0
+               MOVEM.L (A7)+,D4-D7/A0
+CHK_OM_EXIT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;02AUG;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;02AUG;
+;02AUG; CHECK FOR PRESENCE OF A PARTICULAR MIDI NOTE IN "NEW" BUFFER -
+;02AUG; CALL WITH A SEQUENCER MIDI NOTE-OFF EVENT IN D7(.L), AS FOLLOWS:
+;02AUG;
+;02AUG;                 1001 aaaa bccc 0100 0ddd dddd 0000 0000
+;02AUG;
+;02AUG;              aaa = MIDI CHANNEL      b = A/B UART BIT (1=B)
+;02AUG;              ccc = TRACK NUMBER      0100 = TYPE ID FOR MIDI NOTE-OFF
+;02AUG;              ddddddd = KEY NUMBER    (L.S.BYTE IS VELOCITY FIELD)
+;02AUG;
+;02AUG; RETURNS "NOT-Z" IF A MATCH IS FOUND, ELSE RETURNS "Z".
+;02AUG; PRESERVES ALL REGISTERS.
+;02AUG;
+;02AUG;
+;02AUGCHECK_NEW_MIDI
+;02AUG               MOVEM.L D4-D7/A0,-(A7)
+;02AUG;
+;02AUG               MOVE.L  D7,D6                ;MAKE COPY
+;02AUG               SWAP    D6                   ; ISOLATE CHANNEL & UART FOR FINDING SUB-POCKET.
+;02AUG               AND     #0F80H,D6            ;  MASK CLEAN...
+;02AUG               LSR     #5,D6                ;            ...AND ROTATE INTO A LONG-WORD OFFSET.
+;02AUG               MOVE.L  #NEW_MIDI_DIRECTORY,A0    ;POINT TO START OF SUB-POCKET.
+;02AUG               MOVE.L  0(A0,D6),A0
+;02AUG;
+;02AUG               MOVE    D7,D6                ;ISOLATE & USE KEYNUM FOR SLOTTING
+;02AUG               AND     #0FF00H,D6           ; MASK OUT VELOCITY
+;02AUG               LSR     #6,D6                ; ROTATE DOWN INTO A LONG-WORD OFFSET
+;02AUG;
+;02AUG               MOVEQ   #127,D5              ;SUB-POCKET IS 128 SLOTS BIG - LOOK THRU ALMOST ALL
+;02AUG               SUB.L   #10000H,D7           ;CONVERT TYPE CODE FROM NOTE-OFF TO NOTE-ON FOR MATCH -
+;02AUG                                            ;I.E., CHANGE xxx4xxxxH TO xxx3xxxxH.
+;02AUG               SF      D7                   ;MASK OUT VELOCITY - USE STATUS NIBBLE, EVENT ID CODE,
+;02AUG                                            ;CHANNEL/UART, TRACK, KEY NUMBER FOR MATCHING.
+;02AUG                                            ;NOTE: USE OF STATUS AND ID PREVENTS ACCIDENTAL MATCH
+;02AUG                                            ;WITH AN EMPTY (0) BUFFER SLOT, SINCE IT IS POSSIBLE
+;02AUG                                            ;THAT ALL OTHER FIELDS COULD LEGITIMATELY BE ZERO.
+;02AUGL_CHK_M_NEW
+;02AUG               MOVE.L  0(A0,D6),D4          ;GRAB EVENT IN THIS SLOT
+;02AUG               SF      D4                   ;MASK OUT VELOCITY (AS PER ABOVE).
+;02AUG               CMP.L   D4,D7                ;  WELL - MATCH?
+;02AUG               BEQ.S   CHK_NEW_M_X          ;    IF YES, COOL!
+;02AUG               ADDQ    #4,D6                ;         ELSE, CONTINUE SEARCH
+;02AUG               AND     #(128*4)-1,D6        ;         (INC & MASK - KEEP INSIDE POCKET)
+;02AUG               DBRA    D5,L_CHK_M_NEW       ;         TRY AGAIN...
+;02AUG;
+;02AUG               CMP     D5,D5                ;IF DIDN'T IT, SET 'Z' & RET
+;02AUG               MOVEM.L (A7)+,D4-D7/A0
+;02AUG               RTS
+;02AUG;
+;02AUGCHK_NEW_M_X
+;02AUG               MOVEQ   #1,D6
+;02AUG               MOVEM.L (A7)+,D4-D7/A0
+;02AUG               RTS
+;02AUG;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+                SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             SEQUENCER PLAYBACK ENCOUNTERS A PAD OFF.  CALL THIS w/ D7.L = :
+;
+;                       aaa bbbbb c ddd 0001 0 eeeee fffff ggggg
+;
+;                      aaa = PADNUM        bbbbb = SAMPLE NUMBER
+;                        c = ALT PARAM BIT   ddd = TRACKNUM
+;                    eeeee = PITCH         fffff = PAN
+;                               ggggg = VELOCITY
+;
+;             TRIES TO FIND A MATCH IN OLD_PAD_DIRECTORY (OLD_PAD_1A -> OLD_PAD_16B).  IF NOT
+;              THERE, RET's w/ 'Z' CONDITON - ELSE, NOT-Z,
+;
+CHECK_OLD_PADS
+               MOVEM.L D4-D7/A0,-(A7)       ;PROTECT REGISTERS
+;
+               MOVE.L  D7,D6                ;MAKE COPY
+               ROL.L   #5,D6                ;PAD NUMBER BECOMES LONG-WORD OFFSET.
+               AND     #1CH,D6              ;  (MASK OUT LOWER BITS)
+               MOVE.L  #OLD_PAD_DIRECTORY,A0
+               MOVE.L  0(A0,D6),A0          ;FETCH POINTER TO OLD PAD SUB-POCKET FOR THIS PAD.
+;
+               MOVE.L  D7,D6                ;ISOLATE & USE SAMPLE NUMBER FOR SLOTTING
+               SWAP    D6                   ; WORK ON UPPER WORD (LOWER IT)
+               AND     #1F00H,D6            ;  MASK CLEAN
+               LSR     #6,D6                ;   ROTATE DOWN INTO A LONG-WORD OFFSET
+;
+               MOVEQ   #31,D5               ;SUB-POCKET IS 32 SLOTS BIG - LOOK ALL, IF NEEDED
+               BCLR    #17,D7               ;NULL OUT PAD-OFF ID FOR MATCHING TO PAD-ON EVENT.
+CHK_OLD_P_1
+               MOVE.L  0(A0,D6),D4          ;EXTRACT EVENT FOR INSPECTION
+               BEQ.S   COP_10               ;IF SLOT IS EMPTY, SKIP IT.
+               BCLR    #16,D4               ;NULL OUT PAD-ON ID FOR MATCHING.
+               CMP.L   D4,D7                ;  MATCH?
+               BEQ.S   CHK_OLD_P_X          ;    IF YES, THEN CLEAR OUT
+COP_10
+               ADDQ    #4,D6                ;         ELSE, CONTINUE SEARCH
+               AND     #(32*4)-1,D6         ;         (INC & MASK - KEEP INSIDE POCKET)
+               DBRA    D5,CHK_OLD_P_1       ;         TRY AGAIN...
+;
+               CMP     D5,D5                ;IF DIDN'T FIND A SLOT, SET 'Z' & RET
+               MOVEM.L (A7)+,D4-D7/A0
+               RTS
+;
+CHK_OLD_P_X
+               MOVEQ   #1,D4                ; SET AS 'NOT-Z'
+               MOVEM.L (A7)+,D4-D7/A0
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+                SKIP
+;02AUG;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;02AUG;
+;02AUG;             SEQUENCER PLAYBACK ENCOUNTERS A PAD OFF.  CALL THIS w/ D7.L = :
+;02AUG;
+;02AUG;                       aaa bbbbb c ddd 0001 0 eeeee fffff ggggg
+;02AUG;
+;02AUG;                      aaa = PADNUM        bbbbb = SAMPLE NUMBER
+;02AUG;                        c = ALT PARAM BIT   ddd = TRACKNUM
+;02AUG;                    eeeee = PITCH         fffff = PAN
+;02AUG;                               ggggg = VELOCITY
+;02AUG;
+;02AUG;             TRIES TO FIND A MATCH IN NEW_PAD_DIRECTORY (NEW_PAD_1A -> NEW_PAD_16B).  IF NOT
+;02AUG;              THERE, RET's w/ 'Z' CONDITON - ELSE, NOT-Z,
+;02AUG;
+;02AUGCHECK_NEW_PADS
+;02AUG               MOVEM.L D4-D7/A0,-(A7)       ;PROTECT REGISTERS
+;02AUG;
+;02AUG               MOVE.L  D7,D6                ;MAKE COPY
+;02AUG               ROL.L   #5,D6                ;PAD NUMBER BECOMES LONG-WORD OFFSET.
+;02AUG               AND     #1CH,D6              ;  (MASK OUT LOWER BITS)
+;02AUG               MOVE.L  #NEW_PAD_DIRECTORY,A0
+;02AUG               MOVE.L  0(A0,D6),A0          ;FETCH POINTER TO OLD PAD SUB-POCKET FOR THIS PAD.
+;02AUG;
+;02AUG               MOVE.L  D7,D6                ;ISOLATE & USE SAMPLE NUMBER FOR SLOTTING
+;02AUG               SWAP    D6                   ; WORK ON UPPER WORD (LOWER IT)
+;02AUG               AND     #1F00H,D6            ;  MASK CLEAN
+;02AUG               LSR     #6,D6                ;   ROTATE DOWN INTO A LONG-WORD OFFSET
+;02AUG;
+;02AUG               MOVEQ   #31,D5               ;SUB-POCKET IS 32 SLOTS BIG - LOOK ALL, IF NEEDED
+;02AUG               BCLR    #17,D7               ;NULL OUT PAD-OFF ID FOR MATCHING TO PAD-ON EVENT.
+;02AUGCHK_NEW_P_1
+;02AUG               MOVE.L  0(A0,D6),D4          ;EXTRACT EVENT FOR INSPECTION
+;02AUG               BEQ.S   CNP_10               ;IF SLOT EMPTY, SKIP IT.
+;02AUG               BCLR    #16,D4               ;NULL OUT PAD-ON ID FOR MATCHING.
+;02AUG               CMP.L   D4,D7                ;  MATCH?
+;02AUG               BEQ.S   CHK_OLD_P_X          ;    IF YES, THEN CLEAR OUT
+;02AUGCNP_10
+;02AUG               ADDQ    #4,D6                ;         ELSE, CONTINUE SEARCH
+;02AUG               AND     #(32*4)-1,D6         ;         (INC & MASK - KEEP INSIDE POCKET)
+;02AUG               DBRA    D5,CHK_NEW_P_1       ;         TRY AGAIN...
+;02AUG;
+;02AUG               CMP     D5,D5                ;IF DIDN'T FIND A SLOT, SET 'Z' & RET
+;02AUG               MOVEM.L (A7)+,D4-D7/A0
+;02AUG               RTS
+;02AUG;
+;02AUGCHK_NEW_P_X
+;02AUG               MOVEQ   #1,D4                ; SET AS 'NOT-Z'
+;02AUG               MOVEM.L (A7)+,D4-D7/A0
+;02AUG               RTS
+;02AUG;
+;02AUG;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               TITLE   "REPEAT-LOOP SUPPORT"
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;       -------  REPEAT-LOOP PLAYBACK SUPPORT UTILITY -------
+;
+; STASH A COMPRESSED LIST OF ALL SEQUENCER MIDI NOTES CURRENTLY ON
+; INTO RP_ST_MIDI_ON BUFFER - FOR REPEAT LOOP PLAYBACK SUPPORT.
+; CALLED UPON FIRST ENCOUNTERING REPEAT LOOP START POINT -
+; PROVIDES A LIST OF THE MIDI NOTES WHICH SHOULD BE ON WHEN WE COME BACK
+; TO THE LOOP START POINT ON SUBSEQUENT REPEATS.
+; WE'RE NICE ABOUT THINGS - PRESERVE ALL REGISTERS, Y'KNOW.
+;
+STASH_OLD_MIDI_ONS
+               CLR     RP_ST_M_DEPTH        ;START WITH COMPRESSED LIST EMPTY.
+               TST     OLD_MIDI_DEPTH       ;IS ANYONE IN THE MIDI SEQ NOTES-ON BUFFER?
+               BEQ.S   ST_OM_EXIT           ;IF NOT, NOTHING TO STASH - WE'RE DONE.
+;
+               MOVEM.L D0-D5/A0-A2,-(A7)    ;ELSE, STASH REGISTERS AND START FLOUNDERING ABOUT:
+;
+               MOVE.L  #OLD_MIDI_BUFS,A0    ;A0 IS MIDI NOTES-ON BUFFER POCKET POINTER,
+               MOVE.L  #O_M_D_1A,A1         ;A1 POINTS TO CORRESPONDING POCKET POPULATION COUNTS.
+               MOVE.L  #RP_ST_MIDI_ON,A2    ;A2 IS OUR STASH LIST WRITE BASE POINTER,
+               CLR     D0                   ;D0 IS OUR INDEX INTO THE STASH LIST.
+               MOVEQ   #31,D4               ;SET UP TO PICK 32 POCKETS IF NEED BE.
+;
+ST_OM_10
+               MOVE    (A1),D3              ;WE GOT ANYONE IN THIS POCKET?
+               BEQ.S   ST_OM_80             ;IF NOT, GO ON TO NEXT IF ANY.
+               CLR     D1                   ;ELSE - INITIALIZE SLOT INDEX,
+               MOVEQ   #127,D2              ;ALSO SLOT COUNTDOWN (SAFETY MEASURE, THIS -
+                                            ;THEORETICALLY, WE SHOULD NEVER TERMINATE ON D2).
+ST_OM_20
+               MOVE.L  0(A0,D1),D5          ;PROBE THE CURRENT SLOT -
+               BEQ.S   ST_OM_30             ;IF EMPTY, MOVE ON.
+               MOVE.L  D5,0(A2,D0)          ;ELSE, COPY EVENT INTO STASH LIST,
+               ADDQ    #4,D0                ;UPDATE STASH LIST INDEX (DEPTH),
+               CMP     #1024,D0             ;THIS IS THE SIZE OF THE MIDI STASH LIST BUFFER -
+               BGE.S   ST_OM_90             ;IF WE FILL IT UP, TOO BAD ABOUT THE OTHERS, HEY?
+               SUBQ    #1,D3                ;NOTCH DOWN OUR COUNT OF EVENTS IN THIS POCKET -
+               BEQ.S   ST_OM_80             ;IF WE'VE SEEN 'EM ALL, GO FOR NEXT POCKET IF ANY.
+ST_OM_30
+               ADDQ    #4,D1                ;ELSE - INDEX UP TO NEXT SLOT IF ANY,
+               DBRA    D2,ST_OM_20          ;LOOP UNTIL ENTIRE POCKET PROBED OR ALL EVENTS SEEN.
+ST_OM_80
+               ADDQ    #2,A1                ;POINT TO EVENT-COUNT IN NEXT POCKET, IF ANY.
+               ADD     #(128*4),A0          ;POINT TO NEXT POCKET IF ANY.
+               DBRA    D4,ST_OM_10          ;LOOP UNTIL ALL POCKETS CHECKED.
+;
+ST_OM_90
+               MOVE    D0,RP_ST_M_DEPTH     ;STORE SIZE OF THE STASH LIST WE'VE JUST CREATED.
+;
+               MOVEM.L (A7)+,D0-D5/A0-A2
+;
+ST_OM_EXIT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;       -------  REPEAT-LOOP PLAYBACK SUPPORT UTILITY -------
+;
+; STASH A COMPRESSED LIST OF ALL SEQUENCER PAD NOTES CURRENTLY ON
+; INTO RP_ST_PADS_ON BUFFER - FOR REPEAT LOOP PLAYBACK SUPPORT.
+; CALLED UPON FIRST ENCOUNTERING REPEAT LOOP START POINT -
+; PROVIDES A LIST OF THE PAD NOTES WHICH SHOULD BE ON WHEN WE COME BACK
+; TO THE LOOP START POINT ON SUBSEQUENT REPEATS.
+; WE'RE NICE ABOUT THINGS - PRESERVE ALL REGISTERS, Y'KNOW.
+;
+STASH_OLD_PAD_ONS
+               CLR     RP_ST_P_DEPTH        ;START WITH COMPRESSED LIST EMPTY.
+               TST     OLD_PAD_DEPTH        ;IS ANYONE IN THE PADS SEQ NOTES-ON BUFFER?
+               BEQ.S   ST_OP_EXIT           ;IF NOT, NOTHING TO STASH - WE'RE DONE.
+;
+               MOVEM.L D0-D5/A0-A2,-(A7)    ;ELSE, STASH REGISTERS AND START FLOUNDERING ABOUT:
+;
+               MOVE.L  #OLD_PAD_BUFS,A0     ;A0 IS PAD NOTES-ON BUFFER POCKET POINTER,
+               MOVE.L  #O_P_D_1,A1          ;A1 POINTS TO CORRESPONDING POCKET POPULATION COUNTS.
+               MOVE.L  #RP_ST_PADS_ON,A2    ;A2 IS OUR STASH LIST WRITE BASE POINTER,
+               CLR     D0                   ;D0 IS OUR INDEX INTO THE STASH LIST.
+               MOVEQ   #7,D4                ;SET UP TO PICK 8 POCKETS IF NEED BE.
+;
+ST_OP_10
+               MOVE    (A1),D3              ;WE GOT ANYONE IN THIS POCKET?
+               BEQ.S   ST_OP_80             ;IF NOT, GO ON TO NEXT IF ANY.
+               CLR     D1                   ;ELSE - INITIALIZE SLOT INDEX,
+               MOVEQ   #31,D2               ;ALSO SLOT COUNTDOWN (SAFETY MEASURE, THIS -
+                                            ;THEORETICALLY, WE SHOULD NEVER TERMINATE ON D2).
+ST_OP_20
+               MOVE.L  0(A0,D1),D5          ;PROBE THE CURRENT SLOT -
+               BEQ.S   ST_OP_30             ;IF EMPTY, MOVE ON.
+               MOVE.L  D5,0(A2,D0)          ;ELSE, COPY EVENT INTO STASH LIST,
+               ADDQ    #4,D0                ;UPDATE STASH LIST INDEX (DEPTH),
+               CMP     #256,D0              ;THIS IS THE SIZE OF THE PADS STASH LIST BUFFER -
+               BGE.S   ST_OP_90             ;IF WE FILL IT UP, TOO BAD ABOUT THE OTHERS, HEY?
+               SUBQ    #1,D3                ;NOTCH DOWN OUR COUNT OF EVENTS IN THIS POCKET -
+               BEQ.S   ST_OP_80             ;IF WE'VE SEEN 'EM ALL, GO FOR NEXT POCKET IF ANY.
+ST_OP_30
+               ADDQ    #4,D1                ;ELSE - INDEX UP TO NEXT SLOT IF ANY,
+               DBRA    D2,ST_OP_20          ;LOOP UNTIL ENTIRE POCKET PROBED OR ALL EVENTS SEEN.
+ST_OP_80
+               ADDQ    #2,A1                ;POINT TO EVENT-COUNT IN NEXT POCKET, IF ANY.
+               ADD     #(32*4),A0           ;POINT TO NEXT POCKET IF ANY.
+               DBRA    D4,ST_OP_10          ;LOOP UNTIL ALL POCKETS CHECKED.
+;
+ST_OP_90
+               MOVE    D0,RP_ST_P_DEPTH     ;STORE SIZE OF THE STASH LIST WE'VE JUST CREATED.
+;
+               MOVEM.L (A7)+,D0-D5/A0-A2
+;
+ST_OP_EXIT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;       -------  REPEAT-LOOP PLAYBACK SUPPORT UTILITY -------
+;
+; TRANSMIT "OFFS" FOR ALL SEQUENCE MIDI NOTES CURRENTLY ON - AT THE SAME
+; TIME, FLUSH THEM FROM THE NOTES-CURRENTLY-ON LIST, LEAVING IT EMPTY.
+; CREATED FOR REPEAT LOOP PLAYBACK - USED AT END OF LOOP TO WIPE STATUS
+; CLEAN PRIOR TO REINSTATING STATUS SAVED AT LOOP START POINT.
+; IN SOLIDARITY WITH OUR BROTHERS IN THE HI-SPEED CUEING PROVINCE
+; (SPP-CUE / SMPTE-CHASE), WE SEND NOTHING OVER MIDI OR TO VOICE HANDLER
+; IF EITHER OF THE HI-SPEED CUEING FLAGS IS SET.
+; WE PRESERVE THOSE REGISTERS - GOTTA DO IT, Y'KNOW.
+;
+M_WIPE_AND_FLUSH
+;
+               MOVEM.L D0-D4/A0-A1,-(A7)
+;
+               MOVE.B  CUEING_TO_SPP,D4     ;THROUGHOUT, D4.B LETS US KNOW IF WE'RE DOING SOME TYPE
+               OR.B    CHASING_SMPTE,D4     ;OF HIGH-SPEED CUEING DURING WHICH WE SHOULD NOT SEND
+                                            ;ANYTHING OVER MIDI OR TO VOICE-HANDLER.
+;
+               MOVE.L  #OLD_MIDI_BUFS,A0    ;A0 IS MIDI NOTES-ON BUFFER POCKET POINTER,
+               MOVE.L  #O_M_D_1A,A1         ;A1 POINTS TO CORRESPONDING POCKET POPULATION COUNTS.
+               MOVEQ   #31,D3               ;SET UP TO PICK 32 POCKETS IF NEED BE.
+;
+MWAF_10
+               TST     OLD_MIDI_DEPTH       ;ANYBODY STILL BE HANGING AROUND IN NOTES-ON BUFFER?
+               BEQ.S   MWAF_90              ;IF NOT, NOTHING TO DO - LET'S GO EAT SUSHI, ETC.
+;
+               TST     (A1)                 ;WE GOT ANYONE IN THIS POCKET?
+               BEQ.S   MWAF_80              ;IF NOT, GO ON TO NEXT IF ANY.
+               CLR     D1                   ;ELSE - INITIALIZE SLOT INDEX,
+               MOVEQ   #127,D2              ;ALSO SLOT COUNTDOWN (SAFETY MEASURE, THIS -
+                                            ;THEORETICALLY, WE SHOULD NEVER TERMINATE ON D2).
+MWAF_20
+               MOVE.L  0(A0,D1),BG_TEMP_1_B ;PROBE THE CURRENT SLOT -
+               BEQ.S   MWAF_50              ;IF EMPTY, MOVE ON.
+               CLR.L   0(A0,D1)             ;ELSE - VAPORIZE THE BUFFERED EVENT,
+               SUBQ    #1,OLD_MIDI_DEPTH    ;DECREMENT OVERALL BUFFER EVENT POPULATION COUNT,
+               SUBQ    #1,(A1)              ;DECREMENT POP. COUNT FOR THIS POCKET.
+;
+               TST.B   D4                   ;DOING SOME KIND OF HIGH-SPEED CUEING?
+               BNE.S   MWAF_50              ;BRANCH IF YES, SEND NOTHING OUT TO ANYONE.
+;
+               MOVE    BG_TEMP_1_B,D0       ;IS THIS EVENT'S TRACK CURRENTLY MUTED?
+               AND     #70H,D0
+               LSR     #4,D0
+               BTST    D0,TRACKS_MUTED
+               BNE.S   MWAF_50              ;BRANCH IF YES, DON'T BOTHER TRANSMITTING IT.
+;
+               MOVEM.L D1-D4/A0-A1,-(A7)         ;ELSE - WE GONNA PUT IT OUT ....
+               MOVE.B  BG_TEMP_3_B,XMIT_TEMP_2   ;FETCH KEY NUMBER,
+               CLR.B   XMIT_TEMP_1               ;CLEAR VELOCITY (NOTE OFF, REMEMBER),
+               MOVE.B  BG_TEMP_1_B,D0            ;AND LOAD STATUS BYTE/CHANNEL NUMBER.
+               BTST    #7,BG_TEMP_2_B            ;SEE WHICH UART IT'S SUPPOSED TO GO OUT OVER -
+               BNE.S   MWAF_30                   ;BRANCH IF IT SHOULD GO OUT VIA UART B.
+               JSR     XMIT_2_PA                 ;ELSE - UART A IT IS ....
+               BRA.S   MWAF_40
+MWAF_30
+               JSR     XMIT_2_PB
+MWAF_40
+               MOVEM.L (A7)+,D1-D4/A0-A1
+;
+MWAF_50
+               TST     (A1)                 ;WE GOT ANYONE IN THIS POCKET ANYMORE?
+               BEQ.S   MWAF_80              ;BRANCH IF NOT, HEAD FOR NEXT POCKET IF ANY.
+               ADDQ    #4,D1                ;ELSE - INDEX UP TO NEXT SLOT IN THIS POCKET,
+               DBRA    D2,MWAF_20           ;LOOP UNTIL ENTIRE POCKET PROBED OR ALL EVENTS SEEN.
+;
+MWAF_80
+               ADD     #(128*4),A0          ;POINT TO NEXT POCKET IF ANY,
+               ADDQ    #2,A1                ;POINT TO COUNT IN NEXT POCKET IF ANY.
+               DBRA    D3,MWAF_10           ;LOOP UNTIL ALL POCKETS PICKED.
+;
+MWAF_90
+               MOVEM.L (A7)+,D0-D4/A0-A1
+MWAF_EXIT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;       -------  REPEAT-LOOP PLAYBACK SUPPORT UTILITY -------
+;
+; TRANSMIT "OFFS" FOR ALL SEQUENCER PAD NOTES CURRENTLY ON - AT THE SAME
+; TIME, FLUSH THEM FROM THE NOTES-CURRENTLY-ON LIST (LEAVING IT EMPTY)
+; AND PASS NOTE-OFF EVENTS TO VOICE HANDLER AS WELL.
+; CREATED FOR REPEAT LOOP PLAYBACK - USED AT END OF LOOP TO WIPE STATUS
+; CLEAN PRIOR TO REINSTATING STATUS SAVED AT LOOP START POINT.
+; IN SOLIDARITY WITH OUR BROTHERS IN THE HI-SPEED CUEING PROVINCE
+; (SPP-CUE / SMPTE-CHASE), WE SEND NOTHING OVER MIDI OR TO VOICE HANDLER
+; IF EITHER OF THE HI-SPEED CUEING FLAGS IS SET.
+; WE PRESERVE THOSE REGISTERS - GOTTA DO IT, Y'KNOW.
+;
+P_WIPE_AND_FLUSH
+;
+               MOVEM.L D0-D4/A0-A1,-(A7)
+;
+               MOVE.B  CUEING_TO_SPP,D4     ;THROUGHOUT, D4.B LETS US KNOW IF WE'RE DOING SOME TYPE
+               OR.B    CHASING_SMPTE,D4     ;OF HIGH-SPEED CUEING DURING WHICH WE SHOULD NOT SEND
+                                            ;ANYTHING OVER MIDI OR TO VOICE-HANDLER.
+;
+               MOVE.L  #OLD_PAD_BUFS,A0     ;A0 IS PADS NOTES-ON BUFFER POCKET POINTER,
+               MOVE.L  #O_P_D_1,A1          ;A1 POINTS TO CORRESPONDING POCKET POPULATION COUNTS.
+               MOVEQ   #7,D3                ;SET UP TO PICK 8 POCKETS IF NEED BE.
+;
+PWAF_10
+               TST     OLD_PAD_DEPTH        ;ANYBODY STILL BE HANGING AROUND IN NOTES-ON BUFFER?
+               BEQ.S   PWAF_90              ;IF NOT, NOTHING TO DO - LET'S GO EAT SUSHI, ETC.
+;
+               TST     (A1)                 ;WE GOT ANYONE IN THIS POCKET?
+               BEQ.S   PWAF_80              ;IF NOT, GO ON TO NEXT IF ANY.
+               CLR     D1                   ;ELSE - INITIALIZE SLOT INDEX,
+               MOVEQ   #31,D2               ;ALSO SLOT COUNTDOWN (SAFETY MEASURE, THIS -
+                                            ;THEORETICALLY, WE SHOULD NEVER TERMINATE ON D2).
+PWAF_20
+               MOVE.L  0(A0,D1),BG_TEMP_1_B ;PROBE THE CURRENT SLOT -
+               BEQ.S   PWAF_50              ;IF EMPTY, MOVE ON.
+               CLR.L   0(A0,D1)             ;ELSE - VAPORIZE THE BUFFERED EVENT,
+               SUBQ    #1,OLD_PAD_DEPTH     ;DECREMENT OVERALL BUFFER EVENT POPULATION COUNT,
+               SUBQ    #1,(A1)              ;DECREMENT POP. COUNT FOR THIS POCKET.
+;
+               TST.B   D4                   ;DOING SOME KIND OF HIGH-SPEED CUEING?
+               BNE.S   PWAF_50              ;BRANCH IF YES, SEND NOTHING OUT TO ANYONE.
+;
+               MOVE    BG_TEMP_1_B,D0       ;IS THIS EVENT'S TRACK CURRENTLY MUTED?
+               AND     #70H,D0
+               LSR     #4,D0
+               BTST    D0,TRACKS_MUTED
+               BNE.S   PWAF_50              ;BRANCH IF YES, DON'T BOTHER TRANSMITTING IT.
+;
+               MOVEM.L D1-D4/A0-A1,-(A7)    ;ELSE - WE GONNA PUT IT OUT ....
+               JSR     SEQ_OFF_INTERNAL     ;TURN OFF INTERNAL VOICE,
+               JSR     TYPE_2_XMIT          ;TRANSMIT "OFF" EVENT OVER MIDI.
+               MOVEM.L (A7)+,D1-D4/A0-A1
+;
+PWAF_50
+               TST     (A1)                 ;WE GOT ANYONE IN THIS POCKET ANYMORE?
+               BEQ.S   PWAF_80              ;BRANCH IF NOT, HEAD FOR NEXT POCKET IF ANY.
+               ADDQ    #4,D1                ;ELSE - INDEX UP TO NEXT SLOT IN THIS POCKET,
+               DBRA    D2,PWAF_20           ;LOOP UNTIL ENTIRE POCKET PROBED OR ALL EVENTS SEEN.
+;
+PWAF_80
+               ADD     #(32*4),A0           ;POINT TO NEXT POCKET IF ANY,
+               ADDQ    #2,A1                ;POINT TO COUNT IN NEXT POCKET IF ANY.
+               DBRA    D3,PWAF_10           ;LOOP UNTIL ALL POCKETS PICKED.
+;
+PWAF_90
+               MOVEM.L (A7)+,D0-D4/A0-A1
+PWAF_EXIT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;       -------  REPEAT-LOOP PLAYBACK SUPPORT UTILITY -------
+;
+; UNSTASH SEQUENCER MIDI NOTES-ON FROM THE STASH LIST -
+; WE'RE JUMPING BACK TO REPEAT LOOP START, NEED TO TURN ON THE NOTES
+; THAT WERE ON AT THE TIME WE FIRST CROSSED THIS LOOP BOUNDARY.
+; THIS TAKES THE SAME FORM AS THE REPEAT LOOP PLAYBACK PARSER,
+; BUT WITH EVENTS OBTAINED IN A DIFFERENT (SIMPLER) WAY.
+; IN SOLIDARITY WITH OUR BROTHERS IN THE HI-SPEED CUEING PROVINCE
+; (SPP-CUE / SMPTE-CHASE), WE SEND NOTHING OVER MIDI OR TO VOICE HANDLER
+; IF EITHER OF THE HI-SPEED CUEING FLAGS IS SET.
+; REGISTERS A2-A6 ARE PRESERVED;  NOT AT ALL SURE ABOUT THE OTHERS ....
+;
+MIDI_UNSTASH
+               MOVEM.L A2-A6,-(A7)
+;
+               MOVE.B  CUEING_TO_SPP,D5     ;THROUGHOUT, D5.B LETS US KNOW IF WE'RE DOING SOME TYPE
+               OR.B    CHASING_SMPTE,D5     ;OF HIGH-SPEED CUEING DURING WHICH WE SHOULD NOT SEND
+                                            ;ANYTHING OVER MIDI OR TO VOICE-HANDLER.
+;
+               MOVE    RP_ST_M_DEPTH,D4     ;FETCH MIDI STASH-LIST DEPTH -
+               BEQ.S   M_UNST_90            ;BRANCH IF NOTHING IN IT - HELL, WE'RE DONE.
+               MOVE.L  #RP_ST_MIDI_ON,A4    ;ELSE - SET UP STASH LIST BASE POINTER.
+M_UNST_10
+               SUBQ    #4,D4                ;STEP DOWN TO WHERE NEXT EVENT IS IN STASH LIST.
+               MOVE.L  0(A4,D4),D7          ;FETCH THE ENTIRE EVENT.
+               BSR     LOG_IN_OLD_MIDI      ;ADD TO THE NOTES_CURRENTLY_ON LIST.
+;
+               TST.B   D5                   ;DOING SOME KIND OF HIGH-SPEED CUEING?
+               BNE.S   M_UNST_30            ;BRANCH IF YES, SEND NOTHING OUT TO ANYONE.
+;
+               JSR     TRACK_MUTE_CHECK     ;SEE IF THIS TRACK MUTED -
+               BNE.S   M_UNST_30            ;IF YES, NO TRANSMITTO - ON TO NEXT EVENT IF ANY.
+               ST      SEQ_XMIT_EVENT       ;ELSE, SET FLAG TO PLOP IN MIDI SEQ BUFFER,
+               MOVEM.L D4-D5/A4,-(A7)
+               JSR     TYPE_3_XMIT          ;XMIT OVER MIDI.
+               MOVEM.L (A7)+,D4-D5/A4
+;
+M_UNST_30
+               CMP     #0,D4                ;DID WE BOTTOM OUT ON THE STASH LIST?
+               BGT     M_UNST_10            ;BRANCH IF NOT, KEEP GRINDING THROUGH.
+;
+M_UNST_90
+               MOVEM.L (A7)+,A2-A6
+M_UNST_EXIT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;       -------  REPEAT-LOOP PLAYBACK SUPPORT UTILITY -------
+;
+; UNSTASH SEQUENCER PAD NOTES-ON FROM THE STASH LIST -
+; WE'RE JUMPING BACK TO REPEAT LOOP START, NEED TO TURN ON THE NOTES
+; THAT WERE ON AT THE TIME WE FIRST CROSSED THIS LOOP BOUNDARY.
+; THIS TAKES THE SAME FORM AS THE REPEAT LOOP PLAYBACK PARSER,
+; BUT WITH EVENTS OBTAINED IN A DIFFERENT (SIMPLER) WAY.
+; IN SOLIDARITY WITH OUR BROTHERS IN THE HI-SPEED CUEING PROVINCE
+; (SPP-CUE / SMPTE-CHASE), WE SEND NOTHING OVER MIDI OR TO VOICE HANDLER
+; IF EITHER OF THE HI-SPEED CUEING FLAGS IS SET.
+; REGISTERS A2-A6 ARE PRESERVED;  NOT AT ALL SURE ABOUT THE OTHERS ....
+;
+PADS_UNSTASH
+               MOVEM.L A2-A6,-(A7)
+;
+               MOVE.B  CUEING_TO_SPP,D5     ;THROUGHOUT, D5.B LETS US KNOW IF WE'RE DOING SOME TYPE
+               OR.B    CHASING_SMPTE,D5     ;OF HIGH-SPEED CUEING DURING WHICH WE SHOULD NOT SEND
+                                            ;ANYTHING OVER MIDI OR TO VOICE-HANDLER.
+;
+               MOVE    RP_ST_P_DEPTH,D4     ;FETCH PADS STASH-LIST DEPTH -
+               BEQ.S   P_UNST_90            ;BRANCH IF NOTHING IN IT - HELL, WE'RE DONE.
+               MOVE.L  #RP_ST_PADS_ON,A4    ;ELSE - SET UP STASH LIST BASE POINTER.
+P_UNST_10
+               SUBQ    #4,D4                ;STEP DOWN TO WHERE NEXT EVENT IS IN STASH LIST.
+               MOVE.L  0(A4,D4),D7          ;FETCH THE ENTIRE EVENT.
+               MOVE.L  D7,BG_TEMP_1_B       ;SAVE FOR UNPACKING & XMITTING OVER MIDI -
+               BSR     LOG_IN_OLD_PAD       ;SHOVE IN NOTES_CURRENTLY_ON LIST.
+;
+               TST.B   D5                   ;DOING SOME KIND OF HIGH-SPEED CUEING?
+               BNE.S   P_UNST_30            ;BRANCH IF YES, SEND NOTHING OUT TO ANYONE.
+;
+               JSR     TRACK_MUTE_CHECK     ;SEE IF THIS TRACK MUTED -
+               BNE.S   P_UNST_30            ;IF MUTED, FORGET PLAYING OR TRANSMITTING IT.
+               MOVE    #1FH,BG_TEMP_5_B     ;ELSE - PROVIDE LEVEL (NOT BUFFERED) - DEFAULT TO MAX.
+               JSR     SEQ_ON_INTERNAL      ;IF NOT, PASS EVENT TO SEQ INTERNAL NOTE-ON HANDLER,
+               ST      SEQ_XMIT_EVENT       ;SET FLAG TO PLOP IN MIDI SEQ BUFFER,
+               MOVEM.L D4-D5/A4,-(A7)
+               JSR     TYPE_1_XMIT          ;AND XMIT OVER MIDI.
+               MOVEM.L (A7)+,D4-D5/A4
+;
+P_UNST_30
+               CMP     #0,D4                ;DID WE BOTTOM OUT ON THE STASH LIST?
+               BGT     P_UNST_10            ;BRANCH IF NOT, KEEP GRINDING THROUGH.
+;
+P_UNST_90
+               MOVEM.L (A7)+,A2-A6
+P_UNST_EXIT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               TITLE   "NOTES_CURRENTLY_ON TABLES"
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; TABLES FOR ADDRESSING POCKETS IN EACH NOTES-CURRENTLY-ON LIST:
+;
+;
+;
+; FOR SEQUENCER MIDI NOTES - 128 LONG-WORD SLOTS * 32 POCKETS:
+;
+OLD_MIDI_DIRECTORY
+               DC.L    OLD_MIDI_BUFS+(00*512)
+               DC.L    OLD_MIDI_BUFS+(01*512)
+               DC.L    OLD_MIDI_BUFS+(02*512)
+               DC.L    OLD_MIDI_BUFS+(03*512)
+               DC.L    OLD_MIDI_BUFS+(04*512)
+               DC.L    OLD_MIDI_BUFS+(05*512)
+               DC.L    OLD_MIDI_BUFS+(06*512)
+               DC.L    OLD_MIDI_BUFS+(07*512)
+               DC.L    OLD_MIDI_BUFS+(08*512)
+               DC.L    OLD_MIDI_BUFS+(09*512)
+               DC.L    OLD_MIDI_BUFS+(10*512)
+               DC.L    OLD_MIDI_BUFS+(11*512)
+               DC.L    OLD_MIDI_BUFS+(12*512)
+               DC.L    OLD_MIDI_BUFS+(13*512)
+               DC.L    OLD_MIDI_BUFS+(14*512)
+               DC.L    OLD_MIDI_BUFS+(15*512)
+               DC.L    OLD_MIDI_BUFS+(16*512)
+               DC.L    OLD_MIDI_BUFS+(17*512)
+               DC.L    OLD_MIDI_BUFS+(18*512)
+               DC.L    OLD_MIDI_BUFS+(19*512)
+               DC.L    OLD_MIDI_BUFS+(20*512)
+               DC.L    OLD_MIDI_BUFS+(21*512)
+               DC.L    OLD_MIDI_BUFS+(22*512)
+               DC.L    OLD_MIDI_BUFS+(23*512)
+               DC.L    OLD_MIDI_BUFS+(24*512)
+               DC.L    OLD_MIDI_BUFS+(25*512)
+               DC.L    OLD_MIDI_BUFS+(26*512)
+               DC.L    OLD_MIDI_BUFS+(27*512)
+               DC.L    OLD_MIDI_BUFS+(28*512)
+               DC.L    OLD_MIDI_BUFS+(29*512)
+               DC.L    OLD_MIDI_BUFS+(30*512)
+               DC.L    OLD_MIDI_BUFS+(31*512)
+;
+;
+;
+; FOR LIVE MIDI NOTES - 128 LONG-WORD SLOTS * 32 POCKETS:
+;
+NEW_MIDI_DIRECTORY
+               DC.L    NEW_MIDI_BUFS+(00*512)
+               DC.L    NEW_MIDI_BUFS+(01*512)
+               DC.L    NEW_MIDI_BUFS+(02*512)
+               DC.L    NEW_MIDI_BUFS+(03*512)
+               DC.L    NEW_MIDI_BUFS+(04*512)
+               DC.L    NEW_MIDI_BUFS+(05*512)
+               DC.L    NEW_MIDI_BUFS+(06*512)
+               DC.L    NEW_MIDI_BUFS+(07*512)
+               DC.L    NEW_MIDI_BUFS+(08*512)
+               DC.L    NEW_MIDI_BUFS+(09*512)
+               DC.L    NEW_MIDI_BUFS+(10*512)
+               DC.L    NEW_MIDI_BUFS+(11*512)
+               DC.L    NEW_MIDI_BUFS+(12*512)
+               DC.L    NEW_MIDI_BUFS+(13*512)
+               DC.L    NEW_MIDI_BUFS+(14*512)
+               DC.L    NEW_MIDI_BUFS+(15*512)
+               DC.L    NEW_MIDI_BUFS+(16*512)
+               DC.L    NEW_MIDI_BUFS+(17*512)
+               DC.L    NEW_MIDI_BUFS+(18*512)
+               DC.L    NEW_MIDI_BUFS+(19*512)
+               DC.L    NEW_MIDI_BUFS+(20*512)
+               DC.L    NEW_MIDI_BUFS+(21*512)
+               DC.L    NEW_MIDI_BUFS+(22*512)
+               DC.L    NEW_MIDI_BUFS+(23*512)
+               DC.L    NEW_MIDI_BUFS+(24*512)
+               DC.L    NEW_MIDI_BUFS+(25*512)
+               DC.L    NEW_MIDI_BUFS+(26*512)
+               DC.L    NEW_MIDI_BUFS+(27*512)
+               DC.L    NEW_MIDI_BUFS+(28*512)
+               DC.L    NEW_MIDI_BUFS+(29*512)
+               DC.L    NEW_MIDI_BUFS+(30*512)
+               DC.L    NEW_MIDI_BUFS+(31*512)
+;
+;
+;
+; FOR SEQUENCER PAD NOTES - 32 LONG-WORD SLOTS * 8 POCKETS:
+;
+OLD_PAD_DIRECTORY
+               DC.L    OLD_PAD_BUFS+(0*128)
+               DC.L    OLD_PAD_BUFS+(1*128)
+               DC.L    OLD_PAD_BUFS+(2*128)
+               DC.L    OLD_PAD_BUFS+(3*128)
+               DC.L    OLD_PAD_BUFS+(4*128)
+               DC.L    OLD_PAD_BUFS+(5*128)
+               DC.L    OLD_PAD_BUFS+(6*128)
+               DC.L    OLD_PAD_BUFS+(7*128)
+;
+;
+;
+; FOR LIVE PAD NOTES - 8 LONG-WORD SLOTS * 8 POCKETS:
+;
+NEW_PAD_DIRECTORY
+               DC.L    NEW_PAD_BUFS+(0*32)
+               DC.L    NEW_PAD_BUFS+(1*32)
+               DC.L    NEW_PAD_BUFS+(2*32)
+               DC.L    NEW_PAD_BUFS+(3*32)
+               DC.L    NEW_PAD_BUFS+(4*32)
+               DC.L    NEW_PAD_BUFS+(5*32)
+               DC.L    NEW_PAD_BUFS+(6*32)
+               DC.L    NEW_PAD_BUFS+(7*32)
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA

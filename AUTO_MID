@@ -1,0 +1,794 @@
+               INCLUDE HPFIXUPS
+               TITLE "MIDI AUTOREPEAT, LIVE ERASE"
+***************************************************************************************************
+***************************************************************************************************
+***                                                                                             ***
+***            UTILITIES & ROUTINES FOR MIDI AUTOREPEATING & LIVE ERASING                       ***
+***                                                                                             ***
+***************************************************************************************************
+***************************************************************************************************
+;
+NEG_EXT        EQU     0FFFFFF00H      ;USE IN MOVEQ INSTRUCTIONS WHERE ARG IS
+                                       ;80H OR LARGER - HP XASM DOES NOT HANDLE
+                                       ;SIGN-EXTEND CORRECTLY.  COSMETIC, KEEPS
+                                       ;ACTUAL BYTE VALUE CLEARER.
+;
+               ABS_SHORT
+;
+               GLB     QUICK_LOG_IN
+               GLB     QUICK_LOG_OUT
+               GLB     COPY_ON_TO_OFF
+               GLB     ERASE_SEEK
+               GLB     AUTORPT_MIDI
+               GLB     AUTO_OFF_MIDI
+
+               EXTERNAL  ECHO_3
+               EXTERNAL  UPDATE_A_PAD
+               EXTERNAL  VOICE_ASSIGN
+               EXTERNAL  SEQ_WRITE
+               EXTERNAL  LOG_IN_NEW_PAD
+               EXTERNAL  GENERIC_STUFFER
+               EXTERNAL  LOG_IN_NEW_MIDI
+               EXTERNAL  VOICE_GATE_OFF
+               EXTERNAL  DEACTIVATE_PERF
+               EXTERNAL  LOG_OUT_PAD_NEW_PAD
+               EXTERNAL  TIMED_SEQ_WRITE
+               EXTERNAL  LOG_OUT_NEW_MIDI
+               EXTERNAL  SEQ_MEM_CHECK
+
+               EXTERNAL  MIDI_HOLDING_BUFF,M_HOLD_SLOT
+               EXTERNAL  MIDI_OFF_BUFF
+               EXTERNAL  NOW_UART
+               EXTERNAL  AUTORPT_FLAG
+               EXTERNAL  SOUND_SEQ_SWITCH
+               EXTERNAL  MIDI_MODE
+               EXTERNAL  LAST_STAT_BYTE
+               EXTERNAL  AUTORPT_MIDI_MOD
+               EXTERNAL  LAST_PRESSURE,MIDI_DATA_2
+               EXTERNAL  LAST_MOD_WHL
+               EXTERNAL  MIDI_DATA_1,LAST_MIDI
+               EXTERNAL  LAST_MIDI_CHANNEL
+               EXTERNAL  LAST_MIDI_KEYNUM,LAST_MIDI_VELOCITY
+               EXTERNAL  L6_TEMP_1_B
+;12FEB               EXTERNAL  L6_TEMP_1_B,L6_TEMP_7_B
+               EXTERNAL  MAP_ARRAY_2TBL,MAP_ARRAY_TBL
+;12FEB               EXTERNAL  L6_TEMP_5_B
+               EXTERNAL  MIDI_DEFAULT_VEL
+;12FEB               EXTERNAL  L6_TEMP_4_B
+               EXTERNAL  CURRENT_SOUND
+               EXTERNAL  ASSIGN_BLOCK
+;12FEB               EXTERNAL  L6_TEMP_3_B
+               EXTERNAL  PAD_LEVELS
+               EXTERNAL  PAD_PANS
+;12FEB               EXTERNAL  L6_TEMP_8_B
+               EXTERNAL  RECORDING
+               EXTERNAL  NOW_TRACK
+               EXTERNAL  SEQ_WR_PTR
+               EXTERNAL  BG_TEMP_1_B
+               EXTERNAL  PAD_JUST_HIT
+               EXTERNAL  EDIT_KIT_INDEX
+               EXTERNAL  BUILD_KIT_FLAG
+               EXTERNAL  PAD_SOUNDS
+               EXTERNAL  STAT_TEMP
+               EXTERNAL  MIDI_DATA_TEMP
+
+               TITLE   "HOLDING BUFFER UTILITIES"
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             THE MOST RECENT 8 KEY ONS OVER MIDI ARE LOGGED INTO MIDI_HOLDING_BUFF.  THIS
+;              BUFFER IS THEN USED FOR LIVE ERASE COMPARISONS AND FOR AUTOREPEATING.  BELOW
+;              ARE A SET OF BASIC UTILITIES FOR LOGGING NOTES IN AND OUT OF THIS BUFFER, COPYING
+;              THIS BUFFER TO A NOTE-OFF VERSION (FOR AUTOREPEATING), AND SEEKING
+;              A MATCH FOR ERASING.
+;
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             LOG IN FRESH NOTE ONS.  ROTATE THRU A TABLE OF 8 LOOKING FOR A SLOT.
+;
+;             ENTER w/ NOTE EVENT IN LAST_STAT_BYTE/MIDI_DATA_1/MIDI_DATA_2
+;
+;             WIPES REGISTERS A0/D0-D2 (WITH NO APOLOGIES).
+;
+QUICK_LOG_IN
+               MOVE    #MIDI_HOLDING_BUFF,A0     ;POINT TO HOLDING TANK
+               MOVEQ   #7,D1                ;ROTATE THRU 7 PLACES LOOKING FOR AN OPEN SLOT
+               MOVE    M_HOLD_SLOT,D2       ; LOAD WHERE WE LAST DID BUISNESS
+Q_LOG_IN_LOOP
+               ADDQ    #4,D2                ;BUMP TO NEXT SLOT
+               AND     #1CH,D2              ; (WRAP)
+               TST     0(A0,D2)             ;  SLOT EMPTY?
+               BEQ.S   Q_LOG_IN             ;    IF YES, THROW IN HERE
+               DBRA    D1,Q_LOG_IN_LOOP     ;         ELSE, CHECK OUT NEXT SLOT...
+Q_LOG_IN
+               MOVE    D2,M_HOLD_SLOT       ;SAVE ROTATING POINTER
+               MOVE.B  LAST_STAT_BYTE,0(A0,D2)   ;LOG IN EVENT VERBATIM
+               MOVE.B  MIDI_DATA_1,1(A0,D2)
+               MOVE.B  MIDI_DATA_2,2(A0,D2)
+               RTS                     ;DONE - RETURN
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             LOG OUT NOTE OFFS.  ROTATE THRU A TABLE OF 8 LOOKING FOR A MATCH.
+;
+;             ENTER w/ NOTE EVENT IN LAST_STAT_BYTE/MIDI_DATA_1/MIDI_DATA_2
+;
+;             WIPES REGISTERS A0/D0-D2 (WITH NO APOLOGIES).
+;
+QUICK_LOG_OUT
+               MOVE    #MIDI_HOLDING_BUFF,A0     ;POINT TO HOLDING TANK
+               MOVEQ   #7,D1                ;ROTATE THRU 8 PLACES LOOKING FOR AN OPEN SLOT
+               MOVEQ   #0,D2                ; START FROM THE BEGINNING.
+
+               MOVE.B  LAST_STAT_BYTE,D0    ;WANT TO MATCH CHANNEL AND KEYNUM
+               OR.B    #10H,D0              ; (MAKE LOOK LIKE A NOTE ON, IN CASE '80' STYLE OFF)
+               LSL     #8,D0                ;  ROTATE STAT BYTE UP...
+               MOVE.B  MIDI_DATA_1,D0       ;   MASK IN KEYNUM (IGNORE VELOCITY - IS AN OFF)
+
+Q_LOG_OUT_LOOP
+               CMP     0(A0,D2),D0          ;MATCH?
+               BNE.S   Q_LOG_OUT            ;    IF YES, WIPE OUT
+               CLR.L   0(A0,D2)             ;WIPE OLD EVENT OUT
+Q_LOG_OUT      ADDQ    #4,D2                ;BUMP TO NEXT SLOT
+               DBRA    D1,Q_LOG_OUT_LOOP    ;         ELSE, CHECK OUT NEXT SLOT...
+
+               RTS                     ;DONE - RETURN
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             COPYING THE HOLDING BUFFER TO OFFS IN ANOTHER BUFFER
+;
+;             WRECKS REGGIES A0-A1/D0-D2.
+;
+COPY_ON_TO_OFF
+               MOVE.L  #MIDI_OFF_BUFF,A1    ;POINT TO BUFFERS IN QUESTION
+               MOVE.L  #MIDI_HOLDING_BUFF,A0
+               MOVEQ   #7,D1                ; MAXIMUM OF 8 EVENTS TO COPY ACROSS
+               MOVEQ   #0,D2                ;  START - OF COURSE - AT THE BEGINNING
+C_O_T_O_LOOP
+               MOVE.L  0(A0,D2),D0          ;GRAB ON
+               SWAP    D0                   ; JUST INTERESTED IN UPPER WORD (STAT & KEYNUM)
+               MOVE    D0,0(A1,D2)          ;  THIS ZEROES OUT VELOCITY (WE DON'T WRITE LOWER WORD)
+               ADDQ    #4,D2                ;   INC TO NEXT SLOT
+               DBRA    D1,C_O_T_O_LOOP      ;    DO LIST
+               RTS                     ;DONE!
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             ERASE SEEK - ENTER w/ MIDI ON EVENT IN SEQUENCER FORMAT IN D7.L.  RET w/ 'NOT-Z'
+;              INDICATION IF TO ERASE; 'Z' IF TO LEAVE BE.
+;
+;             EVENT IN D7.L LOOKS LIKE:
+;              1001 aaaa b ccc 0011    aaaa = CHANNEL, b = UART, ccc = TRACKNUM
+;              0 ddddddd 0 eeeeeee     ddddddd = KEYNUM, eeeeeee = VELOCITY
+;
+;             WIPES A0/D0-D2.
+;
+ERASE_SEEK
+;;;;;;         TST.B   ERASING              ;IF NOT ERASING
+;;;;;;         BEQ.S   MILK_0               ;    THEN DO NOT BOTHER
+                                            ;         ELSE...
+               MOVE.L  D7,D0                ;MAKE A COPY OF SEQ EVENT
+               SWAP    D0
+               AND     #70H,D0              ; FIRST - TRACK = NOW_TRACK?
+               LSR     #4,D0
+               CMP     NOW_TRACK,D0         ;  WELL?
+               BNE.S   MILK_0               ;    IF NO TRACK MATCH, SPLIT
+
+               MOVE.L  D7,D0
+               SWAP    D0                   ;JUST INTERESTED IN STAT BYTE (CHANNEL) AND KEYNUM
+               LSR     #8,D0                ; PUT STAT_BYTE IN LOWER BYTE
+               SWAP    D0                   ;  HAVE FORMED 00000000 1001 aaaa 0ddddddd 0eeeeeee
+               LSR.L   #8,D0                ;   AND NOW, 1001 aaaa 0ddddddd IN D0.W
+
+               MOVE.L  #MIDI_HOLDING_BUFF,A0     ;POINT TO DA LIST
+               MOVEQ   #7,D1                ;LOOK THRU ALL 8 SLOTS
+               MOVEQ   #0,D2                ; START WITH THE FIRST SLOT
+ERASE_SEEK_LOOP
+               CMP     0(A0,D2),D0          ;SEE IF WE HAVE A WINNAH
+               BEQ.S   ERASE_POSSIBLE       ; IF FOUND A MATCH, ONLY UART LEFT TO COMPARE
+               ADDQ.L  #4,D2                ;    ELSE, LOOK ONWARDS
+               DBRA    D1,ERASE_SEEK_LOOP
+MILK_0
+               CMP     D0,D0                ;IF NO FIND, 'Z' FLAG & RET
+               RTS
+
+ERASE_POSSIBLE
+               TST.B   NOW_UART             ;LASTLY - SEE IN NOW_UART = IT'S UART
+               BEQ.S   MILK_1               ; NOW UART = 0 = A, = 1 = B.
+               BTST    #23,D7               ;  TESTING FOR B
+               BEQ.S   MILK_0               ;   IF A, AND WE'RE ON B, DO NOT ERASE
+               BRA.S   MILK_2
+MILK_1
+               BTST    #23,D7               ;TESTING FOR A
+               BNE.S   MILK_0               ; IF B, AND WE'RE ON A, DO NOT ERASE
+MILK_2
+               MOVEQ   #1,D0                ;    ELSE, RET 'NOT-Z' - ERASE!
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               TITLE   "AUTOREPEAT ON HANDLERS"
+                SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;              AUTOREPEAT JERKS US - SEZ TURN WHOEVER WE'RE HOLDING ON.  DO THIS BY PSUEDO-ING
+;               THE EVENTS HAVING BEEN PLAYED THAT WAY FROM MIDI.
+;
+;              ENTER ASSUMING MEMORY POINTERS HAVE BEEN SAVED.  WE RELOAD, AND SAVE WHEN DONE.
+;
+;              WE'RE CALLED FROM THE PHAZOR IN PRO_CLICK.
+;
+;              REGISTERS BE DAMNED.
+;
+;              NOTE THAT NOT IN EFFECT IF IN PAD-FAKE OMNI/POLY MODES.
+;
+AUTORPT_MIDI
+               TST.B   AUTORPT_FLAG         ;AUTOREPEATING?
+               BEQ.S   EXIT_AUTO_MIDI       ;    IF NOT, GIT
+
+               MOVE.B  LAST_STAT_BYTE,STAT_TEMP       ;SAVE THE LAST STATUS BYTE
+               MOVE    MIDI_DATA_1,MIDI_DATA_TEMP
+               TST     SOUND_SEQ_SWITCH     ;WELL - WOT MODE, DOC?
+               BNE     AUTO_NORMAL_MIDI     ;    IF AIMED AT SEQUENCER, HANDLE THUSLY
+               CMP     #3,MIDI_MODE         ;    IF IN MAPPED MODE, HANDLE
+               BEQ.S   AUTO_MAPPED_MIDI
+
+EXIT_AUTO_MIDI
+               RTS                          ;         ELSE, FUCK OFF, DOC.
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+AUTO_MAPPED_MIDI       ; AUTOREPEATING MAPPED MIDI-SAN.
+               MOVE    #MIDI_HOLDING_BUFF,A0     ;POINT TO HOLDING TANK
+               MOVEQ   #7,D1                ;ROTATE THRU 8 PLACES LOOKING FOR AN OPEN SLOT
+               MOVEQ   #0,D2                ; LOAD WHERE WE LAST DID BUISNESS
+MAP_AUTO_LOOP
+               TST     0(A0,D2)             ;SLOT EMPTY?
+               BEQ.S   MAP_LOOK_AGAIN       ;    IF YES, LOOK AT NEXT ONE
+                                            ;         ELSE, COOK!!!
+               MOVE.B  0(A0,D2),LAST_STAT_BYTE   ;SAVE BYTES INDIVIDUALLY FOR ECHOING & PLAYING
+               MOVE.B  1(A0,D2),MIDI_DATA_1
+               TST     AUTORPT_MIDI_MOD    ;SUPPOSED TO DO ANY FUNKY REPLACING OF VELOCITY?
+               BMI.S   FLOYD_1              ;    IF NOT, USE WHAT WE GOT
+               BEQ.S   FLOYD_2              ;    IF MOD WHEEL, USE THAT
+               MOVE.B  LAST_PRESSURE+1,MIDI_DATA_2    ;ELSE, USE PRESSURE
+               BRA.S   FLOYD_3
+FLOYD_2
+               MOVE.B  LAST_MOD_WHL+1,MIDI_DATA_2
+               BRA.S   FLOYD_3
+FLOYD_1
+               TST     MIDI_DEFAULT_VEL     ;ARE WE SUPPOSED TO SUBSTITUTE WITH A DEFAULT?
+               BEQ.S   CHROME_6             ;    IF NOT, KEEP WHAT WE GOT
+               MOVE.B  MIDI_DEFAULT_VEL+1,MIDI_DATA_2      ;ELSE, SUBSTITUTE
+               BRA.S   FLOYD_3
+CHROME_6
+               MOVE.B  2(A0,D2),MIDI_DATA_2
+FLOYD_3
+               MOVEM.L D0-D2/A0,-(A7)       ;SAVE REGGIES
+               BSR.S   AUTO_MAPPED_ON       ;    PERFORM
+               MOVEM.L (A7)+,D0-D2/A0       ;         RESTORE REGGIES
+               MOVE.B  STAT_TEMP,LAST_STAT_BYTE    ;RESTORE STATUS BYTE
+               MOVE    MIDI_DATA_TEMP,MIDI_DATA_1
+
+MAP_LOOK_AGAIN
+               ADDQ.L  #4,D2                ;BUMP INDEX TO NEXT SLOT
+               DBRA    D1,MAP_AUTO_LOOP     ; GO 'TILL EXHAUSTED
+
+               BRA     COPY_ON_TO_OFF       ;CLOSE OUT BY CREATING A DUPE LIST FOR TURNING OFF.
+
+
+
+AUTO_MAPPED_ON
+               BSR     ECHO_3               ;HANDLE POSSIBLE ECHO
+               MOVE.B  MIDI_DATA_1,LAST_MIDI+1   ;MAKE NOTE OF LAST MIDI KEYNUM ON
+
+               MOVE.B  LAST_STAT_BYTE,D0    ;RELOAD LAST STAT BYTE (IN CASE OF RUNNING STATUS)
+               ANDI    #0FH,D0              ;MASK DOWN TO CHANNEL
+               LSL     #2,D0                ; PRE-ROTATE INTO A LONG INDEX
+               MOVE    D0,LAST_MIDI_CHANNEL ;  SAVE...
+
+               MOVE.B  MIDI_DATA_1,D0       ;GET THE KEYNUM
+               EXT     D0
+               SUBI    #15H,D0              ;KNOCK DOWN (CONVERING 88-KEY RANGE)
+               BCS     EXIT_A_MAPPED        ;    IF BELOW LEGAL RANGE, GIT
+               CMPI    #87,D0               ;CHECK TOP OF RANGE
+               BCC     EXIT_A_MAPPED        ;    IF ABOVE LEGAL RANGE, GIT
+               LSL     #2,D0                ;PRE-ROTATE INTO A LONG-WORD OFFSET
+               MOVE    D0,LAST_MIDI_KEYNUM
+
+; HAVE ENOUGH TO LOOK UP THIS EVENT IN THE PROPER KEYMAP ARRAY
+
+               MOVE    LAST_MIDI_CHANNEL,D1 ;GRAB THAT CHANNEL
+               MOVE.L  #MAP_ARRAY_TBL,A3
+               MOVE.L  0(A3,D1),A3    ;SAVE PARAMS FOR LOWER KEYBOARD
+               MOVE.L  0(A3,D0),L6_TEMP_1_B
+               MOVE.L  #MAP_ARRAY_2TBL,A3
+               MOVE.L  0(A3,D1),A3
+;12FEB               MOVE.L  0(A3,D0),L6_TEMP_5_B      ;SAVE PARAMS FOR UPPER KEYBOARD
+               MOVE.L  0(A3,D0),L6_TEMP_1_B+4    ;SAVE PARAMS FOR UPPER KEYBOARD
+
+               MOVE.B  MIDI_DATA_2,D0       ;GET THE VELOCITY
+               EXT     D0
+               LSR     #2,D0                ;ELSE, VALID - ROTATE DOWN...
+               MOVE    D0,LAST_MIDI_VELOCITY     ; (SAVE)
+               CLR     D7                   ;(BY CLEARING, NOW A MASK FOR TURNING BYTES INTO WORDS)
+
+               TST.B   L6_TEMP_1_B          ;SEE IF THIS KEY WAS ASSIGNED A SAMPLE
+               BEQ     TRY_FOR_SECOND_NOTE  ;    IF NOT, SEE IF LOWER KEYBOARD VALID
+
+               MOVE    #4,ASSIGN_BLOCK      ;BUILD ASSIGN BLOCK.  MIDI EVENT...
+
+;12FEB               MOVE.B  L6_TEMP_4_B,D7       ;SOUND NOMBRE
+               MOVE.B  L6_TEMP_1_B+3,D7     ;SOUND NOMBRE
+               MOVE    D7,ASSIGN_BLOCK+2
+               MOVE    D7,CURRENT_SOUND     ;UPDATE EDIT DISPLAYS TO THIS SOUND NUMBER.
+               MOVE    D7,D5
+               AND     #7,D5                ;DERIVE "PAD" NUMBER FROM SOUND NUMBER,
+               MOVE    D5,PAD_JUST_HIT      ;UPDATE LIVE EVENT TRACKER VARIABLE.
+               MOVE    D7,D5                ;SOUND NUMBER AGAIN.
+               LSR     #3,D5                ;DERIVE "KIT" INDEX -
+               AND     #1FH,D5
+               ADDQ    #4,D5                ;GOTTA BE 4-7 (BANK A-D).
+               MOVE    D5,EDIT_KIT_INDEX    ;UPDATE DISYEAH OTHER TRACKER VARIABLE.
+               MOVE    D7,D5                ;SOUND NUMBER ONE MORE TIME.
+               AND     #1FH,D5              ;MASK DOWN SOUND NUMBER.
+               ADD     #32,D5               ;INDEX PAST THE USER KITS TO FIXED BANKS.
+               MOVE    D5,A1                ;A1 IS INDEX INTO PAD ARRAYS.
+               TST.B   BUILD_KIT_FLAG       ;ARE WE IN KIT-BUILD SCREEN/MODE?
+               BEQ.S   ZARCH_10             ;NO - PLAY FROM LIVE PAD ARRAYS.
+               ADD     #256,A1              ;YES - SET UP OFFSET TO GET US INTO PRESET ARRAYS.
+ZARCH_10
+               MOVE.B  PAD_SOUNDS(A1),D4    ;FETCH ALT-PARAMS VALUE FROM BANK PAD OR PRESET ARRAY.
+               AND     #1,D4                ;ISOLATE IT.
+               MOVE    D4,ASSIGN_BLOCK+4    ;PLOP ALT-PARAMS SETTING INTO ASSIGN_BLOCK.
+;23NOV
+;23NOV               MOVE    ALT_PARAM_FLAG,ASSIGN_BLOCK+4  ;ALT PARAM STATUS
+;23NOV
+;12FEB               MOVE.B  L6_TEMP_3_B,D7       ;SOUND PITCH
+               MOVE.B  L6_TEMP_1_B+2,D7     ;SOUND PITCH
+               MOVE    D7,ASSIGN_BLOCK+6
+
+               MOVE    D0,ASSIGN_BLOCK+12   ;VELOCITY
+
+               MOVE    LAST_MIDI_CHANNEL,D6 ;CHANNEL
+               LSR     #2,D6
+               MOVE    D6,ASSIGN_BLOCK+14
+
+               MOVE    LAST_MIDI_KEYNUM,D6  ;KEYNUM
+               LSR     #2,D6
+               MOVE    D6,ASSIGN_BLOCK+16
+
+;23NOV               ANDI    #0FFH,D5             ;MASK DOWN SOUNDNUM
+;23NOV               ADD     #32,D5               ; (INDEX PAST THE KITS)
+;23NOV               MOVE    D5,A1                ;INDEX INTO PAD ARRAYS
+
+               CLR     D0                   ; (SET SOUND COUNT TO END WITH THIS ONE)
+;23NOV               MOVEQ   #-1,D2               ;FLAG THAT INDEED A BANK TO EDIT
+               MOVE    A1,A0
+               BSR     UPDATE_A_PAD
+
+               MOVE.B  PAD_LEVELS(A1),D7    ;LEVEL
+               MOVE    D7,ASSIGN_BLOCK+8
+
+               MOVE.B  PAD_PANS(A1),D7      ;PAN
+               MOVE    D7,ASSIGN_BLOCK+10
+
+               BSR     VOICE_ASSIGN         ;GO START THIS GUY UP
+               BSR     AUTO_ON_SEQ_PAD        ;SEE IF SEQUENCER RUNNING; IF SO, STUFF THIS EVENT OFF TO IT
+
+TRY_FOR_SECOND_NOTE    ; GO FOR UPPER KEYBOARD
+;12FEB               TST.B   L6_TEMP_5_B          ;SEE IF THIS KEY WAS ASSIGNED A SAMPLE
+               TST.B   L6_TEMP_1_B+4        ;SEE IF THIS KEY WAS ASSIGNED A SAMPLE
+               BEQ     EXIT_A_MAPPED        ;    IF NOT, DONE
+
+               MOVE    #4,ASSIGN_BLOCK      ;BUILD ASSIGN BLOCK.  MIDI EVENT...
+
+;12FEB               MOVE.B  L6_TEMP_8_B,D7       ;SOUND NOMBRE
+               MOVE.B  L6_TEMP_1_B+7,D7     ;SOUND NOMBRE
+               MOVE    D7,ASSIGN_BLOCK+2
+               MOVE    D7,CURRENT_SOUND     ;UPDATE EDIT DISPLAYS TO THIS SOUND NUMBER.
+               MOVE    D7,D5
+               AND     #7,D5                ;DERIVE "PAD" NUMBER FROM SOUND NUMBER,
+               MOVE    D5,PAD_JUST_HIT      ;UPDATE LIVE EVENT TRACKER VARIABLE.
+               MOVE    D7,D5                ;SOUND NUMBER AGAIN.
+               LSR     #3,D5                ;DERIVE "KIT" INDEX -
+               AND     #1FH,D5
+               ADDQ    #4,D5                ;GOTTA BE 4-7 (BANK A-D).
+               MOVE    D5,EDIT_KIT_INDEX    ;UPDATE DISYEAH OTHER TRACKER VARIABLE.
+               MOVE    D7,D5                ;SOUND NUMBER ONE MORE TIME.
+               AND     #1FH,D5              ;MASK DOWN SOUND NUMBER.
+               ADD     #32,D5               ;INDEX PAST THE USER KITS TO FIXED BANKS.
+               MOVE    D5,A1                ;A1 IS INDEX INTO PAD ARRAYS.
+               TST.B   BUILD_KIT_FLAG       ;ARE WE IN KIT-BUILD SCREEN/MODE?
+               BEQ.S   ZARCH_20             ;NO - PLAY FROM LIVE PAD ARRAYS.
+               ADD     #256,A1              ;YES - SET UP OFFSET TO GET US INTO PRESET ARRAYS.
+ZARCH_20
+               MOVE.B  PAD_SOUNDS(A1),D4    ;FETCH ALT-PARAMS VALUE FROM BANK PAD OR PRESET ARRAY.
+               AND     #1,D4                ;ISOLATE IT.
+               MOVE    D4,ASSIGN_BLOCK+4    ;PLOP ALT-PARAMS SETTING INTO ASSIGN_BLOCK.
+;
+;23NOV
+;23NOV               MOVE    ALT_PARAM_FLAG,ASSIGN_BLOCK+4  ;ALT PARAM STATUS
+;23NOV
+;12FEB               MOVE.B  L6_TEMP_7_B,D7       ;SOUND PITCH
+               MOVE.B  L6_TEMP_1_B+6,D7     ;SOUND PITCH
+               MOVE    D7,ASSIGN_BLOCK+6
+               MOVE    LAST_MIDI_VELOCITY,D0
+
+               MOVE    D0,ASSIGN_BLOCK+12   ;VELOCITY
+
+               MOVE    LAST_MIDI_CHANNEL,D6 ;CHANNEL
+               LSR     #2,D6
+               MOVE    D6,ASSIGN_BLOCK+14
+
+               MOVE    LAST_MIDI_KEYNUM,D6  ;KEYNUM
+               LSR     #2,D6
+               MOVE    D6,ASSIGN_BLOCK+16
+
+;23NOV               EXT     D5
+;23NOV               ADD     #32,D5               ;INDEX PAST THE KITS
+;23NOV               MOVE    D5,A1                ;INDEX INTO PAD ARRAYS
+
+               CLR     D0                   ; (SET SOUND COUNT TO END WITH THIS ONE)
+;23NOV               MOVEQ   #-1,D2               ;FLAG THAT INDEED A BANK TO EDIT
+               MOVE    A1,A0
+               BSR     UPDATE_A_PAD
+
+               MOVE.B  PAD_LEVELS(A1),D7    ;LEVEL
+               MOVE    D7,ASSIGN_BLOCK+8
+
+               MOVE.B  PAD_PANS(A1),D7      ;PAN
+               MOVE    D7,ASSIGN_BLOCK+10
+
+               BSR     VOICE_ASSIGN         ;GO START THIS GUY UP
+               BSR     AUTO_ON_SEQ_PAD      ;SEE IF SEQUENCER RUNNING; IF SO, STUFF THIS EVENT OFF TO IT
+
+EXIT_A_MAPPED          ;ASSIGN BLOCK BUILT AND DELIVERED - WE DONE!
+               RTS
+
+
+
+;;;;;;;;;;
+AUTO_ON_SEQ_PAD
+               MOVE    ASSIGN_BLOCK+14,D7    ;FOR MAPPED, PADNUM IS CHANNEL MODULA 8
+               AND     #7,D7
+
+               TST.B   RECORDING            ;HEY - IF NOT RECORDING, THEN SPLIT!!!!
+               BEQ     EXIT_AUTO_S_M
+
+               LSL     #5,D7                ;SHIFT PADUM OVER
+
+               OR      ASSIGN_BLOCK+2,D7    ;MASK ON SOUNDUM
+               LSL     #1,D7                ; SHIFT OVER
+
+               TST     ASSIGN_BLOCK+4       ;MASK ON ALT PARAM BIT
+               BEQ.S   ISLANDS_1
+               BSET    #0,D7
+ISLANDS_1      LSL     #3,D7                ; SHIFT OVER
+
+               OR      NOW_TRACK,D7         ;MASK ON TRACKNUM
+               LSL     #4,D7                ; SHIFT OVER
+
+               OR      #1,D7                ;MASK ON ID CODE
+
+               SWAP    D7                   ;STOW AWAY HIGH WORD
+
+               MOVE    ASSIGN_BLOCK+6,D7    ;LOAD UP PITCH
+               LSL     #5,D7                ; SHIFT OVER
+
+               OR      ASSIGN_BLOCK+10,D7   ;MASK ON PAN
+               LSL     #5,D7                ; SHIFT OVER
+
+               OR      ASSIGN_BLOCK+12,D7   ;MASK ON VELOCITY
+
+               ABS_LONG
+               JSR     LOG_IN_NEW_PAD       ;THROW INTO NOTES_CURRENTLY_ON HANDLER
+               ABS_SHORT
+               BEQ.S   EXIT_AUTO_S_M        ;    IF NO ROOM, IGNORE
+                                            ;         ELSE, COOL - WRITE
+               MOVE.L  SEQ_WR_PTR,A6        ;SET UP SLOT POINTERS FOR WRITE ROUTINES
+               SWAP    D7
+                ABS_LONG
+               JSR     SEQ_WRITE            ;FIRST, UPPER WORD
+               SWAP    D7
+               JSR     SEQ_WRITE            ;THEN, MIDDLE WORD
+               MOVE    ASSIGN_BLOCK+8,D7    ;FINALLY, LEVEL
+               JSR     SEQ_WRITE            ;WRITE THIRD WORD
+                ABS_SHORT
+;
+;*****SEQ_FULL TEST - ACT, IF NEEDED
+               BSR     SEQ_MEM_CHECK
+;
+               MOVE.L  A6,SEQ_WR_PTR        ;RESAVE SLOT POINTERS FOR WRITE ROUTINES
+
+EXIT_AUTO_S_M
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+AUTO_NORMAL_MIDI       ; AUTOREPEATING NORMAL MIDI-SAN.
+               MOVE    #MIDI_HOLDING_BUFF,A0     ;POINT TO HOLDING TANK
+               MOVEQ   #7,D1                ;ROTATE THRU 8 PLACES LOOKING FOR AN OPEN SLOT
+               MOVEQ   #0,D2                ; LOAD WHERE WE LAST DID BUISNESS
+NOR_AUTO_LOOP
+               TST     0(A0,D2)             ;SLOT EMPTY?
+               BEQ.S   NOR_LOOK_AGAIN       ;    IF YES, LOOK AT NEXT ONE
+                                            ;         ELSE, COOK!!!
+               MOVE.B  0(A0,D2),LAST_STAT_BYTE   ;SAVE BYTES INDIVIDUALLY FOR ECHOING & PLAYING
+               MOVE.B  1(A0,D2),MIDI_DATA_1
+               TST     AUTORPT_MIDI_MOD    ;SUPPOSED TO DO ANY FUNKY REPLACING OF VELOCITY?
+               BMI.S   FLOYD_11             ;    IF NOT, USE WHAT WE GOT
+               BEQ.S   FLOYD_21             ;    IF MOD WHEEL, USE THAT
+               MOVE.B  LAST_PRESSURE+1,MIDI_DATA_2    ;ELSE, USE PRESSURE
+               BRA.S   FLOYD_31
+FLOYD_21
+               MOVE.B  LAST_MOD_WHL+1,MIDI_DATA_2
+               BRA.S   FLOYD_31
+FLOYD_11
+               TST     MIDI_DEFAULT_VEL     ;ARE WE SUPPOSED TO SUBSTITUTE WITH A DEFAULT?
+               BEQ.S   CHROME_7             ;    IF NOT, KEEP WHAT WE GOT
+               MOVE.B  MIDI_DEFAULT_VEL+1,MIDI_DATA_2      ;ELSE, SUBSTITUTE
+               BRA.S   FLOYD_31
+CHROME_7
+               MOVE.B  2(A0,D2),MIDI_DATA_2
+FLOYD_31
+               MOVEM.L D0-D2/A0,-(A7)       ;SAVE REGGIES
+               BSR     AUTO_NORMAL_ON       ;    PERFORM
+               MOVEM.L (A7)+,D0-D2/A0       ;         RESTORE REGGIES
+               MOVE.B  STAT_TEMP,LAST_STAT_BYTE    ;RESTORE STATUS BYTE
+               MOVE    MIDI_DATA_TEMP,MIDI_DATA_1
+
+NOR_LOOK_AGAIN
+               ADDQ.L  #4,D2                ;BUMP INDEX TO NEXT SLOT
+               DBRA    D1,NOR_AUTO_LOOP     ; GO 'TILL EXHAUSTED
+
+               BRA     COPY_ON_TO_OFF       ;CLOSE OUT BY CREATING A DUPE LIST FOR TURNING OFF.
+
+
+
+AUTO_NORMAL_ON
+               BSR     ECHO_3               ;ECHO, IF NEEDED
+
+               MOVE.B  MIDI_DATA_1,D0       ;GET KEYNUM
+               EXT     D0
+               MOVE.B  D0,LAST_MIDI+1       ;  (ALSO SAVE FOR SEQ EDITING UTILITIES)
+               TST.B   RECORDING            ;ONLY IF ACTUALLY RECORDING, SHOULD WE BOTHER
+               BEQ.S   EXIT_A_NORMAL
+
+               MOVEQ   #3,D6                ;SAY WEEZ ARE A NOTE ON TYPE EVENT
+               BSR     GENERIC_STUFFER      ; PUT IT IN SEQUENCER FORMAT - NAMELY: BUFFER)
+                                            ; 1001 aaaa b ccc 0011 (or 0100, IF A NOTE OFF)
+                                            ; 0 ddddddd 0 eeeeeee
+                                            ; aaaa = CHANNEL    b = A/B UART   ccc = TRACK
+                                            ; ddddddd = KEYNUM  eeeeeee = VELOCITY (= 00, IF A NOTE OFF)
+
+                ABS_LONG
+               JSR     LOG_IN_NEW_MIDI      ;THROW INTO NOTES_CURRENTLY_ON LIST
+                ABS_SHORT
+               BEQ.S   EXIT_A_NORMAL        ;    IF NO ROOM, DO NOT WRITE
+
+               MOVE.L  SEQ_WR_PTR,A6        ;SEND OFF TO CORRECT PLACE (THIS LOADED BY PHASE PROCESSOR)
+                ABS_LONG
+               SWAP    D7
+               JSR     SEQ_WRITE            ;UPPER WORD
+               SWAP    D7
+               JSR     SEQ_WRITE            ;LOWER WORD
+                ABS_SHORT
+;
+;*****SEQ_FULL CHECK, ACT IF NEEDED
+               BSR     SEQ_MEM_CHECK
+;
+               MOVE.L  A6,SEQ_WR_PTR        ;RESAVE MEMORY POINTERS FOR WRITE ROUTINES
+
+EXIT_A_NORMAL
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               TITLE   "AUTOREPEAT OFF STUFF"
+                SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;              AUTOREPEAT JERKS US - SEZ TURN OFF WHOEVER WE LAST TURNED ON.  DO THIS BY PSEUDO-ING
+;               THE EVENTS HAVING BEEN PLAYED THAT WAY FROM MIDI.
+;
+;              ENTER ASSUMING MEMORY POINTERS HAVE BEEN SAVED.  WE RELOAD, AND SAVE WHEN DONE.
+;
+;              WE'RE CALLED FROM THE PHAZOR IN PRO_CLICK.
+;
+;              REGISTERS BE DAMNED.
+;
+;              NOTE THAT NOT IN EFFECT IF IN PAD-FAKE OMNI/POLY MODES.
+;
+AUTO_OFF_MIDI
+               TST.B   AUTORPT_FLAG         ;AUTOREPEATING?
+               BEQ.S   EXIT_MIDI_OFF        ;    IF NOT, GIT
+
+               MOVE.B  LAST_STAT_BYTE,STAT_TEMP       ;SAVE THE LAST STATUS BYTE
+               MOVE    MIDI_DATA_1,MIDI_DATA_TEMP     ;SAVE MIDI DATA BYTES
+               TST     SOUND_SEQ_SWITCH     ;WELL - WOT MODE, DOC?
+               BNE     AUTO_NORMAL_OFF      ;    IF AIMED AT SEQUENCER, HANDLE THUSLY
+               CMP     #3,MIDI_MODE         ;    IF IN MAPPED MODE, HANDLE
+               BEQ.S   AUTO_MAPPED_OFF
+
+EXIT_MIDI_OFF
+               RTS                          ;         ELSE, FUCK OFF, DOC.
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+AUTO_MAPPED_OFF        ; AUTOREPEATING MAPPED MIDI-SAN.
+               CLR     LAST_MIDI_VELOCITY   ;NO VELOCITY - IS A NOTE OFF
+               MOVE    #MIDI_OFF_BUFF,A0    ;POINT TO HOLDING TANK
+               MOVEQ   #7,D1                ; ROTATE THRU 8 PLACES LOOKING FOR AN OPEN SLOT
+               MOVEQ   #0,D2                ;  LOAD WHERE WE LAST DID BUISNESS
+MAP_OFF_LOOP
+               TST     0(A0,D2)             ;SLOT EMPTY?
+               BEQ.S   MAP_LOOK_OFF         ;    IF YES, LOOK AT NEXT ONE
+                                            ;         ELSE, COOK!!!
+               MOVE.B  0(A0,D2),LAST_STAT_BYTE   ;SAVE BYTES INDIVIDUALLY FOR ECHOING & PLAYING
+               MOVE.B  1(A0,D2),MIDI_DATA_1
+               CLR.B   MIDI_DATA_2          ;NOTE OFF - ZERO VELOCITY
+               CLR.L   0(A0,D2)             ; ALSO CLEAR SLOT
+
+               MOVEM.L D0-D2/A0,-(A7)       ;SAVE REGGIES
+               BSR     AUTO_MAGO_OFF        ;    PERFORM
+               MOVEM.L (A7)+,D0-D2/A0       ;         RESTORE REGGIES
+               MOVE.B  STAT_TEMP,LAST_STAT_BYTE    ;RESTORE STATUS BYTE
+               MOVE    MIDI_DATA_TEMP,MIDI_DATA_1
+
+MAP_LOOK_OFF
+               ADDQ.L  #4,D2                ;BUMP INDEX TO NEXT SLOT
+               DBRA    D1,MAP_OFF_LOOP      ; GO 'TILL EXHAUSTED
+               RTS
+
+
+
+AUTO_MAGO_OFF
+               BSR     ECHO_3               ;POSSIBLE ECHO
+
+               MOVE.B  LAST_STAT_BYTE,D0    ;GET STAT BYTE
+               ANDI    #0FH,D0              ;MASK TO CHANNEL NUMEREO.
+               LSL     #2,D0                ; PRE-ROTATE FOR A LONG_WORD TABLE OFFSET
+               MOVE    D0,LAST_MIDI_CHANNEL
+
+               MOVE.B  MIDI_DATA_1,D0       ;GET KEYNUM
+               EXT     D0
+               SUBI    #15H,D0              ;KNOCK DOWN (CONVERING 88-KEY RANGE)
+               BCS     EXIT_AUTO_M_OFF      ;    IF BELOW LEGAL RANGE, GIT
+               CMPI    #87,D0               ;CHECK TOP OF RANGE
+               BCC     EXIT_AUTO_M_OFF      ;    IF ABOVE LEGAL RANGE, GIT
+               LSL     #2,D0                ;PARTIALLY PRE-ROTATE INTO V_IDENTITY POSTION
+
+               MOVE    D0,LAST_MIDI_KEYNUM  ;GET READY TO TURN OFF BY FORMING V_IDENTITY
+               LSL     #4,D0                ; ROTATE UP TO 000x xxxx xx00 0000
+               OR      LAST_MIDI_CHANNEL,D0 ;MASK ON ROTATED CHANNEL (000x xxx xxyy yy00)
+               LSR     #2,D0                ;ROTATE BACK DOWN TO 0000 0xxx xxxx yyyy
+               ORI     #0C000H,D0           ;MASK ON ID
+               SWAP    D0
+               MOVE    #8000H,D0            ;MASK ON AS FROM MIDI
+               MOVE.L  D0,BG_TEMP_1_B       ; MAKE A COPY
+               BSR     VOICE_GATE_OFF       ;GO SHUT OFF
+               BSR     MAPPED_OFF_AUTO      ;SEE IF SEQUENCER RUNNING; IF SO, STUFF THIS EVENT OFF TO IT
+
+               MOVE.L  BG_TEMP_1_B,D0       ;MAY HAVE TURNED ON 2 NOTES - KILL OFF 2
+               BSR     VOICE_GATE_OFF
+               BSR     MAPPED_OFF_AUTO      ;SEE IF SEQUENCER RUNNING; IF SO, STUFF THIS EVENT OFF TO IT
+
+               BSR     DEACTIVATE_PERF      ;KILL OF PITCH/PAN/LEVEL EDITS
+EXIT_AUTO_M_OFF
+               RTS
+
+
+;;;;;;;;;;
+MAPPED_OFF_AUTO
+; WHAT WE HAVE TO DO IS TRY TO LOG IT OUT OF THE NOTES_CURRENTLY_ON LIST, WHO WILL BE SO KIND AS TO
+; PASS US WHAT THE WHOLE SEQUENCE EVENT LOOKED LIKE WHEN WE GOT THE ON.
+;
+;     WE PRESERVE ALL 'CEPT D7, A2, A3, & A6.
+;
+               TST.B   RECORDING            ;HEY, BRO - ARE WE EVEN RECORDING?
+               BEQ.S   EXIT_THIS_MESS       ;    IF NOT, GIT
+
+               MOVE    LAST_MIDI_CHANNEL,D0 ;FOR MAPPED MODE, DERIVE PADNUM FROM CHANNEL MODULA 8
+               LSR     #2,D0                ; (UNROTATE - DONE ABOVE FOR VOICE BLOCK MASK)
+               AND     #7,D0
+               MOVE    D0,D1                ;CHANNEL MODULA 8 IS ALSO PADNUM
+
+                ABS_LONG
+               JSR     LOG_OUT_PAD_NEW_PAD  ;TRY TO PULL OUT OF NOTES_CUR_ON
+                ABS_SHORT
+
+               BEQ.S   EXIT_THIS_MESS       ;IF DID NOT FIND, THEN GIT
+                                            ;    ELSE, FOUND IT - RETURNED w/ WHOLE THING IN D7.L
+               MOVE.L  SEQ_WR_PTR,A6        ;SET UP SLOT POINTERS FOR WRITE ROUTINES
+
+               SWAP    D7
+                ABS_LONG
+               JSR     TIMED_SEQ_WRITE      ;WRITE UPPER WORD
+               SWAP    D7
+               JSR     TIMED_SEQ_WRITE      ;WRITE LOWER WORD
+                ABS_SHORT
+               MOVE.L  A6,SEQ_WR_PTR        ;RESAVE SLOT POINTERS FOR WRITE ROUTINES
+
+EXIT_THIS_MESS
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+AUTO_NORMAL_OFF        ; AUTOREPEATING NORMAL MIDI-SAN OFF.
+               MOVE    #MIDI_OFF_BUFF,A0    ;POINT TO HOLDING TANK
+               MOVEQ   #7,D1                ; ROTATE THRU 8 PLACES LOOKING FOR AN OPEN SLOT
+               MOVEQ   #0,D2                ;  LOAD WHERE WE LAST DID BUISNESS
+NOR_OFF_LOOP
+               TST     0(A0,D2)             ;SLOT EMPTY?
+               BEQ.S   NOR_LOOK_OFF         ;    IF YES, LOOK AT NEXT ONE
+                                            ;         ELSE, COOK!!!
+               MOVE.B  0(A0,D2),LAST_STAT_BYTE   ;SAVE BYTES INDIVIDUALLY FOR ECHOING & PLAYING
+               MOVE.B  1(A0,D2),MIDI_DATA_1
+               CLR.B   MIDI_DATA_2          ;NOTE OFF - ZERO VELOCITY
+               CLR.L   0(A0,D2)             ; ALSO CLEAR SLOT
+
+               MOVEM.L D0-D2/A0,-(A7)       ;SAVE REGGIES
+               BSR     AUTO_NORGO_OFF       ;    PERFORM
+               MOVEM.L (A7)+,D0-D2/A0       ;         RESTORE REGGIES
+               MOVE.B  STAT_TEMP,LAST_STAT_BYTE    ;RESTORE STATUS BYTE
+               MOVE    MIDI_DATA_TEMP,MIDI_DATA_1
+
+NOR_LOOK_OFF
+               ADDQ.L  #4,D2                ;BUMP INDEX TO NEXT SLOT
+               DBRA    D1,NOR_OFF_LOOP      ; GO 'TILL EXHAUSTED
+               RTS
+
+
+;;;;;;;;;;
+AUTO_NORGO_OFF
+               BSR     ECHO_3               ;DO ECHO CHECK
+
+               TST.B   RECORDING            ;ONLY IF ACTUALLY RECORDING, SHOULD WE BOTHER
+               BEQ.S   THIS_IS_IT
+
+               MOVEQ   #4,D6                ;SAY WEEZ ARE A NOTE OFF TYPE EVENT
+               BSR     GENERIC_STUFFER      ; PUT IT IN SEQUENCER FORMAT - NAMELY: BUFFER)
+                                            ; 1000 aaaa b ccc 0100
+                                            ; 0 ddddddd 0 eeeeeee
+                                            ; aaaa = CHANNEL    b = A/B UART   ccc = TRACK
+                                            ; ddddddd = KEYNUM  eeeeeee = VELOCITY
+
+                ABS_LONG
+               JSR     LOG_OUT_NEW_MIDI     ;DID WE EVER SEE THE 'ON' FOR THIS NOTE?
+                ABS_SHORT
+               BEQ.S   THIS_IS_IT           ;    IF NOT, DO NOT WRITE
+
+               MOVE.L  SEQ_WR_PTR,A6
+                ABS_LONG
+               SWAP    D7
+               JSR     TIMED_SEQ_WRITE      ;UPPER WORD
+               SWAP    D7
+               JSR     TIMED_SEQ_WRITE      ;LOWER WORD
+                ABS_SHORT
+;
+;*****SEQ_FULL CHECK, ACT IF NEEDED
+               BSR     SEQ_MEM_CHECK
+;
+               MOVE.L  A6,SEQ_WR_PTR        ;RESAVE MEMORY POINTERS FOR WRITE ROUTINES
+
+THIS_IS_IT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+

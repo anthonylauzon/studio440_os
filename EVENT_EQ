@@ -1,0 +1,40 @@
+               .OPTION LIST=SHOW_INCLUDES
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             MIDITC EVENT LIST.  VERY SIMPLE - AN EVENT IS 10 BYTES LONG; THE EVENT LIST
+;              IS 256 ITEMS DEEP.  AN EVENT LOOKS LIKE THIS:
+;
+;                            hr mn sc fr type aa bb cc dd ee
+;
+;             WE WILL USE OUR OWN 'TYPE' ENCODING IN THE CUE LIST - 00=CUE, 01=START, AND 02=STOP.
+;              IF VELOCITY IN NON-ZERO, THERE ARE ADD. PARAMETERS.
+;
+;             DECODE THE EVENT NUMBER THUSLY:
+;
+;              EVENT
+;              NUMBER  USE             XTRA PARAMS
+;              ----------------------------------------------------
+;              00->63  SOUNDS 1A->32B  velocity  pitch  pan  volume
+;              100     NEW INIT TEMPO  aa bb = BPM * 10
+;              101     NEW CURRENT TEMPO aa bb = BPM * 10
+;              102     NEW START TIME
+;              103     PLAY
+;              104     UNPLAY
+;              105     PAUSE
+;              106     UNPAUSE
+;              107     RECORD
+;              108     UNRECORD
+;              109     STOP
+;              110     START SAMPLING  #  rate  size  threshold
+;              127     FAKE OTHER SWITCH  switch#
+;
+EVENT_L_TIME   EQU     0               ;TIME - hr mn sc fr
+EVENT_L_TYPE   EQU     EVENT_L_TIME+4  ;TYPE - AS EXPLAINED ABOVE
+EVENT_L_NUM    EQU     EVENT_L_TYPE+1  ;EVENT NUMBER - AS EXPLAINED ABOVE
+EVENT_ADD_PARAMS EQU   EVENT_L_NUM+1   ;ADDITIONAL PARAMETERS - UP TO 4 OF THEM
+EVENT_SIZE     EQU     EVENT_ADD_PARAMS+4
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               .OPTION LIST="ON"
+

@@ -1,0 +1,514 @@
+               INCLUDE HPFIXUPS
+               TITLE "ROMVECS"
+***************************************************************************************************
+***************************************************************************************************
+***                                                                                             ***
+***            ROMVECS - MODEL 440 EXCEPTION VECTORS AND HANDLER FOR EXECUTION FROM ROM         ***
+***                                                                                             ***
+***************************************************************************************************
+***************************************************************************************************
+;
+NEG_EXT        EQU     0FFFFFF00H      ;USE IN MOVEQ INSTRUCTIONS WHERE ARG IS
+                                       ;80H OR LARGER - HP XASM DOES NOT HANDLE
+                                       ;SIGN-EXTEND CORRECTLY.  COSMETIC, KEEPS
+                                       ;ACTUAL BYTE VALUE CLEARER.
+;
+               INCLUDE EQUATES         ;HDW ADDR AND CONSTANT DEFS, ABS_SHORT DIRECTIVE.
+;
+               INCLUDE TRAPDEFS        ;SYSTEM FUNCTION ACCESS DEFINITIONS.
+;
+               INCLUDE LCD_FUNS        ;LCD/SCREEN_BUFFER SYSTEM FUNCTION NUMBER DEFINITIONS.
+;
+                                            ;"MONITOR" RAM.
+               EXTERNAL  EXCEPTION_MSG
+               EXTERNAL  EXCEPTION_STAT
+               EXTERNAL  ACCESS_ADDR_HI
+               EXTERNAL  ACCESS_ADDR_LO
+               EXTERNAL  INSTRUCT_REG
+               EXTERNAL  PROC_STATUS
+               EXTERNAL  PROG_COUNTER
+               EXTERNAL  PROC_REGISTERS
+;880202               EXTERNAL  DIAGS_ENABLED
+;
+;01SEP               EXTERNAL  WRITE_SCREEN
+;01SEP               EXTERNAL  WRITE_STRING
+;01SEP               EXTERNAL  DISP_BUFFER
+;01SEP               EXTERNAL  DISP_HEX
+;01SEP               EXTERNAL  INIT_LCD,DISP_SCREEN
+;
+               EXTERNAL  START_HERE
+               EXTERNAL  NO_HANDLER
+               EXTERNAL  LEVEL_2_INT,LEVEL_3_INT
+               EXTERNAL  LEVEL_4_INT,LEVEL_5_INT,LEVEL_6_INT
+;
+                                            ;MODULE FUNCTION TABLES.
+               EXTERNAL  LCD_FUN_TBL
+;
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; RESET AND INTERRUPT VECTORS:
+; ROMVECS DEFINES ALL OF THEM, FOR CREATION OF A ROM VERSION.
+;
+               .REGION VECTORS
+;
+; RESET VECTORS:
+;
+               ORG     0
+               DC.L    0               ;TOP OF SYSTEM STACK.
+;900508               DC.L    START_HERE      ;RESET VECTOR.
+               dc.l    100h            ; got tired of chasing this guy around -
+                                       ; from now on, this is where he'll be.
+;
+;
+;
+; NOTE: EXCEPTION VECTORS 2-24 ARE DEFINED BY MON68K (64000 EMULATION MONITOR)
+;       IF LINK IS DONE FOR EMULATOR (EMUL_440:link_com) -
+;       ALL VECTORS ARE DEFINED BY ROMVECS ONLY, IF CREATING A ROM (ROM_440:link_com).
+;
+;871223               ORG     30H             ;EXCEPTION VECTORS 12-24 (RESERVED VECTORS).
+;871223               REPT    13
+               ORG     34H             ;EXCEPTION VECTORS 12-24 (RESERVED VECTORS) - BUT,
+;881025               REPT    12              ;KEEP OUT OF THE WAY OF MON68ROM BREAK VECTOR DEFINITION.
+               .FOR COUNT = 1,12
+;01SEP               DC.L    EXCEPT_HANDLER
+               DC.L    WHOOOOPS_CRASH
+               .ENDFOR
+;
+;
+               ORG     64H
+               DC.L    NO_HANDLER      ;LEVEL 1 INTERRUPT (NOT USED).
+               DC.L    LEVEL_2_INT     ;LEVEL 2 INTERRUPT (24 PPQN SYNC CLOCK).
+               DC.L    LEVEL_3_INT     ;LEVEL 3 INTERRUPT (1 MSEC REALTIME PROCESSES).
+               DC.L    LEVEL_4_INT     ;LEVEL 4 INTERRUPT (UART B TRANSMIT).
+               DC.L    LEVEL_5_INT     ;LEVEL 5 INTERRUPT (TIMING CHIP (6803) COMMUNICATION).
+               DC.L    LEVEL_6_INT     ;LEVEL 6 INTERRUPT (UART A RECEIVE/TRANSMIT).
+               DC.L    NO_HANDLER      ;LEVEL 7 INTERRUPT (NOT USED).
+;
+;
+;
+               ORG     80H             ;EXCEPTION VECTORS 32-47 (TRAP INSTRUCTION VECTORS).
+               DC.L    SYSTEM_CALL     ;TRAP #0 HANDLER.
+               DC.L    SYSTEM_JUMP     ;TRAP #1 HANDLER.
+;881025               REPT    14
+               .FOR COUNT = 1,14
+;01SEP               DC.L    EXCEPT_HANDLER
+               DC.L    WHOOOOPS_CRASH
+               .ENDFOR
+;
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;01SEP;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;              BE IT HEREBY KNOWN:
+;              THIS IS INVOKED BY (INADVERTENT) TRAP INSTRUCTION
+;              EXECUTION - NO RECORDED CASES OF THIS TO DATE.
+;01SEP;
+;01SEPEXCEPT_HANDLER
+;01SEP;
+;01SEP; BE IT HEREBY KNOWN:  SOMETHING HAS FUCKED UP.
+;01SEP;
+;01SEP               PROG                         ;THIS BE IN THE PROGRAM RELOCATA-POOL.
+;01SEP;
+;01SEP               SUB.L   A7,A7                ;MAKE SURE STACK POINTER ISN'T BOGUSSED.
+;01SEP               MOVE.L  #EXCEPT_SCREEN,A1    ;DISPLAY ERROR MESSAGE,
+;01SEP               JSR     DISP_SCREEN
+;01SEPEXC_HAN_20
+;01SEP               BRA     EXC_HAN_20           ;THEN JUST SIT THERE ....
+;01SEP;
+;01SEPEXCEPT_SCREEN
+;01SEP               ASC     ' "SOMETHING HAS '   ;THAT'S ALL ....
+;01SEP               ASC     '   FUCKED UP."  '   ;.... SHE WROTE
+;01SEP;
+;01SEP;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; THE IDEA HERE IS TO IMPLEMENT A ROM-ABLE DIAGNOSTIC-TYPE EXCEPTION
+; HANDLER.  THE EXCEPTION VECTORS PLUGGED IN BY NORMAL MON68K ARE HERE
+; ROUTED THROUGH OUR OWN MORE-OR-LESS EQUIVALENT HANDLER AS FIRST SHOT.
+; THIS HANDLER PUTS MESSAGES INTO THE LCD, THEN FALLS INTO IDLE LOOP -
+; ALTHOUGH NOT QUITE CORRECT IN THIS CONTEXT, STACK IS USED TO CALL LCD
+; ROUTINES - JUST TESTING ....
+;
+  ORG 8         ---BUS ERROR---
+     DC.L BE_ENTRY
+* ORG 0CH       ---ADDRESS ERROR---
+     DC.L AE_ENTRY
+* ORG 10H       ---ILLEGAL INSTRUCTION---
+     DC.L II_ENTRY
+* ORG 14H       ---ZERO DIVIDE---
+     DC.L ZD_ENTRY
+* ORG 18H       ---CHK INSTRUCTION---
+     DC.L CI_ENTRY
+* ORG 1CH       ---TRAPV INSTRUCTION---
+     DC.L TI_ENTRY
+* ORG 20H       ---PRIVILEGE VIOLATION---
+     DC.L PV_ENTRY
+* ORG 24H       ---TRACE---
+     DC.L T_ENTRY
+* ORG 28H       ---1010 EMULATOR---
+     DC.L EA_ENTRY
+* ORG 2CH       ---1111 EMULATOR---
+     DC.L FE_ENTRY
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; MEANWHILE, BACK IN PROGRAM-SPACE ....
+; EXCEPTION HANDLER ENTRY-POINTS:
+;
+;881025               PROG
+               .REGION MAIN
+;
+;
+*               ---BUS ERROR---
+BE_ENTRY
+               MOVE    #2700H,SR            ;LOCK 'EM ALL OUT, NOW!
+               MOVE.L  #BE_MESS,EXCEPTION_MSG
+               BRA     SPECIAL_ENTRY
+BE_MESS
+               ASC     "   BUS ERROR    "
+               ASC     "                "
+;
+;
+;
+*               ---ADDRESS ERROR---
+AE_ENTRY
+               MOVE    #2700H,SR            ;LOCK 'EM ALL OUT, NOW!
+               MOVE.L  #AE_MESS,EXCEPTION_MSG
+               BRA     SPECIAL_ENTRY
+AE_MESS
+               ASC     " ADDRESS ERROR  "
+               ASC     "                "
+;
+;
+;
+*               ---ILLEGAL INSTRUCTION---
+II_ENTRY
+               MOVE    #2700H,SR            ;LOCK 'EM ALL OUT, NOW!
+               MOVE.L  #II_MESS,EXCEPTION_MSG
+               BRA     MONITOR_ENTRY
+II_MESS
+               ASC     "ILLEGAL INSTRUCT"
+               ASC     "                "
+;
+;
+;
+*               ---ZERO DIVIDE---
+ZD_ENTRY
+               MOVE    #2700H,SR            ;LOCK 'EM ALL OUT, NOW!
+               MOVE.L  #ZD_MESS,EXCEPTION_MSG
+               BRA     MONITOR_ENTRY
+ZD_MESS
+               ASC     " ZEE-RO DIVIDE  "
+               ASC     "                "
+;
+;
+;
+*               ---CHK INSTRUCTION---
+CI_ENTRY
+               MOVE    #2700H,SR            ;LOCK 'EM ALL OUT, NOW!
+               MOVE.L  #CI_MESS,EXCEPTION_MSG
+               BRA     MONITOR_ENTRY
+CI_MESS
+               ASC     "CHK INSTRUCTION "
+               ASC     "                "
+;
+;
+;
+*               ---TRAPV INSTRUCTION---
+TI_ENTRY
+               MOVE    #2700H,SR            ;LOCK 'EM ALL OUT, NOW!
+               MOVE.L  #TI_MESS,EXCEPTION_MSG
+               BRA     MONITOR_ENTRY
+TI_MESS
+               ASC     "TRAPV INSTRUCT. "
+               ASC     "                "
+;
+;
+;
+*               ---PRIVILEGE VIOLATION---
+PV_ENTRY
+               MOVE    #2700H,SR            ;LOCK 'EM ALL OUT, NOW!
+               MOVE.L  #PV_MESS,EXCEPTION_MSG
+               BRA     MONITOR_ENTRY
+PV_MESS
+               ASC     "PRIVELEGE VIOLAT"
+               ASC     "                "
+;
+;
+;
+*               ---TRACE---
+T_ENTRY
+               MOVE    #2700H,SR            ;LOCK 'EM ALL OUT, NOW!
+               MOVE.L  #T_MESS,EXCEPTION_MSG
+               BRA     MONITOR_ENTRY
+T_MESS
+               ASC     "TRACE EXCEPTION "
+               ASC     "                "
+;
+;
+;
+*               ---1010 EMULATOR---
+EA_ENTRY
+               MOVE    #2700H,SR            ;LOCK 'EM ALL OUT, NOW!
+               MOVE.L  #EA_MESS,EXCEPTION_MSG
+               BRA     MONITOR_ENTRY
+EA_MESS
+               ASC     " 1010 EXCEPTION "
+               ASC     "                "
+;
+;
+;
+*              ---1111 EMULATOR---
+FE_ENTRY
+               MOVE    #2700H,SR            ;LOCK 'EM ALL OUT, NOW!
+               MOVE.L  #FE_MESS,EXCEPTION_MSG
+               BRA     MONITOR_ENTRY
+FE_MESS
+               ASC     " 1111 EXCEPTION "
+               ASC     "                "
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; THE HANDLER ITSELF:
+;
+;
+; SPECIAL_ENTRY IS THE ENTRY POINT INTO THE EMULATION
+; MONITOR WHEN THE 68000 PROCESSES EITHER A BUS ERROR
+; OR ADDRESS ERROR EXCEPTION.  THE ONLY DIFFERENCE BETWEEN
+; THIS ENTRY AND MONITOR_ENTRY IS THAT ADDITIONAL WORDS
+; ARE TAKEN OFF THE STACK.
+; THEY'RE IN THE WAY, WHAT THE HELL.
+;
+;
+SPECIAL_ENTRY
+               MOVE    (SP)+,EXCEPTION_STAT ;PULL & SAVE EXCEPTION STATUS.
+               MOVE    (SP)+,ACCESS_ADDR_HI ;PULL & SAVE ACCESS ADDRESS HIGH.
+               MOVE    (SP)+,ACCESS_ADDR_LO ;PULL & SAVE ACCESS ADDRESS LOW.
+               MOVE    (SP)+,INSTRUCT_REG   ;PULL & SAVE INSTRUCTION REGISTER.
+;
+;
+;
+; MONITOR_ENTRY IS THE ENTRY POINT INTO THE EMULATION
+; MONITOR WHEN THE 68000 BREAKS AWAY FROM THE USER'S
+; PROGRAM.  THIS ENTRY POINT ASSUMES THAT THE PC AND
+; STATUS REGISTER HAVE BEEN STACKED AS NORMALLY OCCURS
+; WHEN AN EXCEPTION HAPPENS.
+; THE PROCESSOR'S REGISTERS ARE SAVED AT PROC_REGISTERS.
+;
+;
+MONITOR_ENTRY
+               MOVE    (SP)+,PROC_STATUS    ;PULL & SAVE PROCESSOR STATUS.
+               MOVE.L  (SP)+,PROG_COUNTER   ;PULL & SAVE PC HIGH WORD, LOW WORD.
+                                            ;STACK IS NOW AS IT WAS BEFORE BREAK.
+;
+               MOVEM.L A0-A7/D0-D7,PROC_REGISTERS     ;SAVE PROCESSOR REGISTERS (EXCLUDING USP).
+                                                      ;IN ASCENDING RAM ORDER, WE GET D0-D7/A0-A7 -
+                                                      ;NOT GONNA BOTHER WITH USP AT ALL.
+;
+               SUB.L   A7,A7                ;MAKE SURE STACK POINTER ISN'T BOGUSSED.
+;
+;SEP14;
+;SEP14               JSR     INIT_LCD             ;LIKEWISE FOR LCD MODULE.
+;SEP14;
+               CALL    LCD_FUNS,LCD_INIT    ;LIKEWISE FOR LCD MODULE.
+;
+;880202               TST.B   DIAGS_ENABLED        ;ARE INTERNAL SOFTWARE DIAGNOSTICS ENABLED?
+;880202               BEQ     WHOOOOPS_CRASH       ;BRANCH IF NOT, STICK WITH SOFT-RESET -
+;880202                                            ;ELSE, PROCEED TO PUT UP A CRASH-TIME REGISTER DISPLAY.
+;880202                                            ;(ADMITTEDLY NOT A BULLETPROOF SYSTEM HERE ....)
+;              WHAT THE HELL, PUT UP CRASH SCREEN ANYWAY ....
+;
+;
+               MOVE.L  EXCEPTION_MSG,A1     ;FETCH POINTER TO EXCEPTION MESSAGE SCREEN,
+;SEP14;
+;SEP14               JSR     WRITE_SCREEN         ;WRITE IT INTO SCREEN_BUFFER.
+;SEP14;
+               CALL    LCD_FUNS,WR_SCRN     ;WRITE IT INTO SCREEN_BUFFER.
+;
+;
+REG_DISP_LOOP
+               MOVE    #0,20502H            ;START A READ OF DATA SLIDER VIA ADC.
+               MOVE    #1000,D0             ;WAIT A GOOD LONG TIME.
+RDL_10
+               DBRA    D0,RDL_10
+               MOVE.B  204C1H,D0            ;READ RESULT INTO D0.B -
+               AND     #0FFH,D0             ;OFF TRASH,
+               MULU    #18,D0               ;SCALE TO 0-17.
+               LSR.L   #8,D0
+               MOVE    D0,D2                ;COPY INDEX,
+               ADD     D0,D0                ;CONVERT TO WORD OFFSET,
+               LEA.L   REGISTER_STRING(PC,D0),A2 ;SET POINTER TO REGISTER ID STRING.
+               MOVE    #1002H,D1            ;POSITION/LENGTH FOR WRITE TO SCREEN_BUFFER.
+;SEP14;
+;SEP14               JSR     WRITE_STRING         ;WRITE IT THEN.
+;SEP14;
+               CALL    LCD_FUNS,WR_STRNG    ;WRITE IT THEN.
+;
+;SEP14;
+;SEP14               JSR     DISP_BUFFER          ;DISPLAY BUFFER SO FAR - DISP_HEX GOES STRAIGHT TO LCD.
+;SEP14;
+               CALL    LCD_FUNS,DSP_BUF     ;DISPLAY BUFFER SO FAR - DISP_HEX GOES STRAIGHT TO LCD.
+;
+               MOVE    D2,A2                ;COPY INDEX AGAIN,
+               ADD     A2,A2                ;CONVERT TO LONG WORD OFFSET,
+               ADD     A2,A2
+               ADD     #PROG_COUNTER,A2     ;BUMP UP INTO STORED REGISTER ARRAY.
+               MOVE.B  (A2)+,D0             ;DISPLAY LONG REGISTER VALUE ONE BYTE AT A TIME.
+               MOVE    #24,D1
+;SEP14;
+;SEP14               JSR     DISP_HEX
+;SEP14;
+               CALL    LCD_FUNS,DSP_HEX
+               MOVE.B  (A2)+,D0
+               MOVE    #26,D1
+;SEP14;
+;SEP14               JSR     DISP_HEX
+;SEP14;
+               CALL    LCD_FUNS,DSP_HEX
+               CMP     #1,D2                ;STATUS REGISTER?
+               BEQ.S   RDL_18               ;BRANCH IF YES, TWO BYTES ONLY.
+               MOVE.B  (A2)+,D0
+               MOVE    #28,D1
+;SEP14;
+;SEP14               JSR     DISP_HEX
+;SEP14;
+               CALL    LCD_FUNS,DSP_HEX
+               MOVE.B  (A2)+,D0
+               MOVE    #30,D1
+;SEP14;
+;SEP14               JSR     DISP_HEX
+;SEP14;
+               CALL    LCD_FUNS,DSP_HEX
+RDL_18
+;
+               MOVE    #10000,D0            ;WAIT MILLISECONDS, EVEN.
+RDL_20
+               DBRA    D0,RDL_20
+;
+               CMP.B   #0C0H,SWITCH_INPUT+9 ;HMMM - ARE "ENTER", "+/-" SWITCHES BEING HELD?
+               BEQ.S   WHOOOOPS_CRASH       ;EXIT IF YES, USER (THAT'S ME) WANTS TO RE-BOOT.
+               BRA     REG_DISP_LOOP        ;ELSE, LOOP A GAIN ANDA GAIN ANDA GAIN ANDA GAIN.
+;
+;
+;
+REGISTER_STRING
+               ASC     "PCSTD0D1D2D3D4D5D6D7A0A1A2A3A4A5A6A7"
+;
+;
+;SEP14;
+;SEP14; IN PLACE OF THE ABOVE, UNTIL WE RESURRECT IT AGAIN:
+;SEP14;
+;SEP14BE_ENTRY
+;SEP14AE_ENTRY
+;SEP14II_ENTRY
+;SEP14ZD_ENTRY
+;SEP14CI_ENTRY
+;SEP14TI_ENTRY
+;SEP14PV_ENTRY
+;SEP14T_ENTRY
+;SEP14EA_ENTRY
+;SEP14FE_ENTRY
+;
+;
+;
+WHOOOOPS_CRASH
+               SUB.L   A7,A7                ;MAKE SURE STACK POINTER ISN'T BOGUSSED.
+;
+               RESET                        ;SHOULD NEED NO FURTHER EXPLANATION, BUT -
+                                            ;RESET THE WORLD OUT THERE, SUCH IS OUR HOPE.
+;
+                ABS_LONG
+               JMP     START_HERE           ;AHHH - WE'LL JUST START OVER FROM SCRATCH .... SHIT!
+                ABS_SHORT
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; GENERAL SYSTEM FUNCTION TRAP HANDLERS:
+; INVOKED BY CALL/JUMP MACROS, PROVIDE TRANSPARENT EQUIVALENT ACTION -
+; NO REGISTER/STATUS CHANGES, WE EMERGE WITH APPROPRIATE STACK BALANCE.
+; TAKES LONGER THAN DIRECT JMP OR JSR (USE FOR NON-TIME-CRITICAL STUFF),
+; BUT EACH CALL IS ONLY TWO WORDS LONG, AND - LINKAGE IS NOT NECESSARY!
+; THIS MEANS FEWER GLOBALS AND EXTERNALS, AS WELL AS THAT ALL OF THESE
+; FUNCTIONS ARE ACCESSIBLE TO CODE WHICH IS NOT LINKED TO THE SYSTEM
+; (SUCH AS, LIKE, TRANSIENT SOFTWARE LOADED FROM DISK ....)
+;
+; CALL MACRO ASSEMBLES A TRAP #0 INSTRUCTION FOLLOWED BY THE FUNCTION
+; WORD - JUMP MACRO IS THE SAME, BUT USES TRAP #1.
+; WE BACKTRACK ON THE STACK, JACK (WHOA!) TO FIND THIS WORD.
+; IT LOOKS LIKE THIS:
+;              mmmmmm00 fffffff0
+; WHERE:
+;              mmmmmm   = MODULE NUMBER IN WHICH TO FIND FUNCTION
+;                         (AS A LONG-WORD OFFSET).
+;              fffffff  = FUNCTION NUMBER (AS A WORD OFFSET).
+;
+; WHEN WE GET HERE, THE LAST THREE WORDS ON THE STACK (IN ASCENDING
+; ORDER) ARE THE SAVED STATUS REGISTER AND THE (LONG) RETURN ADDRESS -
+; IT POINTS TO THE WORD AFTER THE LOCATION OF THE TRAP INSTRUCTION WHICH
+; GOT US HERE, WHICH IN FACT IS THE LOCATION OF THE FUNCTION WORD.
+; WE REARRANGE THE STACK SOME IF WE'RE SIMULATING A SUBROUTINE CALL,
+; AND GO ON FROM THERE ....
+;
+;
+;
+SYSTEM_CALL
+                                            ;TRAP #0 ENTRY:
+               SUBQ    #4,A7                ;SLIDE SAVED STATUS REG (WORD) DOWN BY ONE LONG-WORD -
+               MOVE    4(A7),(A7)           ;WE'LL PLUG IN FUNCTION ADDRESS AS THE RTE RETURN ADDR,
+                                            ;AND LEAVE "REAL" RETURN ADDR FOR USE BY THE FUNCTION.
+               MOVEM.L D0/A0,-(A7)          ;WE NEED TO USE TWO REGISTERS WHILE HERE.
+               MOVE.L  14(A7),A0            ;COPY FUNCTION WORD POINTER INTO A0 FROM THE STACK.
+               ADDQ.L  #2,14(A7)            ;ULTIMATELY, RETURN TO WORD FOLLOWING FUNCTION WORD.
+               MOVEQ   #0,D0                ;CLEAR THE RUNWAY FOR MODULE AND FUNCTION NUMBERS.
+               MOVE.B  (A0)+,D0             ;PULL THE MODULE NUMBER IN,
+               SWAP    D0                   ;FLIP-FLOP TO PICK UP THE FUNCTION NUMBER.
+               MOVE.B  (A0),D0              ;SUCK IT UP INTO THE OTHER HALF OF D0.
+               SWAP    D0                   ;BRING BACK MODULE_TABLE LONG-WORD OFFSET,
+               MOVE.L  MODULE_TABLE(PC,D0),A0    ;FETCH POINTER TO MODULE (AND ITS FUNCTION TABLE).
+               SWAP    D0                   ;BRING BACK THE FUNCTION NUMBER AGAIN,
+               ADD     0(A0,D0),A0          ;ADD OFFSET OF FUNCTION WITHIN MODULE (FROM FUNCTION
+                                            ;TABLE) TO MODULE ADDR - A0 POINTS AT TARGET FUNCTION.
+               MOVE.L  A0,10(A7)            ;PUT FUNCTION ADDR ON STACK - WE'LL GO THERE VIA RTE.
+               MOVEM.L (A7)+,D0/A0          ;RE-BALANCE THE STACK (AS SUCH),
+               RTE                          ;RESTORE STATUS REG, "RETURN" TO FUNCTION ROUTINE -
+                                            ;THE FUNCTION RETURN ADDRESS IS STILL ON THE STACK.
+               SKIP
+;
+;
+;
+SYSTEM_JUMP
+                                            ;TRAP #1 ENTRY:
+               MOVEM.L D0/A0,-(A7)          ;WE NEEDS US A COUPLA REGISTERS WHILE HERE.
+               MOVE.L  10(A7),A0            ;COPY FUNCTION WORD POINTER INTO A0 FROM THE STACK.
+               MOVEQ   #0,D0                ;CLEAR THE RUNWAY FOR MODULE AND FUNCTION NUMBERS.
+               MOVE.B  (A0)+,D0             ;PULL THE MODULE NUMBER IN,
+               SWAP    D0                   ;FLIP-FLOP TO PICK UP THE FUNCTION NUMBER.
+               MOVE.B  (A0),D0              ;SUCK IT UP INTO THE OTHER HALF OF D0.
+               SWAP    D0                   ;BRING BACK MODULE_TABLE LONG-WORD OFFSET,
+               MOVE.L  MODULE_TABLE(PC,D0),A0    ;FETCH POINTER TO MODULE (AND ITS FUNCTION TABLE).
+               SWAP    D0                   ;BRING BACK THE FUNCTION NUMBER AGAIN,
+               ADD     0(A0,D0),A0          ;ADD OFFSET OF FUNCTION WITHIN MODULE (FROM FUNCTION
+                                            ;TABLE) TO MODULE ADDR - A0 POINTS AT TARGET FUNCTION.
+               MOVE.L  A0,10(A7)            ;PUT FUNCTION ADDR ON STACK - WE'LL GO THERE VIA RTE.
+                                            ;(NOTE THAT WE'RE OVERWRITING THE TRAP RETURN ADDRESS -
+                                            ;SINCE WE'RE "JUMPING" TO FUNCTION, WE DON'T NEED IT.)
+               MOVEM.L (A7)+,D0/A0          ;RE-BALANCE THE STACK (AS SUCH),
+               RTE                          ;RESTORE STATUS REG, "RETURN" TO FUNCTION ROUTINE.
+;
+;
+;
+; TABLE OF BASE ADDRESSES FOR MODULES CONTAINING SYSTEM FUNCTIONS:
+;
+MODULE_TABLE
+               DC.L    LCD_FUN_TBL          ;LCD AND SCREEN_BUFFER FUNCTIONS.
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+

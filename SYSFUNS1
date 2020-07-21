@@ -1,0 +1,1669 @@
+***************************************************************************************************
+***************************************************************************************************
+***                                                                                             ***
+***            SYSFUNS1 - SUBFUNCTIONS UNDER "MIDI 1", "MIDI 2" FUNCTION SWITCHES               ***
+***                                                                                             ***
+***************************************************************************************************
+***************************************************************************************************
+;
+;
+               .AWORD
+;
+;
+               INCLUDE EQUATES         ;HDW ADDR AND CONSTANT DEFS, .AWORD DIRECTIVE.
+;
+               INCLUDE S_BLK_EQU       ;SOUND CONTROL BLOCK DEFINITIONS.
+;
+               INCLUDE FIELD_EQU       ;SUBFUNCTION/FIELD BLOCK DEFINITIONS.
+;
+               INCLUDE TRAPDEFS        ;SYSTEM FUNCTION ACCESS DEFINITIONS.
+;
+               INCLUDE LCD_FUNS        ;LCD/SCREEN_BUFFER SYSTEM FUNCTION DEFS.
+;
+;
+;
+               .EXPORT UPDATE_CUR_STUFF
+               .EXPORT PROP_NEW_KEY
+               .EXPORT MIDI_FLANNELS
+               .EXPORT KEY_STRINGS
+               .EXPORT MAP_ARRAY_TBL
+               .EXPORT MAP_ARRAY_2TBL
+               .EXPORT DELETE_FROM_MAP
+               .EXPORT SDS_OUT_SUB
+               .EXPORT SDS_REQ_SUB
+;
+;
+;
+;
+                                            ; external ROM addresses.
+               .IMPORT WRITE_NAME_2
+               .IMPORT SDS_OUT_EXEC
+               .IMPORT ALT_PARAM_STRING
+               .IMPORT WRITE_PARAM_STRING
+               .IMPORT GET_S_BLK_PTR
+               .IMPORT ZERO_VAL
+               .IMPORT KILL_ACTIVE_PERF
+               .IMPORT SET_ENTER_FLASH
+               .IMPORT USER_STALL
+               .IMPORT SEND_SDS_REQ
+;
+;
+;
+;
+                                            ; RAM addresses.
+               .IMPORT DI_TEMP_1_B
+               .IMPORT SONG_SEL_ENABLE
+               .IMPORT CUR_MIDI_PROG
+               .IMPORT DI_TEMP_5_B
+               .IMPORT M_VOL_ROUT
+               .IMPORT CUR_PWHL_ROUT
+               .IMPORT CUR_MOD_ROUT
+               .IMPORT HOLD_TO_ALT_FLAG
+               .IMPORT DI_TEMP_6_B
+               .IMPORT MAP_ARRAY
+               .IMPORT MIDI_DEFAULT_VEL
+               .IMPORT SOUND_SEQ_SWITCH
+               .IMPORT PARAM_LO_LIM
+               .IMPORT PARAM_HI_LIM
+               .IMPORT CUR_PRESSURE_ROUT
+               .IMPORT SUBFUN_INSTALL
+               .IMPORT TRIG_FLAG_0
+               .IMPORT ALT_PARAM_FLAG
+               .IMPORT CUR_TRIG_FLAG
+               .IMPORT MIDI_ECHO_FLAG
+               .IMPORT CUR_SUB_BLOCK
+               .IMPORT PRESSURE_ROUT_0
+               .IMPORT PWHL_ROUT_0
+               .IMPORT MOD_ROUT_0
+               .IMPORT PARAM_BUFFER
+               .IMPORT MIDI_MODE
+               .IMPORT R_MAP_0
+               .IMPORT L_MAP_0
+               .IMPORT MIDI_OUT_CHANNEL
+               .IMPORT MIDI_IN_CHANNEL
+               .IMPORT MIDI_MOD_SOURCE
+               .IMPORT CUR_R_MAP
+               .IMPORT AUTORPT_MIDI_MOD
+               .IMPORT M_DEVICE_ID
+               .IMPORT CURRENT_SOUND
+               .IMPORT CUR_L_MAP
+               .IMPORT SDS_MENU_SEL
+               .IMPORT SDS_MAN_OUT
+               .IMPORT SDS_OUT_NUM
+               .IMPORT SDS_REQ_NUM
+               .IMPORT SDS_RCV_CTRL
+               .IMPORT CUR_FUN_INDEX
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; FOR STARTERS, GLOBAL DECLARATIONS FOR THE SUBFUNCTION BLOCKS -
+; THEY'RE ACCESSED FROM SWITCHBOY MODULE:
+;
+                                            ;MIDI_1_GROUP.
+               .EXPORT MIDI_CHANNEL_SUB
+               .EXPORT MIDI_MODE_SUB
+               .EXPORT MIDI_ECHO_SUB
+               .EXPORT MIDI_KIT_ASSIGN_SUB
+               .EXPORT MIDI_MOD_ROUTS_SUB
+               .EXPORT MODE_4_OUT_SUB
+                                            ;MIDI_2_GROUP.
+               .EXPORT MIDI_VOL_SUB
+               .EXPORT MIDI_HOLD_SUB
+               .EXPORT MIDI_DEF_VEL_SUB
+               .EXPORT MIDI_SONG_SEL_SUB
+;890321               .EXPORT MIDI_DUMP_SUB
+               .EXPORT SDS_MENU_SUB
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             SUBFUNCTION FOR MIDI ECHO AND ROUTING
+;
+MIDI_ECHO_SUB
+               DC.B    "MIDI ECHO:xxxxxx"
+               DC.B    "IN TO: xxxxxxxxx"
+;
+; ECHO FIELD
+;
+               DC.B    10
+               DC.B    6
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    MIDI_ECHO_FLAG
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    ECHO_STRINGS
+               DC.W    EDIT+HI_LIMIT
+               DC.W    1
+               DC.W    EDIT+LO_LIMIT
+               DC.W    -1
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    FIELD_END
+;
+; ROUTING FIELD
+;
+               DC.B    23
+               DC.B    9
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    SOUND_SEQ_SWITCH
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    SOUND_SEQ_STRINGS
+               DC.W    EDIT+HI_LIMIT
+               DC.W    1
+               DC.W    EDIT+ED_VEC
+               DC.L    KILL_ACTIVE_PERF
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    SUBFUN_END
+;
+;
+               DC.B    "  OFF "
+ECHO_STRINGS
+               DC.B    " OUT A"
+               DC.B    " OUT B"
+;
+OFFON__STRING
+               DC.B    "OFFON "
+;
+SOUND_SEQ_STRINGS
+               DC.B    " SOUNDS  "
+               DC.B    "SEQUENCER"
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             MIDI MODE SUBFUNCTION
+;
+MIDI_MODE_SUB
+               DC.B    " SOUND  PERFORM "
+               DC.B    "MIDI MODE:xxxxxx"
+;
+; ONE FIELD - MIDI MODE
+;
+               DC.B    26
+               DC.B    6
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    MIDI_MODE
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    MIDI_MODES_STRINGS
+               DC.W    EDIT+HI_LIMIT
+               DC.W    3
+               DC.W    EDIT+ED_VEC
+               DC.L    KILL_ACTIVE_PERF
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    SUBFUN_END
+;
+;
+MIDI_MODES_STRINGS
+               DC.B    "  OFF "
+               DC.B    "  OMNI"
+               DC.B    "  POLY"
+               DC.B    "MAPPED"
+;
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             MIDI CHANNELS, IN AND OUT
+;
+MIDI_CHANNEL_SUB
+               DC.B    "CHANNELS MTC:xxx"
+               DC.B    "IN:xx    OUT:xxx"
+;
+; MIDI TIME CODE CHANNEL FIELD
+;
+               DC.B    13
+               DC.B    3
+               DC.W    ACCESS+DIR_PTR
+               DC.W    M_DEVICE_ID
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    126
+               DC.W    FIELD_END
+;
+; IN CHANNEL FIELD
+;
+               DC.B    19
+               DC.B    2
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    MIDI_IN_CHANNEL
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    15
+               DC.W    EDIT+ED_VEC
+               DC.L    KILL_ACTIVE_PERF
+               DC.W    FIELD_END
+;
+; OUT CHANNEL FIELD
+;
+               DC.B    29
+               DC.B    3
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    MIDI_OUT_CHANNEL
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    MIDI_FLANNELS
+               DC.W    EDIT+HI_LIMIT
+               DC.W    31
+               DC.W    EDIT+LO_LIMIT
+               DC.W    -1
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    SUBFUN_END
+;
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;
+;             SUBFUNCTION TO MAP KITS TO MODE 3 KEYS
+;
+;
+MIDI_KIT_ASSIGN_SUB
+               DC.B    "PROG:xx  L:x R:x"
+               DC.B    " S-KEY TRIG:xxx "
+;
+; PROGRAM NUMBER FIELD
+;
+               DC.B    5
+               DC.B    2
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CUR_MIDI_PROG
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    15
+               DC.W    EDIT+LINKED
+               DC.W    EDIT+ED_VEC
+               DC.L    UPDATE_CUR_STUFF
+               DC.W    FIELD_END
+;
+; LEFT KIT FIELD
+;
+               DC.B    11
+               DC.B    1
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+SET_PTR
+               DC.L    MIDI_L_ACCESS
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    KIT_LIST_STRING
+               DC.W    EDIT+HI_LIMIT
+               DC.W    7
+               DC.W    EDIT+LO_LIMIT
+               DC.W    -1
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+ED_VEC
+               DC.L    UPDATE_CUR_STUFF
+               DC.W    FIELD_END
+;
+; RIGHT KIT FIELD
+;
+               DC.B    15
+               DC.B    1
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+SET_PTR
+               DC.L    MIDI_R_ACCESS
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    KIT_LIST_STRING
+               DC.W    EDIT+HI_LIMIT
+               DC.W    7
+               DC.W    EDIT+LO_LIMIT
+               DC.W    -1
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+ED_VEC
+               DC.L    UPDATE_CUR_STUFF
+               DC.W    FIELD_END
+;
+; LEFT KEY MUTE FIELD
+;
+               DC.B    28
+               DC.B    3
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+SET_PTR
+               DC.L    MUTE_ACCESS
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    OFF_ON_STRING
+               DC.W    DISPLAY+TAILOR
+               DC.L    WHAT_MAP_TO_DISPLAY
+               DC.W    EDIT+HI_LIMIT
+               DC.W    1
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+ED_VEC
+               DC.L    UPDATE_CUR_STUFF
+               DC.W    SUBFUN_END
+;
+;
+               DC.B    "  "
+KIT_LIST_STRING
+               DC.B    "1234ABCD"
+;
+OFF_ON_STRING
+               DC.B    "OFF ON"
+               .ALIGN 2
+;
+;
+WHAT_MAP_TO_DISPLAY    ; IF MIDI -> SEQUENCER, PAGE ON TO NEXT SUBFUNCTION.  IF MIDI MODE = MAPPED,
+; SHOW MODE 4 MAPPING SCREEN.  ELSE, COOL TO BE HERE.
+;
+;
+               MOVE    MIDI_MODE,D0         ;FIRST AND FOREMOST - IF MAPPED MODE, DIFF FUNCTION
+               CMP     #3,D0
+               BNE.S   BROOF_3
+               MOVE.L  #MODE_4_OUT_SUB,CUR_SUB_BLOCK
+               ST      SUBFUN_INSTALL
+BROOF_3
+               RTS
+;
+;
+;
+UPDATE_CUR_STUFF       ; WHENEVER ONE OF THESE VALUES CHANGE, DOWNLOAD EVERYBODY TO THE CUR_SPACES.
+               MOVE    CUR_MIDI_PROG,D0
+               LSL     #1,D0                ;TURN INTO A WORD INDEX
+               MOVE    D0,A0
+               MOVE    L_MAP_0(A0),CUR_L_MAP
+               MOVE    R_MAP_0(A0),CUR_R_MAP
+               MOVE    TRIG_FLAG_0(A0),CUR_TRIG_FLAG
+               MOVE    MOD_ROUT_0(A0),CUR_MOD_ROUT
+               MOVE    PWHL_ROUT_0(A0),CUR_PWHL_ROUT
+               MOVE    PRESSURE_ROUT_0(A0),CUR_PRESSURE_ROUT
+;
+               .ALONG
+               JSR     KILL_ACTIVE_PERF     ;KNOCK OUT ACTIVE VALUES, EDITS, VOICES, ETC.
+               .AWORD
+;
+               RTS
+;
+;
+MIDI_L_ACCESS          ; WORD WE ACCESS DEPENDS ON THE CURRENT PROG WE'RE EDITING (0->F).  INDEX
+; IN TO TABLE ACCORDINGLY.  VALUES OF 0->7 MEAN KIT 1 -> BANK D; FFFF MEANS OFF.
+               MOVE    CUR_MIDI_PROG,D0     ;ACTIVE MIDI PRESET
+               EXT.L   D0
+               LSL     #1,D0                ; INTO A WORD OFFSET
+               ADD.L   #L_MAP_0,D0          ;  ADD IN STARTING ADDRESS OF ACCESS POINTER
+               RTS
+;
+;
+MIDI_R_ACCESS          ; WORD WE ACCESS DEPENDS ON THE CURRENT PROG WE'RE EDITING (0->F).  INDEX
+; IN TO TABLE ACCORDINGLY.  VALUES OF 0->7 MEAN KIT 1 -> BANK D; FFFF MEANS OFF.
+               MOVE    CUR_MIDI_PROG,D0     ;ACTIVE MIDI PRESET
+               EXT.L   D0
+               LSL     #1,D0                ; INTO A WORD OFFSET
+               ADD.L   #R_MAP_0,D0          ;  ADD IN STARTING ADDRESS OF ACCESS POINTER
+               RTS
+;
+;
+MUTE_ACCESS            ; AS ABOVE, WHO TO ACCESS DEPENDS ON CURRENT PROGRAM NOMBRE.
+               MOVE    CUR_MIDI_PROG,D0     ;ACTIVE MIDI PRESET
+               EXT.L   D0
+               LSL     #1,D0                ; INTO A WORD OFFSET
+               ADD.L   #TRIG_FLAG_0,D0      ;  ADD IN STARTING ADDRESS OF ACCESS POINTER
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             MIDI MULTI MODE SUBFUNCTION
+;
+MODE_4_OUT_SUB
+               DC.B    "CHANNEL:     #  "
+               DC.B    "ROOT:    HI:    "
+;
+;MIDI CHANNEL FIELD
+;
+               DC.B    9
+               DC.B    3
+               DC.W    ACCESS+SET_PTR
+               DC.L    MULTI_CHAN_ACCESS
+               DC.W    ACCESS+SIGNED
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    FUDGE_THE_MIDI_DISP
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    MIDI_CHANNELS
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    31
+               DC.W    EDIT+LO_LIMIT
+               DC.W    -1
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SAVE_OLD_CHANNEL
+               DC.W    EDIT+ED_VEC
+               DC.L    PROP_NEW_CHANNEL
+               DC.W    FIELD_END
+;
+;SOUND NUMBER FIELD
+;
+               DC.B    14
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CURRENT_SOUND
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    31
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+;
+;ROOT KEY FIELD
+;
+               DC.B    21
+               DC.B    4
+               DC.W    ACCESS+SET_PTR
+               DC.L    ROOT_KEY_ACCESS
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    KEY_STRINGS
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    87
+               DC.W    EDIT+ED_VEC
+               DC.L    KEEP_HIGH_IN_BOUNDS
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+;
+;HIGH KEY FIELD
+;
+               DC.B    28
+               DC.B    4
+               DC.W    ACCESS+SET_PTR
+               DC.L    HIGH_KEY_ACCESS
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    KEY_STRINGS
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    87
+               DC.W    EDIT+ED_VEC
+               DC.L    PROP_FRIEND
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    LIMIT_OFF_OF_ROOT_KEY
+               DC.W    SUBFUN_END
+;
+;
+MIDI_CHANNELS
+               DC.B    "OFF"
+MIDI_FLANNELS
+               DC.B    " 1A 2A 3A 4A 5A 6A 7A 8A 9A10A11A12A13A14A15A16A"
+               DC.B    " 1B 2B 3B 4B 5B 6B 7B 8B 9B10B11B12B13B14B15B16B"
+;
+KEY_STRINGS
+               DC.B    "A-1 A#-1B-1 "
+               DC.B    " C0 C#0  D0 D#0  E0  F0 F#0  G0 G#0  A0 A#0  B0 "
+               DC.B    " C1 C#1  D1 D#1  E1  F1 F#1  G1 G#1  A1 A#1  B1 "
+               DC.B    " C2 C#2  D2 D#2  E2  F2 F#2  G2 G#2  A2 A#2  B2 "
+               DC.B    " C3 C#3  D3 D#3  E3  F3 F#3  G3 G#3  A3 A#3  B3 "
+               DC.B    " C4 C#4  D4 D#4  E4  F4 F#4  G4 G#4  A4 A#4  B4 "
+               DC.B    " C5 C#5  D5 D#5  E5  F5 F#5  G5 G#5  A5 A#5  B5 "
+               DC.B    " C6 C#6  D6 D#6  E6  F6 F#6  G6 G#6  A6 A#6  B6 "
+               DC.B    " C7 "
+;
+               .ALIGN 2
+;
+FUDGE_THE_MIDI_DISP    ; DISPLAY ROUTINE DOESN'T DIG NEGATIVE NUMBERS.  OUR LOW LIMIT IS -1,
+; SO GOTTA ADD ONE (AND PUT IT BACK) TO MAKE THINGS EVEN.
+               ADDQ    #1,PARAM_BUFFER
+                .ALONG
+               JSR     WRITE_PARAM_STRING
+                .AWORD
+               SUBQ    #1,PARAM_BUFFER
+               RTS
+;
+;
+MULTI_CHAN_ACCESS      ; POINT TO CORRECT VALUE IN CURRENT SUBBLOCK.  A VALUE OF 'FF' MEANS NO MULTI
+; MODE CHANNEL; ELSEWISE, BITS 3->0 EQUALS THE MIDI CHANNEL, AND BIT 4 EQUALS THE A/B SELECT.
+               MOVE    CURRENT_SOUND,A0     ;POINT TO CORRECT BLOCK
+                .ALONG
+               JSR     GET_S_BLK_PTR
+                .AWORD
+               LEA     S_MIDI_CHAN(A0),A0
+               MOVE.L  A0,D0
+               RTS
+;
+;
+SAVE_OLD_CHANNEL       ; KEEP TRACK OF MIDI CHANNEL WE ENTERED WITH - WILL NEED IT TO ERASE OUR
+;TRACKS OUT OF AN ABANDONED KEYMAP.
+               MOVE    CURRENT_SOUND,A0
+                .ALONG
+               JSR     GET_S_BLK_PTR        ;AQUIRE THAT OLD CHANNEL
+                .AWORD
+               MOVE.B  S_MIDI_CHAN(A0),DI_TEMP_1_B
+               RTS
+;
+;
+PROP_NEW_CHANNEL       ; CLEAR OUT OF OLD HOME; SETTLE IN TO OUR NEW HOME.
+; NOTE - CHANNEL WE WANT TO DELETE OUT OF IN DI_TEMP_1_B, THANKS OT ABOVE.
+                .ALONG
+               JSR     DELETE_FROM_MAP      ;REMOVE OURSELVES FROM THE MAP WE WERE OCCUPYING
+                .AWORD
+               BRA     PROP_NEW_KEY         ;PROPAGATE OURSELVES THROUGHOUT OUR NEW HOME
+;
+;
+ROOT_KEY_ACCESS        ; CAMILLIA - THE OLD, OLD, STORY....
+               MOVE    CURRENT_SOUND,A0
+                .ALONG
+               JSR     GET_S_BLK_PTR        ;POINT TO PARAMETER TO ALTER
+                .AWORD
+               LEA     S_ROOT_KEY(A0),A0
+               MOVE.L  A0,D0
+               RTS
+;
+;
+KEEP_HIGH_IN_BOUNDS    ; THE HIGH KEY LIMITS FALL WITHIN A SPECIFIC RANGE - NAMELY, THE TRANSPOSE
+; RANGE OF THIS SOUND.  TOTAL RANGE IS 32 SEMITONES; 16 & 31 KHz MAY XPOSE UP AN OCTAVE, 42 KHz
+; MAY XPOSE UP A 5th.  IF SUDDENLY OUT OF RANGE, CORRECT IT.
+               MOVE    CURRENT_SOUND,A0
+                .ALONG
+               JSR     GET_S_BLK_PTR        ;GET THE ROOT KEY
+                .AWORD
+               MOVE.B  S_ROOT_KEY(A0),D0
+               EXT     D0
+               BTST    #1,S_RATE(A0)        ;THIS BIT SET IF 42 KHz SAMPLE RATE
+               BEQ.S   AON_11
+               SUBQ    #5,D0                ; IF 42 KHz, FAKE THE ROOT KEY SO SAME XPOSE LIMITS APPLY
+AON_11
+               ADD     #12,D0               ;CREATE UPPER LIMIT
+               CMP.B   S_HIGH_KEY(A0),D0    ;    IF HIGH TOO HIGH, BRING IN LINE
+               BCC     AON_21
+               MOVE.B  D0,S_HIGH_KEY(A0)
+AON_21
+               SUB     #31,D0               ;ALLOWED TO XPOSE 31 SEMITONES DOWNWARDS
+               BMI.S   AON_31               ;IF XPOSE RANGE BELOW 0, THEN KNOW ROOT IS SAFE
+               CMP.B   S_HIGH_KEY(A0),D0    ;SEE IF HIGH KEY BELOW THE XPOSE RANGE
+               BCS.S   AON_31
+               MOVE.B  D0,S_HIGH_KEY(A0)
+AON_31
+               MOVE.B  S_MIDI_CHAN(A0),DI_TEMP_1_B    ;NO CHANNEL CHANGE IN DELETE/REPROPAGATE
+               BSR     DELETE_FROM_MAP
+               BRA     PROP_NEW_KEY         ;PROPAGATE THRU THE KEYMAP
+;
+;
+HIGH_KEY_ACCESS        ; CAMILLIA - THE EVEN OLDER STORY....
+               MOVE    CURRENT_SOUND,A0
+                .ALONG
+               JSR     GET_S_BLK_PTR        ;POINT TO PARAMETER TO ALTER
+                .AWORD
+               LEA     S_HIGH_KEY(A0),A0
+               MOVE.L  A0,D0
+               RTS
+;
+;
+LIMIT_OFF_OF_ROOT_KEY  ; THE HIGH KEY LIMITS FALL WITHIN A SPECIFIC RANGE - NAMELY, THE TRANSPOSE
+; RANGE OF THIS SOUND.  TOTAL RANGE IS 32 SEMITONES; 16 & 31 KHz MAY XPOSE UP AN OCTAVE, 42 KHz
+; MAY XPOSE UP A 5th.
+               MOVE    CURRENT_SOUND,A0
+                .ALONG
+               JSR     GET_S_BLK_PTR        ;GET THE ROOT KEY
+                .AWORD
+               MOVE.B  S_ROOT_KEY(A0),D0
+               EXT     D0
+               BTST    #1,S_RATE(A0)        ;THIS BIT SET IF 42 KHz SAMPLE RATE
+               BEQ.S   AON_1
+               SUBQ    #5,D0                ; IF 42 KHz, FAKE THE ROOT KEY SO SAME XPOSE LIMITS APPLY
+AON_1
+               ADD     #12,D0               ;CREATE UPPER LIMIT
+               CMP     #87,D0               ;IF OFF THE TOP, KEEP OLD (MAX) LIMIT
+               BCC     AON_2
+               MOVE    D0,PARAM_HI_LIM      ;    ELSE, THIS IS THE UPPER LIMIT
+AON_2
+               SUB     #31,D0               ;ALLOWED TO XPOSE 31 SEMITONES DOWNWARDS
+               BMI.S   AON_3                ;IF OFF BOTTOM, KEEP OLD (MIN) LIMIT
+               MOVE    D0,PARAM_LO_LIM      ;    ELSE, THIS IS THE LOWER LIMIT
+AON_3
+               RTS
+;
+;
+PROP_FRIEND            ; WE ARE MOVEING.  DELETE OUT OF THE PLACE WE WERE, PROPAGATE INTO NEW
+; PLACE.
+               MOVE    CURRENT_SOUND,A0     ;WE ARE DEALING WITH THE SAME CHANNEL
+                .ALONG
+               JSR     GET_S_BLK_PTR
+                .AWORD
+               MOVE.B  S_MIDI_CHAN(A0),DI_TEMP_1_B
+               BSR.S   DELETE_FROM_MAP      ;OUT OF OLD...
+               BRA     PROP_NEW_KEY         ;          ...INTO NEW
+;
+;
+DELETE_FROM_MAP        ; FIRST, LET'S EXPLAIN THOSE KEY MAPS.  ONE EXISTS FOR EACH OF THE
+; 32 (1A->16B) MIDI CHANNELS.  EACH ONE IS 88 LONG WORDS IN SIZE (TO HANDLE 88-KEY CONTROLLERS).
+; THE 4 BYTES, FROM LOW TO HIGH, ARE:
+;              (SAMPLE NUMBER) (PITCH VALUE) (SET = HI KEY) (SET = ASSIGNED)
+;    OUR GOAL IS TO DELETE OURSELVES OUT OF THE MAP WE USED TO OCCUPY, AND RE-PROPAGATE
+; OURSELVES THOUGHOUT THE NEW MAP (IN A SEPERATE ROUTINE WE FALL INTO).  SOUNDS ARE PROPAGATED
+; FROM THEIR HIGH KEY DOWN TO SONEONE ELSE'S HIGH KEY, THE BOTTOM OF THE MAP, OR UNTIL WE
+; RUN OUT OF TRANSPOSE RANGE.  WE HEAL UP THE MAP WE LEAVE BY PROPAGATING THE SAMPLE ABOVE
+; US DOWNWARD INTO WHERE WE USED TO BE.  ENTER w/ DI_TEMP_1_B = CHANNEL TO DELETE OUT OF.  WORKS
+; ON CURRENT_SOUND.
+               MOVEM.L D1-D7/A1,-(A7)
+;
+               MOVE    CURRENT_SOUND,A0
+               MOVE    A0,D3
+                .ALONG
+               JSR     GET_S_BLK_PTR        ;POINT TO THIS DOOMED GUY'S SOUND BLOCK
+                .AWORD
+               MOVE.B  DI_TEMP_1_B,D1
+               MOVE.B  S_MIDI_CHAN(A0),DI_TEMP_1_B    ;(SAVE NEW MIDI CHANNEL AS 'OLD')
+               TST.B   D1
+               BMI.S   EXIT_DEL_FROM_MAP    ;IF OLD MIDI CHANNEL WAS 'OFF', NO NEED FOR THIS!
+               EXT     D1
+               LSL     #2,D1                ;ROTATE CHANNEL INTO AN OFFSET FOR POINTER TABLE
+               MOVE.L  #MAP_ARRAY_TBL,A1
+               MOVE.L  0(A1,D1),A1          ;NOW A1-> CORRECT KEYMAP
+               CLR     D6                   ; START SEARCHING FROM BOTTOM UP FOR OURSELF
+LOOKING_FOR_OURSELF
+               MOVE.L  0(A1,D6),D2          ;LOOK AT CURRENT RESIDENT OF THIS SLOT
+               BPL.S   NEXT_PEEK            ; IF THIS SLOT DOES NOT HAVE A SOUND, PAGE
+               CMP.B   D2,D3                ;SEE IF HE BE WE (HE=D2, WE=D3)
+               BEQ.S   START_KILLING_OURSELF     ;IF YES, GOTTA START ERASING
+NEXT_PEEK
+               ADDQ    #4,D6                ;         ELSE, CONTINUE THE SEARCH -NEXT LONG WORD...
+               CMPI    #4*88,D6             ;GO 'TILL THE TOP (CHECK, IN CASE WE FUCKED UP)
+               BNE     LOOKING_FOR_OURSELF  ;    KEEP GOIN'
+               BRA.S   EXIT_DEL_FROM_MAP    ;         (IF TOPPED, SPLIT)
+;
+START_KILLING_OURSELF  ; HAVE FOUND OURSELF - NOW, EAT OURSELF UNTIL WE HIT TOP OUR NEXT SOUND
+               CLR.L   D7                   ;MOVE IN A BLANK MASK IN OUR PLACE
+KEEP_KILLING_OURSELF
+               MOVE.L  D7,0(A1,D6)          ;BLANK US OUT
+               ADDQ    #4,D6                ;MOVE ON TO THE NEXT SLOT
+               CMPI    #4*88,D6             ;HAVE WE HIT THE TOP?
+               BEQ.S   EXIT_DEL_FROM_MAP    ; IF WE WERE THE LAST THING IN THIS ARRAY, THEN SPLIT
+               MOVE.L  0(A1,D6),D2          ;TAKE A GANDER AT THE NEXT ENTRY
+               BPL.S   EXIT_DEL_FROM_MAP    ; IF GUY ABOVE US DOES NOT EXIST, DONE
+               CMP.B   D3,D2                ;AGAIN - DO WE = HE?
+               BEQ.S   KEEP_KILLING_OURSELF ;    IF YES, THEN KEEP ERASING OURSELF
+;
+               EXT     D2                   ;         ELSE, HAVE HIT NEXT SAMPLE!
+               MOVE    D2,A0                ;REPROPAGATE THIS SAMPLE ABOVE US DOWNWARDS
+;28JUL               ANDI.L  #0FF00FFFFH,0(A1,D6) ;HAH - IF HE WAS A HIGH KEY, GOTTA ERASE THAT FACT, OR
+;28JUL; HE WON'T PROPAGATE HIMSELF!
+               BRA.S   PROPAGATE_THIS_GUY
+;
+EXIT_DEL_FROM_MAP
+               MOVEM.L (A7)+,D1-D7/A1
+               RTS
+;
+;
+PROP_NEW_KEY           ; (READ DOCUMENTATION ABOVE BEFORE READING THIS)
+; WE TAKE THE CURRENT SOUND, AND PROPAGATE INTO THE MAP OF IT'S CHOICE BY THE RULES OUTLINED
+; ABOVE.  ENTER EXPECTING NOTHING.
+               MOVEM.L D1-D7/A1,-(A7)       ;SAVE OFF REGGIES
+;
+               MOVE    CURRENT_SOUND,A0
+PROPAGATE_THIS_GUY
+               MOVE    A0,DI_TEMP_5_B
+                .ALONG
+               JSR     GET_S_BLK_PTR        ;POINT TO CURRENT GUY'S VALUES (& MORAL SYSTEM IN GENERAL)
+                .AWORD
+               MOVE.B  S_MIDI_CHAN(A0),D1   ;MIDI CHANNEL INDICATES THE ARRAY TO USE
+               BMI.S   EXIT_PROP            ; IF MIDI CHANNEL = OFF, FORGET THIS SHIT....
+               ANDI    #1FH,D1              ;    ELSE, CLEAN OFF MIDI CHANNEL
+               LSL     #2,D1                ;ROTATE INTO A RIGHTEOUS LONG WORD OFFSET
+               MOVE.L  #MAP_ARRAY_TBL,A1    ;POINT TO PROPER KEY ARRAY
+               MOVE.L  0(A1,D1),A1
+;
+               MOVE.B  S_RATE(A0),D2        ;NOW, USE SAMPLE RATE TO FIGURE PITCH & XPOSE LIMITS
+               MOVEQ   #19,D3               ;ROOT KEY IS NORMALLY TUNING VALUE 19
+               CMP.B   #2,D2                ; 42KHz XPOSES DOWNWARD FURTHER
+               BNE.S   AON_5
+               ADDQ    #5,D3                ;  IN REALITY - 5 SEMITONES FURTHER
+AON_5
+               MOVE.B  S_HIGH_KEY(A0),D2    ;NEXT - WHAT IS OUR UPPER LIMIT?
+               EXT     D2
+               MOVE    D2,D5                ; (SAVE A COPY)
+               MOVE.B  S_ROOT_KEY(A0),D4    ;GET ROOT KEY
+               EXT     D4
+               SUB     D4,D2                ;THE DIFF BETWEEN THESE INDICATE OUR HIGHEST PITCH
+               ADD     D3,D2                ;ADD IN ROOT KEY PITCH (YEP - I'LL REARRANGE THIS BETTER)
+               LSL     #8,D2                ; WILL BE PLACING PITCH VALUE IN UPPER BYTE OF LOWER WORD
+               MOVEQ   #-1,D7               ;PREP OUR LONG WORD MASK
+               MOVE    D5,D6                ;START AT HIGH KEY, WORK DOWNWARDS
+               LSL     #2,D6
+;
+; OKAY. REGISTERS:                               D2 = PITCH AT THIS LOCATION
+;                      D5 = HIGH KEY NUMBER      D6 = CURRENT POSTION IN ARRAY
+;                      D7 = KEY LONG WORD        A1 -> CORRECT KEY ARRAY
+;
+               MOVE    D2,D7                ;MASK IN RUNNING PITCH
+               MOVE.B  DI_TEMP_6_B,D7       ;MASK IN SOUND NUMBER
+KEEP_ON_BREEDING
+               MOVE.L  0(A1,D6),D1          ;IF THIS IS THE HIGH KEY OF ANOTHER SOUND, SPLIT
+               CMP.B   D1,D7                ; (UNLESS IF REALLY US - THEN COOL - WE'RE REPROPAGATING)
+               BEQ.S   BOOZE_1
+               BTST    #16,D1
+               BNE.S   EXIT_PROP
+BOOZE_1
+               MOVE.L  D7,0(A1,D6)          ;MASK IN US
+               SUBI    #100H,D2             ;KNOCK DOWN PITCH VALUE
+               BMI.S   EXIT_PROP            ; IF OUT OF XPOSE RANGE, THEN QUIT
+;
+               SUBQ    #4,D6                ;PROPAGATE ON DOWNWARDS
+               BMI.S   EXIT_PROP            ; IF OFF BOTTOM OF KEY ARRAY, THEN QUIT
+;
+               ANDI.L  #0FF0000FFH,D7       ;    ELSE, CONTINUE.  MASK OUT OLD PITCH & HI-KEY FLAG.
+               OR      D2,D7                ;MASK IN NEW PITCH
+               BRA     KEEP_ON_BREEDING     ; CONTINUE...
+EXIT_PROP
+               MOVEM.L (A7)+,D1-D7/A1
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;
+MAP_ARRAY_TBL
+               DC.L    MAP_ARRAY+(00*352)
+               DC.L    MAP_ARRAY+(01*352)
+               DC.L    MAP_ARRAY+(02*352)
+               DC.L    MAP_ARRAY+(03*352)
+               DC.L    MAP_ARRAY+(04*352)
+               DC.L    MAP_ARRAY+(05*352)
+               DC.L    MAP_ARRAY+(06*352)
+               DC.L    MAP_ARRAY+(07*352)
+               DC.L    MAP_ARRAY+(08*352)
+               DC.L    MAP_ARRAY+(09*352)
+               DC.L    MAP_ARRAY+(10*352)
+               DC.L    MAP_ARRAY+(11*352)
+               DC.L    MAP_ARRAY+(12*352)
+               DC.L    MAP_ARRAY+(13*352)
+               DC.L    MAP_ARRAY+(14*352)
+               DC.L    MAP_ARRAY+(15*352)
+MAP_ARRAY_2TBL
+               DC.L    MAP_ARRAY+(16*352)
+               DC.L    MAP_ARRAY+(17*352)
+               DC.L    MAP_ARRAY+(18*352)
+               DC.L    MAP_ARRAY+(19*352)
+               DC.L    MAP_ARRAY+(20*352)
+               DC.L    MAP_ARRAY+(21*352)
+               DC.L    MAP_ARRAY+(22*352)
+               DC.L    MAP_ARRAY+(23*352)
+               DC.L    MAP_ARRAY+(24*352)
+               DC.L    MAP_ARRAY+(25*352)
+               DC.L    MAP_ARRAY+(26*352)
+               DC.L    MAP_ARRAY+(27*352)
+               DC.L    MAP_ARRAY+(28*352)
+               DC.L    MAP_ARRAY+(29*352)
+               DC.L    MAP_ARRAY+(30*352)
+               DC.L    MAP_ARRAY+(31*352)
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             MIDI CONTROLLER ROUTINGS SUBFUNCTION
+;
+MIDI_MOD_ROUTS_SUB
+               DC.B    "PROG:xx xxxxxxxx"
+               DC.B    "TO: xxxxxxxxxxxx"
+;
+; PROGRAM NUMBER FIELD
+;
+               DC.B    5
+               DC.B    2
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CUR_MIDI_PROG
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+TAILOR
+               DC.L    CORRECT_MODS_SCREEN
+               DC.W    EDIT+HI_LIMIT
+               DC.W    15
+               DC.W    EDIT+LINKED
+               DC.W    EDIT+ED_VEC
+               DC.L    UPDATE_CUR_STUFF
+               DC.W    FIELD_END
+;
+; SOURCE FIELD
+;
+               DC.B    8
+               DC.B    8
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    MIDI_MOD_SOURCE
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    MIDI_SOURCE_STRINGS
+               DC.W    EDIT+HI_LIMIT
+               DC.W    2
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+;
+; DESTINATION FIELD
+;
+               DC.B    20
+               DC.B    12
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+SET_PTR
+               DC.L    MIDI_MOD_DEST_ACCESS
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    MIDI_DEST_STRINGS
+               DC.W    EDIT+LO_LIMIT
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    5
+               DC.W    EDIT+ED_VEC
+               DC.L    UPDATE_CUR_STUFF
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    SUBFUN_END
+;
+;
+MIDI_SOURCE_STRINGS
+               DC.B    " MOD WHL"
+               DC.B    " PIT WHL"
+               DC.B    "PRESSURE"
+;
+               DC.B    "  NOTHING   "
+MIDI_DEST_STRINGS
+               DC.B    "PITCH  (POS)"
+               DC.B    "PITCH  (INV)"
+               DC.B    " PAN   (POS)"
+               DC.B    " PAN   (INV)"
+               DC.B    " LEVEL (POS)"
+               DC.B    " LEVEL (INV)"
+;
+;
+CORRECT_MODS_SCREEN    ; IF MAPPED MODE OR MIDI AIMED AT SEQUENCER, SWITCH TO SUBFUNCTION ASKING
+; WHAT TO DO IN AUTOREPEAT.  ELSE, SHOW TOM/DRUM0_5 STYLE MOD ROUTINGS CHOICES.
+               TST     SOUND_SEQ_SWITCH     ;AIMED AT SEQUENCER?
+               BNE.S   BROOF_5              ;    IF YES, AUTOREPEAT SCREEN...
+               CMP     #3,MIDI_MODE         ;MAPPED MODE?
+               BNE.S   BROOF_EXIT           ;    IF NOT, MOD ROUTINGS SCREEN
+BROOF_5                                     ;         ELSE, GO TO AUTOREPEAT VEL REPLACE SCREEN
+               MOVE.L  #AUTOREPEAT_MOD_SUB,CUR_SUB_BLOCK
+               ST      SUBFUN_INSTALL
+BROOF_EXIT
+               RTS
+;
+;
+;
+MIDI_MOD_DEST_ACCESS   ; GOTTA READ MIDI_MOD_SOURCE TO SEE WHO WE ARE ACCESSING, AND WRITE OUR
+; DESTINATION NOMBRE THERE.
+               MOVE.L  D1,-(A7)
+;
+               MOVE    MIDI_MOD_SOURCE,D0
+               LSL     #2,D0                ;LONG WORD OFFSET, SINCE ADDRESS HAVE TO BE DEFINED THAT WAY
+               MOVE.L  MOD_ROUT_TBL(PC,D0),D0    ;A0 -> START OF CORRECT ARRAY
+               MOVE    CUR_MIDI_PROG,D1     ;OFFSET BY CURRENT PROGRAM
+               EXT.L   D1
+               LSL     #1,D1                ; (WORD INDEX)
+               ADD.L   D1,D0                ;D0 -> CORRECT SLOT
+;
+               MOVE.L  (A7)+,D1
+               RTS
+;
+MOD_ROUT_TBL
+               DC.L    MOD_ROUT_0
+               DC.L    PWHL_ROUT_0
+               DC.L    PRESSURE_ROUT_0
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             IF IN AUTOREPEAT, MAY WANT PRESSURE OR MOD WHEEL TO REPLACE VELOCITY.
+;
+AUTOREPEAT_MOD_SUB
+               DC.B    "AUTORPT:        "
+               DC.B    "REPLACE VELOCITY"
+;
+;ONE FIELD - SET FLAG ON ROUTING
+;
+               DC.B    8
+               DC.B    8
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    AUTORPT_MIDI_MOD
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    AUTO_MOD_STRINGS
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+LO_LIMIT
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    1
+               DC.W    SUBFUN_END
+;
+;
+               DC.B    " NOTHING"
+AUTO_MOD_STRINGS
+               DC.B    " MOD WHL"
+               DC.B    "PRESSURE"
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             MIDI MAIN VOLUME - OFF, TO OUR MAIN VOLUME, OR AS PERFORMANCE LEVEL
+;
+MIDI_VOL_SUB
+               DC.B    "MIDI VOLUME GOES"
+               DC.B    "TO: xxxxxxxxxxxx"
+;
+; ONE FIELD - ON/OFF
+;
+               DC.B    20
+               DC.B    12
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    M_VOL_ROUT
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    VOLUME_STRINGS
+               DC.W    EDIT+HI_LIMIT
+               DC.W    1
+               DC.W    EDIT+LO_LIMIT
+               DC.W    -1
+               DC.W    EDIT+ED_VEC
+               DC.L    KILL_ACTIVE_PERF
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    SUBFUN_END
+;
+;
+               DC.B    "   NOTHING  "
+VOLUME_STRINGS
+               DC.B    " MAIN VOLUME"
+               DC.B    "    LEVEL   "
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             MIDI HOLD PEDAL (TO ALT PARAMS) EN/DISABLE SUBFUNCTION
+;
+MIDI_HOLD_SUB
+               DC.B    " HOLD PEDAL TO  "
+               DC.B    "ALT. PARAMS: xxx"
+;
+; ONE FIELD - ON/OFF
+;
+               DC.B    29
+               DC.B    3
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    HOLD_TO_ALT_FLAG
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    OFFON__STRING
+               DC.W    EDIT+HI_LIMIT
+               DC.W    1
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    SUBFUN_END
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             MIDI DEFAULT VELOCITY SUBFUNCTION
+;
+MIDI_DEF_VEL_SUB
+               DC.B    "MIDI VELOCITY IS"
+               DC.B    "DEFAULTED TO xxx"
+;
+; ONE FIELD - DEFAULT VELOCITY (OR NORMAL VELOCITY ON)
+;
+               DC.B    29
+               DC.B    3
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    MIDI_DEFAULT_VEL
+               DC.W    DISPLAY+MIN_STRNG
+               DC.L    VEL_OKAY_SCREEN
+               DC.W    DISPLAY+MIN_LIMIT
+               DC.W    0
+               DC.W    EDIT+HI_LIMIT
+               DC.W    127
+               DC.W    EDIT+LINKED
+               DC.W    SUBFUN_END
+;
+;
+VEL_OKAY_SCREEN
+               DC.B    16
+               DC.B    16
+               DC.B    "       ON       "
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             SONG SELECT ON/OFF FIELD
+;
+MIDI_SONG_SEL_SUB
+               DC.B    "MIDI SONG SELECT"
+               DC.B    "  IS  xxxxxxxx  "
+;
+; ONE FIELD - ON/OFF FIELD
+;
+               DC.B    22
+               DC.B    8
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    SONG_SEL_ENABLE
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    EN_DISABLE_STRINGS
+               DC.W    EDIT+HI_LIMIT
+               DC.W    1
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    SUBFUN_END
+;
+;
+EN_DISABLE_STRINGS
+               DC.B    "DISABLED"
+               DC.B    "ENABLED "
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;
+; MIDI sample dump access subfunction:
+; Set options, request dump and manually-initiated dump.
+;
+;
+SDS_MENU_SUB
+               DC.B    "MIDI sample dump"
+               DC.B    "                "
+;
+;
+; Menu field:
+;
+               DC.B    18
+               DC.B    14
+               DC.W    ACCESS+DIR_PTR
+               DC.W    SDS_MENU_SEL
+               DC.W    ACCESS+BYTE
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    SDS_MENU_STRNG
+               DC.W    EDIT+HI_LIMIT
+               DC.W    2
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+ENTR_VEC
+               DC.L    SDS_MENU_EXEC
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    SUBFUN_END
+;
+;
+;
+SDS_MENU_STRNG
+               DC.B    "   Set options"
+               DC.B    "   Dump sample"
+               DC.B    "Request sample"
+;
+;
+;
+SDS_MENU_EXEC
+               MOVE.B  SDS_MENU_SEL,D0
+               EXT.W   D0
+               ADD.W   D0,D0
+               ADD.W   D0,D0
+               MOVE.L  SDS_MENU_PTRS(PC,D0),CUR_SUB_BLOCK
+               ST      SUBFUN_INSTALL
+               MOVE.W  #-1,CUR_FUN_INDEX    ; MIDI 2 switch gets menu sub back.
+               RTS
+;
+;
+;
+SDS_MENU_PTRS
+               DC.L    SDS_OPT_SUB
+               DC.L    SDS_OUT_SUB
+               DC.L    SDS_REQ_SUB
+;
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;
+; Set options for MIDI sample dump operation.
+; Currently only one option: remote vs. local control of receive destination
+; sample number for unsolicited sample dumps -
+; ie, whether to use or ignore the sample number obtained from the dump header.
+; Note that this decision is overridden when the sample dump appears
+; in response to a dump request issued manually via front panel.
+;
+;
+SDS_OPT_SUB
+               DC.B    "Rcv samp number:"
+               DC.B    "from xxxxxxxxxxx"
+;
+;
+; Option field:
+;
+               DC.B    21
+               DC.B    11
+               DC.W    ACCESS+DIR_PTR
+               DC.W    SDS_RCV_CTRL
+               DC.W    ACCESS+BYTE
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    SDS_OPT_STRNG
+               DC.W    EDIT+HI_LIMIT
+               DC.W    1
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    SUBFUN_END
+;
+;
+;
+SDS_OPT_STRNG
+               DC.B    "dump header"
+               DC.B    "current snd"
+;
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;
+; MIDI sample dump - initiated manually.
+; ENTER switch routine is same used to respond to MIDI sample dump requests.
+; Sample number which goes into dump header message defaults to that of
+; sample being sent (ie, our local sample number), but user can set any value
+; from 1-256 for this number, to permit flexibility in dump destination.
+;
+;
+;
+SDS_OUT_SUB
+               DC.B    " nnnnnnnn   #xxa"
+               DC.B    "send out as #xxx"
+;
+;
+; Sound name field (no-edit):
+;
+               DC.B    1
+               DC.B    8
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+SET_PTR
+               DC.L    ZERO_VAL
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_NAME_2
+               DC.W    FIELD_END
+;
+;
+; Source sound number field:
+;
+               DC.B    13
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CURRENT_SOUND
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    31
+               DC.W    EDIT+ENTR_VEC
+               DC.L    SEND_A_SAMPLE
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    EDIT+ED_VEC
+               DC.L    SET_SDS_OUT_NUM
+;890402               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+;
+;
+; Alt-params field (no-edit - backgnd reinstalls us upon alt-params change):
+;
+               DC.B    15
+               DC.B    1
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+DIR_PTR
+               DC.W    ALT_PARAM_FLAG
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    ALT_PARAM_STRING
+               DC.W    FIELD_END
+;
+;
+; Dump header sample number field:
+;
+               DC.B    29
+               DC.B    3
+               DC.W    ACCESS+DIR_PTR
+               DC.W    SDS_OUT_NUM
+               DC.W    ACCESS+BYTE
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    255
+               DC.W    EDIT+ENTR_VEC
+               DC.L    SEND_A_SAMPLE
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    SUBFUN_END
+;
+;
+;
+;
+SET_SDS_OUT_NUM
+               MOVE.B  CURRENT_SOUND+1,SDS_OUT_NUM
+               RTS
+;
+;
+;
+;
+SEND_A_SAMPLE
+               ST      SDS_MAN_OUT          ; indicate manually requested dump,
+                                            ; sample number option applies.
+               JMP     SDS_OUT_EXEC         ; do it, or don't, then return thru.
+;
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;
+; MIDI sample receive - initiated manually.
+; We send a dump request for indicated sample, receive it into CURRENT_SOUND.
+; Sample number encoded into the dump request defaults to same,
+; but user can optionally select any number in the range 1-256.
+; After request is sent, we return to normal background operation -
+; it's up to receiver to respond with a dump header, which gets handled
+; as though it came in unsolicited, with one exception:
+; the receive sample number destination mode set by SDS_RCV_CTRL is overridden
+; to allow receipt of the sample as indicated in our screen.
+; Override stays in effect for 2 seconds after transmission of dump request -
+; beyond this time, if no dump header received, it is cleared by background.
+; It is also cleared when a dump request is acknowledged.
+;
+;
+SDS_REQ_SUB
+               DC.B    "Receive into #xx"
+               DC.B    "req dump of #xxx"
+;
+;
+; Receive destination field:
+;
+               DC.B    14
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CURRENT_SOUND
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    31
+               DC.W    EDIT+ENTR_VEC
+               DC.L    REQ_A_SAMPLE
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    EDIT+ED_VEC
+               DC.L    SET_SDS_REQ_NUM
+;890402               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+;
+;
+; Dump request sample number field:
+;
+               DC.B    29
+               DC.B    3
+               DC.W    ACCESS+DIR_PTR
+               DC.W    SDS_REQ_NUM
+               DC.W    ACCESS+BYTE
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    255
+               DC.W    EDIT+ENTR_VEC
+               DC.L    REQ_A_SAMPLE
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    SUBFUN_END
+;
+;
+;
+;
+SET_SDS_REQ_NUM
+               MOVE.B  CURRENT_SOUND+1,SDS_REQ_NUM
+               RTS
+;
+;
+;
+;
+REQ_A_SAMPLE
+               MOVEM.L A1,-(A7)
+               JSR     SEND_SDS_REQ         ; send request, etc, etc.
+               LEA     SDS_REQ_SCRN(PC),A1  ; make action plain to user.
+               CALL    LCD_FUNS,DSP_SCRN
+               .ALONG
+               JSR     USER_STALL           ; hang tight, front-panel wise.
+               .AWORD
+               MOVEM.L (A7)+,A1
+               RTS
+;
+;
+;
+;
+SDS_REQ_SCRN
+               DC.B    "  Request sent, "
+               DC.B    "no response seen"
+;
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+

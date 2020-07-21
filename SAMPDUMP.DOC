@@ -1,0 +1,758 @@
+
+
+                       Studio 440 PLUS! from PointSource
+                     MIDI Sample Dump - Quick Instructions
+
+
+         =========================== SETUP ===========================
+
+         1.  Connect a MIDI cable from the Studio 440's MIDI OUT A to
+             the MIDI IN jack of the other device.
+
+         2.  Connect a MIDI cable from the other device's MIDI OUT to
+             the MIDI IN jack of the Studio 440.
+
+         3.  Set the Studio 440's MIDI IN channel to match that of the
+             other device, or vice versa (don't worry about MIDI OUT
+             channel or MIDI mode).
+
+         4.  Make sure the sequencer is not running.
+
+         The Studio 440 is now ready to receive sample dumps from the
+         other device, and will also send samples out in response to
+         dump requests from the other device.  You don't need to call
+         up any specific screen.  To stop any sample transfer, hit the
+         STOP switch.  If using the Studio 440 with a computer, you
+         can ignore the rest of the quick instructions.
+
+
+         =============== MANUALLY-INITIATED TRANSFERS ================
+
+         Use when the "other device" is a sampler, not a computer.
+         Hit the SYSTEM MIDI 2 button until the "MIDI sample dump"
+         menu appears.
+
+         ----------- TO DUMP A SAMPLE TO THE OTHER DEVICE ------------
+
+         1.  Select "Dump sample" and hit ENTER.
+
+         2.  Select the sample you wish to send (top line).
+
+         3.  (Optional)  Select a different sample number to be sent
+             with this sample to the other device (bottom line).
+
+         3.  Hit ENTER again.  "Sending ...." should appear in screen.
+
+         --------- TO REQUEST A SAMPLE FROM THE OTHER DEVICE ---------
+
+         1.  Select "Request sample" and hit ENTER.
+
+         2.  Select the sample number into which the Studio 440 should
+             store the incoming sample (top line).
+
+         3.  Select the number of the sample you want the other device
+             to send (bottom line).
+
+         4.  Hit ENTER again.  "Rcvng ...." should appear in screen.
+
+
+                                Happy Dumping!
+
+                             PointSource - 890412
+
+
+
+                       Studio 440 PLUS! from PointSource
+
+                 MIDI Sample Dump - The Long-winded Discussion
+
+
+                         "For Those Who Love To Read"
+
+
+
+         ===================== Product Overview ======================
+
+
+
+         The MIDI Sample Dump feature of the Studio 440 allows direct
+         digital transfer of samples via MIDI in either direction
+         between the Studio 440 and any other sampler or computer
+         which has a similar capability.  Among other possibilities,
+         this feature extends the power of the Studio 440 in three
+         significant ways:
+
+
+
+         EASY ACCESS TO SOUND LIBRARIES WHICH EXIST ON OTHER SAMPLERS.
+
+             Your Studio 440 sound library can now expand quickly by
+             incorporating sounds created on other samplers, without
+             the need to resample the sounds in an audio format.  The
+             highest possible fidelity is retained, and loop points
+             are preserved.  The Studio 440 can request samples from
+             other samplers via MIDI, allowing it to be used with
+             samplers which lack a manual-dump capability.
+
+
+         ACCESS TO THE POWER OF COMPUTER-BASED SAMPLE EDITING.
+
+             The Studio 440 can act as a "slave" to a computer running
+             one of the many fine sample editing programs now
+             available, allowing you to apply the greater resolution,
+             extended editing functions and on-screen graphical
+             techniques of these programs to the manipulation of your
+             Studio 440 sounds.
+
+
+         PRESERVATION OF YOUR INVESTMENT OF TIME AND EFFORT IN THE
+         CREATION OF YOUR Studio 440 SOUND LIBRARY.
+
+             If you choose to add another sampler to your setup, or to
+             upgrade to a 16-bit system, your existing Studio 440
+             sounds can be transferred to the new system with full
+             fidelity and no need to resample.
+
+
+
+
+         Read onward ....
+
+
+                             PointSource - 890412
+
+
+
+         ============== SDS - What It Is, What It Isn't ==============
+
+
+         The Studio 440 MIDI Sample Dump feature follows the
+         specifications of the Sample Dump Standard (SDS) section of
+         the Universal System Exclusive codes agreed upon by members
+         of the MIDI Manufacturers Association (MMA).  The SDS specs
+         define a communications protocol which permits the exchange
+         of "raw" digital sound data between any two MIDI devices,
+         regardless of differences between the internal sound formats
+         used by each device (eg, 12-bit, 16-bit, linear, companded
+         etc).  In addition, info on sample rate, loop points and loop
+         mode is exchanged via the SDS protocol.  Virtually all
+         samplers have enough in common to be able to use this
+         information, and will recognize and use the same set of SDS
+         messages in order to transfer it, translating it internally
+         as necessary.  For example, the Studio 440 can receive
+         samples from a 16-bit sampler and will store them as 12-bit
+         samples internally.  You can also send the Studio 440's
+         12-bit samples to a 16-bit sampler - the 16-bit machine will
+         store them in its own 16-bit format, although the "quality"
+         of the sample is still really 12 bits (so it may not sound
+         any better in the 16-bit machine, but on the other hand it
+         shouldn't sound any worse).
+
+         However, beyond the basic level of sample handling - in the
+         "playback control" department - samplers differ from one
+         another to such an extent that there is no way to include
+         such control information as part of the Sample Dump Standard.
+         (For the Studio 440, control info includes VCA, VCF and
+         pitch-bend envelopes, fine tuning, velocity-mod, sound names
+         and just about everything else which is not under the SOUND
+         EDIT 1 button).  This type of info, if made available, is
+         encoded into manufacturer-specific, device-specific System
+         Exclusive messages which are recognized only by another
+         device of the same type, or by a computer patch-editing
+         program designed specifically for that model.
+
+         The Studio 440 does not currently generate or recognize
+         System Exclusive messages of this second sort.  As a result,
+         some of the capabilites of "universal" sample editing
+         programs, such as Digidesign's Sound Designer II and Blank
+         Software's Alchemy, will not be applicable to the Studio 440.
+         For example, you won't be able to set filter cutoffs or
+         create Studio 440 keyboard maps using these programs, nor
+         translate these settings from the Studio 440 to a different
+         sampler via the computer - these control functions require
+         device-specific System Exclusive response beyond the scope of
+         "plain vanilla" SDS.  The "universal" editing programs
+         actually include special sections of software developed
+         specifically for each of the samplers they support.  For this
+         reason, the Studio 440 will not appear by name in the menus
+         of any of these programs.  Nevertheless, the truly universal
+         sample editing features of these programs will certainly work
+         with the Studio 440 and its sounds.
+
+
+                             PointSource - 890412
+
+
+
+         ======================== Setting Up =========================
+
+
+         Cable Connections
+
+         The Studio 440 performs SDS transfers with incoming messages
+         received on the MIDI IN jack.  This should be connected to
+         MIDI OUT on the other device.  Outgoing messages are sent via
+         the MIDI OUT A jack.  This should be connected to MIDI IN on
+         the other device.  The MIDI OUT B jack and the TERMINAL/SYNC
+         jacks are not used for Studio 440 SDS transfers.
+
+         Because of the way SDS works, it is best to use two MIDI
+         cables and make both input and output connections to the
+         appropriate jacks on the other device, even if you plan to
+         transfer samples only in one direction.  Doing this allows
+         for "closed loop" communication between the two devices and
+         will result in faster transfers and smoother operation.  In
+         fact, it is necessary to use the two-cable connection if you
+         wish to use the dump request capability of either device.
+         One example of this situation is using the Studio 440 with a
+         computer-based sample editing program.
+
+         However, if two-cable hookup is inconvenient, transfers can
+         be made with a single cable connected appropriately for the
+         desired transfer direction.  For this to work, it must be
+         possible to initiate a sample dump manually on whichever
+         device is the transmitter (the Studio 440 fully supports this
+         mode of operation as well).
+
+
+         Channel and Other Settings
+
+         The MIDI channel number set for the Studio 440 must match
+         that of the other device.  The Studio 440 ignores any and all
+         SDS messages which do not appear on its selected channel.
+         This is the IN:  channel which is set in the CHANNELS screen
+         under the SYSTEM MIDI 1 button.  This channel is always in
+         effect for SDS transfers, and applies to both incoming and
+         outgoing SDS messages - the OUT:  channel set in the same
+         screen is not used by the Studio 440 for SDS transfers, and
+         setting it to "OFF" will not affect SDS operation.  Other
+         MIDI settings on the Studio 440, such as "ECHO", "IN TO",
+         "MTC" and "SOUND PERFORM MIDI MODE", also have no effect on
+         SDS operation.
+
+         Note that while most MIDI messages are confined to 16
+         channels, the SDS spec allows for up to 127 channels.  Some
+         devices allow you to use the full range of channel numbers
+         for SDS transfers.  Because channel numbers above 16 are not
+         allowed for "standard" MIDI messages, these devices will
+         have a separate setting for the SDS channel number, which may
+         be called something like "device ID".  If present, this is
+         the channel which must match that of the Studio 440.  The
+         Studio 440 performs SDS transfers on channels 1-16 only.
+
+
+                             PointSource - 890412
+
+
+
+         ================= Remote Control Operation ==================
+
+
+         Normally, the Studio 440 is ready to receive a sample dump or
+         respond to a dump request at any time - all you need to do is
+         send one on in.  This allows it to be used easily with a
+         computer acting as the "master" device.  The main exception
+         to this is that sample dumps and dump requests are ignored by
+         the Studio 440 if the sequencer is running - incoming SDS
+         messages will not cause the sequencer to stop, and may even
+         get recorded into a sequence if RECORD is active at the time
+         (this is NOT recommended, by the way).  Also, sample/sequence
+         editing operations and disk operations usually lock out MIDI
+         response and will prevent acknowledgement of these messages.
+
+
+         The dump header - the first part of any sample dump - tells
+         the Studio 440 what it needs to know about the sample being
+         sent to it.  Most importantly, it indicates the size of the
+         sample, and the sample number under which the new sample
+         should be stored.  If there is not enough memory available in
+         the 440 to store a sample of the indicated size, the 440 will
+         send a message back to the transmitting device in an attempt
+         to halt the incoming dump, and will ignore the dump if it
+         comes in anyway (as might occur if the two-cable connection
+         is not used).  A message will also appear in the display:
+
+                              ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+                              ³Sample too large³
+                              ³- unable to rcv ³
+                              ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+
+         In addition, if the indicated sample number is already in use
+         in the Studio 440, then the existing sample will have to be
+         deleted before the new sample can be stored there.  In this
+         case, the memory which would be freed by deleting the
+         existing sample is taken into account when deciding if there
+         is enough memory space to receive the new sound.  If not, the
+         existing sound is not deleted, and the dump is rejected as
+         discussed above.  Otherwise, the Studio 440 automatically
+         deletes the sound, after first sending out a message telling
+         the sender to wait.  This message appears:
+
+                              ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+                              ³Target sound is ³
+                              ³being deleted...³
+                              ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+
+         and may remain for as long as several seconds.  After this,
+
+
+
+         ----------- Remote Control Operation (continued) ------------
+
+
+         data transfer should begin.  The following screen lets you
+         know exactly what is happening:
+
+                              ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+                              ³Rcvng sample #12³
+                              ³103472 wds to go³
+                              ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+
+         The number on the bottom line indicates the number of sample
+         words the Studio 440 is still expecting to receive.
+         Normally, you will see it going through a continuous rapid
+         countdown.  If this number is not changing, it means that the
+         transmitting device is not sending anything to the Studio
+         440.  With some computers and other devices which may need to
+         fetch sample data from disk during a transfer, it will be
+         normal to see the countdown go through an occasional brief
+         pause.  When the countdown goes to zero, you'll see this
+         message:
+
+                              ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+                              ³Sample transfer ³
+                              ³  is complete   ³
+                              ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+
+         This tells you that the Studio 440 is back in your hands and
+         ready to resume normal operation.  At any time before the
+         countdown reaches zero, you can abort the transfer by hitting
+         the STOP switch (on the Studio 440 end, at least - the
+         transmitting device may not get the message, in which case it
+         will keep on sending).  If you do this, you may want to
+         delete the partially-received sample before continuing, to
+         avoid wasted memory space.
+
+
+         Response to a received dump request message, apart from being
+         completely automatic, is very similar to operation during a
+         manually-initiated dump.  See the section below entitled
+         "Function Screen 2 - Dumping Samples".
+
+         See also the section below entitled "Sample Receive - Further
+         Details" for more info on how the Studio 440 receives
+         samples.
+
+
+
+         ================= The SDS Function Screens ==================
+
+
+         The function screens related to SDS operation are mostly
+         useful for exchanging samples between the Studio 440 and
+         another sampler.  When doing this, the Studio 440 can act as
+         the "master" and control the other sampler.  If you are
+         working with a computer, you shouldn't need to deal with
+         these screens and functions - the Studio 440 is set up to
+         work correctly with a computer when you turn it on.  Also,
+         most computers will not respond to transfers initiated by the
+         Studio 440 - the computer normally expects to be the master.
+
+         The SDS function screens appear under the SYSTEM MIDI 2
+         button.  You will initially see a single screen which looks
+         like this:
+
+                              ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+                              ³MIDI sample dump³
+                              ³     Set options³
+                              ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+
+         This screen is actually a function menu.  The bottom line can
+         be adjusted using the data slider or the INC/DEC keys to read
+         "Set options", "Dump sample" or "Request sample".  Hit the
+         ENTER key when you have selected the function you want, and
+         you will obtain the associated function screen.  The
+         individual function screens are discussed below.
+
+
+
+         ========== Function Screen 1 - Sample Dump Options ==========
+
+
+         Currently there is only one option, related to receiving
+         sample dumps.  It's set in the following screen:
+
+                              ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+                              ³Rcv samp number:³
+                              ³from dump header³
+                              ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+
+         This option determines where the Studio 440 gets the sample
+         number under which it stores a received sample.  The screen
+         above shows the default setting - the sample number is
+         obtained from the dump header of the incoming sample.  This
+         is the setting you will normally want to use.  Especially
+         when using the Studio 440 with a computer-based sample
+         editor, it's simplest to have the 440 act as a "slave" to the
+         device which is sending it samples, and let the sending
+         device be the "master" as far as controlling where its
+         samples will go in the 440.  It's also what computers expect.
+
+         On the other hand, when receiving samples from another
+         sampler, it's likely that the sample numbers which that
+         sampler sends will not match the numbering scheme you want to
+         use in the 440 - you may want to decide this yourself on a
+         sample-by-sample basis.  In this case, you'd use the other
+         setting for this option:
+
+                              ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+                              ³Rcv samp number:³
+                              ³from current snd³
+                              ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+
+         This indicates that the sample number in a received dump
+         header will be ignored, and that any received sample will be
+         stored under the "current" sound number.  Normally the
+         current sound is the one that you played last, or whose
+         number is displayed in one of the SOUND EDIT screens.
+         (However, before you jump to this setting, be sure to read
+         the section below on requesting samples from another
+         sampler - this setting does not apply if you use the
+         "Request sample" function of the Studio 440).
+
+
+
+         ============ Function Screen 2 - Dumping Samples ============
+
+
+         If you select "Dump sample" in the SDS menu and then hit the
+         ENTER key, you'll see a screen which looks like this:
+
+                              ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+                              ³ COWBELCH   #12 ³
+                              ³send out as # 12³
+                              ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+
+         On the upper line you can select the sound to be sent out
+         when the ENTER key is hit - the name of the sound appears
+         alongside the sound number.  This is the Studio 440's
+         "current" sound - thus, in addition to the data slider,
+         decimal and INC/DEC keys, you can select this sound by
+         playing it on the pads.  Also note that the ALT PARAMS key
+         has an effect here - it will select the set of START/END and
+         LOOP points to be used when the sound is transmitted.  The
+         Studio 440 does not blindly transmit the entire sample, but
+         instead sends the portion of it which is indicated by the
+         currently active set of START/END points.
+
+         On the bottom line you can select the sample number to be
+         sent with this sample.  Any value in the range 1-256 can be
+         used, since some samplers allow you to have many more than 32
+         samples.  This number is inserted into the dump header
+         message which is the first part of every outgoing sample dump
+         - it tells the receiving sampler which sound number to assign
+         to the incoming sample.  In general, by using this control,
+         you can send Studio 440 samples exactly where you want them
+         to go in the receiving sampler, without having to touch any
+         of its controls (not always, however, since some samplers
+         ignore this number when receiving sample dumps).  Note that
+         whenever a different sample is selected for transmission,
+         this number is automatically changed to match that of the
+         selected sample - thus, in many cases, you won't need to
+         specifically alter it.
+
+         Hit the ENTER key to start sending.  You'll see a screen
+         which looks like this:
+
+                              ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+                              ³Sending COWBELCH³
+                              ³100440 wds to go³
+                              ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+
+         The number on the bottom line counts down to zero to indicate
+         the progress of the transfer.  A completion message will
+         appear when it reaches zero.  The countdown may pause one or
+         more times during a transfer if the receiving device needs to
+         allocate memory for the incoming sample or transfer data to
+         disk.  Also, the Studio 440 will wait up to two seconds for a
+
+
+
+         ------ Function Screen 2 - Dumping Samples (continued) ------
+
+
+         response message from the receiving device after sending the
+         dump header (which happens when you hit ENTER).  If you have
+         correctly set up the two-cable connection, the transfer
+         countdown will usually begin almost immediately - if you
+         always get the two-second delay, you may want to recheck your
+         connections.
+
+         At any time before the countdown reaches zero, you can abort
+         the transfer by hitting the STOP switch.  The Studio 440 will
+         send a message to the receiving device which in most cases
+         will convince it to stop listening and go back to standby.
+
+
+         Sample transmit in response to a received dump request
+         message is almost identical to manually-initiated transmit.
+         The same countdown screen and completion message will appear.
+         The main differences are 1) it happens under remote control
+         (no buttons hit), and 2) the sample number in the outbound
+         dump header is always that of the requested sample - no
+         substitutions occur.
+
+         See also the section below entitled "Sample Transmit -
+         Further Details" for more info on how the Studio 440
+         transmits samples.
+
+
+
+         ========== Function Screen 3 - Requesting A Sample ==========
+
+
+         If you select "Request sample" in the SDS menu and then hit
+         the ENTER key, you'll see a screen which looks like this:
+
+                              ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+                              ³Receive into #12³
+                              ³req dump of # 12³
+                              ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+
+         On the upper line you can select the sound number to which
+         the incoming sample will be assigned.  This is the number
+         of the "current" sound - thus you can select it by hitting
+         the pads, in addition to the other usual data entry methods.
+         However, the ALT PARAMS switch has no effect here.  Note that
+         if there is already a sound assigned to this number, it will
+         automatically be deleted when the incoming sample arrives
+         (unless the incoming sample is too large to fit into memory
+         and is rejected).
+
+         On the bottom line you indicate the number of the sample to
+         be requested from the other device.  This number tracks the
+         number in the top line, but can be changed to any value from
+         1 through 256, to allow the Studio 440 to work with samplers
+         which can have more than 32 samples.  It gets encoded into a
+         dump request message which is sent out by the Studio 440 when
+         you hit the ENTER switch.
+
+         After sending the dump request, the Studio 440 goes back to
+         standby.  It is up to the other sampler to respond with a
+         sample dump.  If it does, then receive operation is exactly
+         as described in the above section entitled "Remote Control
+         Operation", with one small but significant difference:
+         the Studio 440 will ignore the sample number which appears in
+         the incoming dump header (normally the number of the sample
+         you requested), and will store the sample under the Studio
+         440's current sound number (which you selected in the top
+         line of the request screen).  This happens regardless of the
+         setting of the "Rcv samp number" option, provided that the
+         other device responds within one second after the ENTER
+         switch is hit.  During this time, the Studio 440 assumes that
+         an incoming sample dump is a response to the dump request it
+         sent, and overrides the setting of this option - this is why
+         you will normally not need to change the setting of this
+         option.
+
+         If the other device does not respond, you will see:
+
+                              ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+                              ³  Request sent, ³
+                              ³no response seen³
+                              ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+
+
+
+         ---- Function Screen 3 - Requesting a Sample (continued) ----
+
+
+         In addition to setup problems (recheck your MIDI cable
+         connections and MIDI channel settings), there are legitimate
+         reasons for failure to obtain a response:
+
+         1.  You may have requested a sample with a number beyond the
+             range which is recognized by the other sampler.
+
+         2.  The sample you requested may be deleted, empty, nil, etc.
+
+         Finally, there are some samplers which ignore the sample
+         number in a dump request and respond to the request by
+         sending whatever is their current sound.  When working with
+         one of these devices, you'll have to adjust the current sound
+         setting at both ends to achieve the desired transfer.
+
+
+
+         ====================== Error Messages =======================
+
+
+                              ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+                              ³Sample too large³
+                              ³- unable to rcv ³
+                              ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+
+         The Studio 440 has received a dump header indicating a sample
+         size that is greater than the amount of sample memory the 440
+         can make available.  The incoming dump is not accepted.
+
+
+                              ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+                              ³Sample number is³
+                              ³  out of range  ³
+                              ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+
+         The Studio 440 has received a dump header with sample number
+         higher than 32, and can't store the sample as directed.
+         To get around this, use the "Request sample" function,
+         or change the "Rcv samp number" option from "dump header" to
+         "current snd" and hand-select the Studio 440 target sound
+         number to achieve the same result.
+
+
+                              ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+                              ³MIDI dump halted³
+                              ³by inapprop data³
+                              ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+
+         The Studio 440 received a dump header or other SDS message
+         with invalid parameters or incorrect format, or received an
+         unexpected MIDI message of some other type while receiving a
+         sample dump.
+
+
+                              ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+                              ³Sample not there³
+                              ³ - can't dump it³
+                              ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+
+         An attempt has been made (either manually or via a dump
+         request message) to cause the Studio 440 to dump a deleted
+         sample.
+
+
+                              ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+                              ³MIDI dump halted³
+                              ³by you, the user³
+                              ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+
+         User hit the STOP switch during sample send or receive -
+         sample transfer was stopped.
+
+
+
+         ---------------- Error Messages (continued) -----------------
+
+
+                              ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+                              ³MIDI dump halted³
+                              ³by the receiver ³
+                              ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+
+         The Studio 440 received a CANCEL message from the other
+         device while sending a sample to it.  This often means that
+         the other device did not have enough memory available to
+         accept the sample being sent.  Some samplers send this
+         message normally after receiving a sample.  Some computers
+         use it as a method of obtaining dump headers only, in order
+         to find out what is currently in a sampler's memory.
+
+
+                              ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+                              ³  Request sent, ³
+                              ³no response seen³
+                              ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+
+         The Studio 440 sent a sample dump request as directed, but
+         has not seen a response to it (ie, an incoming dump header).
+
+
+
+         Still with me?  You're pretty dedicated.  Pretty serious.
+         Here are some more details you may find interesting.
+
+
+         ============= Sample Receive - Further Details ==============
+
+
+         Upon recognizing an incoming sample dump header, the MIDI
+         response of the Studio 440 is always virtually immediate -
+         either a CANCEL message if the sample can't be accepted, or a
+         WAIT message to allow time for preparations to be made to
+         accept the sample.  If the preparations include deleting an
+         existing sample, there may be up to several seconds delay
+         before the Studio 440 is ready to accept sample data.
+         However, most SDS devices (including the Studio 440) will
+         wait only two seconds after sending a dump header before they
+         begin sending sample data, UNLESS they get a WAIT response
+         back from the receiving device before then.  For this reason,
+         the two-cable MIDI connection is always recommended.
+
+         Basic SDS provides for the transfer of a minimal amount of
+         info beyond the raw sample data itself.  Here's what the
+         Studio 440 does with this info:
+
+         1.  Sample rate.  Used to set the sample RATE of the received
+             sample.  Rates below 20KHz get the 16KHz setting, rates
+             between 20KHz and 35KHz get the 31KHz setting, and rates
+             above 35KHz get the 42KHz setting.
+
+         2.  Loop points.  Only one set is transmitted - the same LOOP
+             values are stored in both non-ALT and ALT parameter sets.
+
+         3.  Loop type.  SDS can indicate only forwards-only and
+             backwards-forwards loops, or no loop.  The Studio 440
+             uses the indicated loop TYPE, and sets up release loops.
+             One special case:  if the received loop start and end
+             points are equal, the loop TYPE is set to "LOOP OFF".
+
+         All other sound parameters are set to default values exactly
+         as though the sample had been created from scratch.  The
+         default name "MIDIdata" is given to samples received over
+         MIDI.
+
+
+
+         ============= Sample Transmit - Further Details =============
+
+
+         The Studio 440 will not respond to a dump request with a
+         sample number higher than 32.  It will also ignore a dump
+         request if the requested sample is deleted.  When a dump
+         request is acknowledged and responded to, the sample number
+         received in the dump request message is set as the new
+         current sound before transmission begins.  MIDI response to a
+         dump request, if any, is always immediate.
+
+         When a sample is transmitted by the Studio 440 - in response
+         to either manual initiation or a received dump request - the
+         current sound and ALT PARAMS settings dictate what gets sent.
+
+         The currently active START and END points delimit the
+         "interesting" portion of the sample.  However, unlike the
+         Studio 440, the SDS protocol does not provide for the
+         transmission of START and END parameters - these are assumed
+         to be the beginning and end of the transmitted sample.
+         Because of this, the Studio 440 transmits samples starting
+         from the START point.  This is used as the "zero" point, even
+         though it may be set to some value other than zero in the
+         Studio 440.  Sample transmission ends at the END point, and
+         the LOOP points are sent with values which are relative to
+         the START point.  Thus, whatever truncation you have used on
+         a sound is preserved when the sound is transmitted.
+
+         Because a sound may have different START and END points, LOOP
+         points and/or LOOP TYPEs in its two parameter sets, it is
+         important to pay attention to the ALT PARAMS setting when
+         sending samples from the Studio 440.
+
+         The LOOP TYPE value used by the Studio 440 in the outgoing
+         dump header to indicate LOOP OFF is a recent addition to the
+         Sample Dump Standard which is not recognized by all samplers.
+         In order to be compatible with these devices, the Studio 440
+         sends both loop points equal to the end of the sample when
+         the sound being sent has a LOOP TYPE of LOOP OFF.
+
+
+         ------------------------ That's it! -------------------------
+

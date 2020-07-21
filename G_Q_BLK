@@ -1,0 +1,21 @@
+               .OPTION LIST=SHOW_INCLUDES
+
+*****     G_Q_BLK - MODEL 440 SEQUENCE DIRECTORY BLOCK GLB DECS   *****
+*****                 FOR INCLUSION INTO RAM_440.                 *****
+*****     NOTE - MACHINE-GENERATED FILE, DON'T BOTHER EDITING.    *****
+;
+               .EXPORT Q_NAME
+               .EXPORT Q_START_BLK
+               .EXPORT Q_INIT_TEMPO
+               .EXPORT Q_TIME_NUM
+               .EXPORT Q_TIME_DENOM
+               .EXPORT Q_TOTAL_BARS
+               .EXPORT Q_XS_BEATS
+               .EXPORT Q_MEM_USED
+               .EXPORT Q_STATUS
+               .EXPORT Q_RPT_START
+               .EXPORT Q_RPT_END
+               .EXPORT Q_RPT_COUNT
+               .EXPORT Q_BLOCK_SIZE
+               .OPTION LIST="ON"
+

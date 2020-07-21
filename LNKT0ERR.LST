@@ -1,0 +1,21 @@
+LINKER.EXE: error: 'BACK_HANDLER': unresolved symbol
+LINKER.EXE: error: 'SUB_INST_VERT': unresolved symbol
+
+LINKER.EXE: error: 'NOTHINGNESS': unresolved symbol
+LINKER.EXE: error: 'SET_AUTOSCROLL': unresolved symbol
+LINKER.EXE: error: 'UPDATE_SEQ_SIZE': unresolved symbol
+LINKER.EXE: error: 'PEPPERS_PLEEZ': unresolved symbol
+LINKER.EXE: error: 'PROCESS_DATA_POT': unresolved symbol
+LINKER.EXE: error: 'GET_CUR_SEQ_DIR': unresolved symbol
+
+LINKER.EXE: error: 'SET_ENTER_FLASH': unresolved symbol
+LINKER.EXE: error: 'LED_DIRECT': unresolved symbol
+
+LINKER.EXE: error: 'SET_ROOT_PITCH': unresolved symbol
+LINKER.EXE: error: 'GET_PROP_BLK_PTR': unresolved symbol
+LINKER.EXE: error: 'WRITE_UPWARD': unresolved symbol
+LINKER.EXE: error: 'READ_UPWARD': unresolved symbol
+LINKER.EXE: error: 'POSTDEL_SAMSPC': unresolved symbol
+LINKER.EXE: error: 'DELETE_SHUFFLE': unresolved symbol
+LINKER.EXE: error: 'INIT_SND_CTL_BLK': unresolved symbol
+

@@ -1,0 +1,1162 @@
+               INCLUDE HPFIXUPS
+               TITLE "DIAG440"
+***************************************************************************************************
+***************************************************************************************************
+***                                                                                             ***
+***            DIAG440 - INTERNAL DIAGNOSTICS                                                   ***
+***                                                                                             ***
+***************************************************************************************************
+***************************************************************************************************
+;
+NEG_EXT        EQU     0FFFFFF00H      ;USE IN MOVEQ INSTRUCTIONS WHERE ARG IS
+                                       ;80H OR LARGER - HP XASM DOES NOT HANDLE
+                                       ;SIGN-EXTEND CORRECTLY.  COSMETIC, KEEPS
+                                       ;ACTUAL BYTE VALUE CLEARER.
+;
+               INCLUDE EQUATES         ;HDW ADDR AND CONSTANT DEFS, ABS_SHORT DIRECTIVE.
+;
+               GLB     DIAG_440
+               GLB     BOARD_TEST
+;
+                                            ;EXTERNAL ROM.
+               EXTERNAL  VCA_OFF,VCF_OFF
+               EXTERNAL  INIT_LCD,DISP_SCREEN,DISP_HEX,DISP_BUFFER
+               EXTERNAL  WRITE_UPWARD,WRITE_DOWNWARD
+               EXTERNAL  WRITE_STRING,WRITE_VALUE
+               EXTERNAL  READ_UPWARD,READ_DOWNWARD
+               EXTERNAL  WRITE_TO_TC,UNLOAD_LEVEL_5
+               EXTERNAL  WAIT_TWO_SECS
+;
+                                            ;EXTERNAL RAM.
+               EXTERNAL  VOICE_TABLE,V_CTRL_ADDR,V_PRIO_TIME
+               EXTERNAL  V_ACTIVE_SUB,V_VCA_VECTOR,V_VCF_VECTOR
+               EXTERNAL  MISC_OUT_STAT
+               EXTERNAL  TC_RCV_COUNT,TC_RCV_IN,TC_RCV_OUT
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; APPARENTLY WE ONLY GET HERE UNDER CONTROL OF THE BOARD TESTER ....
+;
+BOARD_TEST
+               SUB.L   A2,A2                ;WE MUST BE ON THE BOARD TESTER
+               SUB.L   A3,A3
+               MOVE    #1,A4                ;A4 NOT = 0 INDICATES BOARD-TEST WORLD.
+               TST     CLR_1_MSEC           ;SETUP 6803 COMMUNICATIONS
+               TST.B   TC_READ
+               OR.B    #18H,MISC_OUT_STAT
+               MOVE.B  MISC_OUT_STAT,MISC_OUT
+               MOVE    #2400H,SR                ;ENABLE INTERRUPT
+               CLR     TC_RCV_COUNT
+               CLR     TC_RCV_IN
+               CLR     TC_RCV_OUT
+               MOVEQ   #55H,D0                  ;SEND OUT ACKNOWLEDGE TO 6803
+                ABS_LONG
+               JSR     WRITE_TO_TC
+               MOVE    #0AAH,D0
+               JSR     WRITE_TO_TC
+                ABS_SHORT
+               MOVE    #2700H,SR
+               BRA     SEQ_RAM_0                ;DO SEQUENCE RAM TEST
+BT_1           TST     D5                       ;ANY FAILURES?
+               BEQ.S   BT_2                     ;IF NOT THEN GO TO NEXT TEST
+               MOVE.L  D5,A2                    ;SAVE RAM FAILURE STATUS
+               ADDQ    #1,A2                    ;SET FAILURE FLAG
+;
+BT_2           BRA     SOUND_RAM_0              ;DO A SOUND RAM TEST
+BT_20          TST     D5                       ;ANY FAILURES?
+               BNE.S   BT_21
+               TST     D6
+               BEQ.S   BT_3
+BT_21          SWAP    D6
+               ADDA.L  D6,A3                    ;SAVE UPPER ADDRESS ERRORS
+               ADDA.L  D5,A3                    ;SAVE LOWER ADDRESS ERRORS
+               ADDQ    #2,A2                    ;SET FAILURE FLAG
+BT_3           BRA     UART_A                   ;DO UART TEST
+BT_UA          ADDQ    #4,A2
+               BRA     UART_B
+BT_UB          ADDQ    #8,A2
+;
+BT_X           MOVE.L  A2,D0                    ;SEND THE STATUS BYTES TO THE 6803
+               MOVE    #2400H,SR
+                ABS_LONG
+               JSR     WRITE_TO_TC
+               SWAP    D0
+               JSR     WRITE_TO_TC
+               LSR     #8,D0
+               JSR     WRITE_TO_TC
+               MOVE.L  A3,D0
+               LSR.L   #4,D0
+               JSR     WRITE_TO_TC
+               LSR     #8,D0
+               MOVE.L  A3,D1
+               SWAP    D1
+               OR      D1,D0
+               JSR     WRITE_TO_TC
+               LSR     #8,D0
+               JSR     WRITE_TO_TC
+                ABS_SHORT
+               STOP    #2400H
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; ENTRY POINT TO STAND-ALONE DIAGNOSTICS:
+;
+; WE'LL BRIEFLY NOTE THE FACT THAT THESE DIAGNOSTICS WILL BE TOTALLY
+; UNUSABLE IN THE EVENT OF A CPU RAM FAILURE OWING TO WHOLESALE USE OF
+; THE STACK IN GETTING AROUND, THEN FORGET IT AND DIVE RIGHT IN ....
+;
+; UPDATE, MID-MAY '87:  DIAGNOSTICS DEALING WITH CPU RAM TESTING ARE NOW
+; ABLE TO RUN REGARDLESS OF RAM FUNCTIONALITY - THIS INCLUDES MODIFIED
+; LCD WRITE AND SWITCH SCAN ROUTINES, AMONG OTHERS, TO ALLOW THEM TO
+; TAKE PART IN THIS.  OTHER DIAGNOSTICS STILL REQUIRE FUNCTIONING RAM.
+;
+DIAG_440
+;
+               MOVE.L  #INITLCD_1,A3
+               BRA     LCDWAIT
+INITLCD_1      MOVE.B  #038H,LCD_CONTROL    ;SET 8 BIT/2 LINES/5 X 7 DOTS.
+               MOVE.L  #INITLCD_2,A3
+               BRA     LCDWAIT
+INITLCD_2      MOVE.B  #0CH,LCD_CONTROL     ;TURN ON DISPLAY.
+               MOVE.L  #INITLCD_3,A3
+               BRA     LCDWAIT
+INITLCD_3      MOVE.B  #006H,LCD_CONTROL    ;CURSOR MODE = INCREMENT.
+;
+               MOVE.L  #HELLO_SCREEN,A2     ;SAY HELLO TO HAPLESS TECHNICIAN -
+               MOVE.L  #NOT_MAIN,A6         ;HOPEFULLY HE WILL LET GO OF THOSE SWITCHES NOW.
+               BRA     D_BUFFER
+;
+NOT_MAIN       MOVE.L  #0,A4                ;A4 = 0 MEANS WE ARE NOT RUNNING UNDER BOARD TESTER.
+               MOVE.L  #500000,D1           ;SET TIMEOUT FOR RELEASE OF INC AND DEC SWITCHES.
+NOT_MAIN_LOOP
+               MOVE.B  SWITCH_INPUT+9,D0    ;READ SWITCH MATRIX ROW CONTAINING INC/DEC SWITCHES.
+               AND.B   #0CH,D0              ;LOOK AT JUST THEM TWO -
+               BEQ.S   MAIN_THING           ;IF OPEN, TIME TO GET INTO THE SWING O THINGS.
+               SUBQ.L  #1,D1                ;TIME UP YET?
+               BNE     NOT_MAIN_LOOP        ;NOPE - LOOP AGAIN.
+;
+                                            ;IF TIME UP, ASSUME STUCK SWITCH - DISPLAY ITS NUMBER.
+;
+;
+MAIN_THING
+               MOVE.L  #MAIN_THING_10,A6
+               BRA     SWITCH_SCAN          ;ANYTHING DOING ON ANY OF THE SWITCHES?
+MAIN_THING_10  TST     D0
+               BEQ     MAIN_THING           ;NO, IF D0 = 0.  KEEP LOOKING.
+;
+                                            ;WE GOT SOMETHING!
+               CMP     #24,D0               ;IS IT ONE OF THE FUNCTION SWITCHES?
+               BLE.S   MAIN_THING_20        ;BRANCH IF YES, JUST DISPLAY ITS NUMBER AS IS.
+               CMP     #34,D0               ;ELSE - IS IT ONE OF THE DECIMAL KEYPAD KEYS?
+               BLE.S   MAIN_THING_40        ;BRANCH IF YES, EXECUTE A TEST ROUTINE.
+               SUB     #10,D0               ;REMAINING SWITCHES GET SWITCH NUMBER DISPLAY ONLY,
+                                            ;ADJUST NUMBER FOR DISPLAY TO COMPENSATE FOR TEN
+                                            ;DECIMAL KEYS ABSENT FROM NUMBERING SEQUENCE.
+MAIN_THING_20
+               MOVEQ   #0010H,D1            ;SET UP FRAMEWORK FOR SWITCH # DISPLAY IN TOP LINE.
+               MOVE.L  #SWITCH_SCRN,A2
+                ABS_LONG
+               JSR     WRITE_STRING
+                ABS_SHORT
+               MOVEQ   #20H,D2              ;WRITE SWITCH NUMBER PER VALUE IN D0.
+               MOVE    #0A02H,D1
+                ABS_LONG
+               JSR     WRITE_VALUE
+                ABS_SHORT
+               MOVE    #1010H,D1            ;CLEAR OUT THE BOTTOM LINE OF SCREEN_BUFFER.
+               MOVE.L  #CLEAR_SCREEN,A2
+                ABS_LONG
+               JSR     WRITE_STRING
+               JSR     DISP_BUFFER          ;PUT COMPLETED SCREEN_BUFFER CONTENTS OUT TO LCD.
+                ABS_SHORT
+               BRA     MAIN_THING           ;NO FURTHER THING FOR THESE SWITCHES.
+;
+MAIN_THING_40
+                                            ;DECIMAL KEYPAD SWITCH CALLS UP A TEST ROUTINE:
+               SUB     #25,D0               ;CREATE BRANCH-TABLE LONG-WORD OFFSET,
+               ASL     #2,D0
+               JMP     TEST_TABLE(PC,D0)    ;DO THE RIGHT THING.
+;
+;
+                                            ;NOTE - ALL TEST ROUTINES BRANCH BACK TO MAIN_THING.
+TEST_TABLE
+               BRA.W   MIDI_TEST            ; 7
+               BRA.W   TERM_SYNC            ; 8
+               BRA.W   NOT_THERE            ; 9
+               BRA.W   PAD_LEVELS           ; 4
+               BRA.W   PAD_STATES           ; 5
+               BRA.W   POT_LEVELS           ; 6
+               BRA.W   SEQUENCE_RAM         ; 1
+               BRA.W   SOUND_RAM            ; 2
+               BRA.W   SNDRAM_REF           ; 0
+               BRA.W   ZERO_SAMPLE          ; 3
+;
+;
+HELLO_SCREEN
+               ASC    "440 DIAGNOSTICS "
+               ASC    "PRESS ANY SWITCH"
+;
+SWITCH_SCRN
+               ASC    "SWITCH #        "
+;
+CLEAR_SCREEN
+               ASC     "                "
+               ASC     "                "
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; SPECIAL ROUTINE FOR DECIMAL KEYPAD "9" SWITCH -
+;
+NOT_THERE
+               MOVE.L  #NOT_THERE_SCRN,A1   ;OFFER A SUGGESTION -
+                ABS_LONG
+               JSR     DISP_SCREEN
+                ABS_SHORT
+;
+               MOVE.L  #NOT_THERE_0,A5
+               BRA     AWAIT_HANDS_OFF      ;WAIT FOR RELEASE OF ALL SWITCHES,
+;
+NOT_THERE_0    MOVE.L  #ITS_DARK_SCRN,A1    ;THEN EXPRESS RELIEF.
+                ABS_LONG
+               JSR     DISP_SCREEN
+                ABS_SHORT
+               BRA     MAIN_THING           ;AND BACK TO THE BEGINNING, AGAIN.
+;
+;
+NOT_THERE_SCRN
+               ASC     " Don't TOUCH me "
+               ASC     "   THERE !!!!   "
+;
+ITS_DARK_SCRN
+               ASC     " Now it's dark. "
+               ASC     "                "
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; DISPLAY POT LEVELS:
+;
+POT_LEVELS
+               MOVE.L  #POT_SCREEN,A1       ;PUT POT NAMES INTO LCD.
+                ABS_LONG
+               JSR     DISP_SCREEN
+                ABS_SHORT
+;
+               BSR.S   POT_LEV_SUB          ;ONE PASS THROUGH - DISPLAY VALUES FOR ALL POTS.
+               MOVE.L  #POT_LEV_LOOP,A5
+               BRA     AWAIT_HANDS_OFF      ;WAIT FOR MR. TECH TO LET GO OF SWITCH.
+POT_LEV_LOOP
+               BSR.S   POT_LEV_SUB          ;DO IT AGAIN.
+               MOVE.L  #POT_LEV_L_0,A6
+               BRA     SWITCH_SCAN          ;ANY SWITCHES DOWN NOW?
+POT_LEV_L_0    TST     D0                   ;D0 TELLS ALL ....
+               BEQ     POT_LEV_LOOP         ;BRANCH IF NOT, KEEP LOOPING.
+               BRA     MAIN_THING           ;ELSE - BACK TO THE BEGINNING, AGAIN.
+;
+;
+POT_LEV_SUB
+               MOVEQ   #4,D7                ;D7 IS POT INDEX - READ POTS 4 THROUGH 0.
+POT_LEV_10
+               MOVE    D7,D0                ;COPY POT INDEX FOR POT READ ROUTINE.
+               ADDQ    #1,D0                ;POTS START AT SECOND ADC CHANNEL.
+               ASL     #1,D0
+               BSR.S   POT_READ             ;GO READ VALUE OF SELECTED POT.
+POT_LEV_20
+               MOVE    D7,A0                ;FETCH CURSOR POS FOR DISPLAY OF CURRENT POT'S VALUE.
+               ADD     A0,A0                ;CREATE WORD OFFSET INTO CURSOR POSITION TABLE.
+               ADD.L   #POT_CURSOR,A0
+               MOVE    (A0),D1
+               BSR     DISP_HEX              ;DISPLAY THE VALUE.
+;
+               DBRA    D7,POT_LEV_10        ;DO NEXT POT IF ANY -
+               RTS                          ;ELSE, BACK UP TOP TO LOOK FOR SWITCH CLOSURES.
+;
+;
+;
+POT_READ
+               MOVE    D0,A0                ;D0 CONTAINS ADC CHANNEL NUMBER -
+               ADDA.L  #SELECT_CTRL,A0
+               TST     (A0)                 ;SELECT INPUT AND START CONVERSION.
+;
+               MOVE    #0FFH,D1
+POT_HEAD
+               DBRA    D1,POT_HEAD          ;DELAY 384uS FOR CONVERSION.
+;
+               MOVE    D0,A0
+               ADDA.L  #READ_CTRL,A0
+               MOVE.B  (A0),D0              ;GET POT VALUE, RETURN IT IN D0.
+               RTS
+;
+;
+POT_CURSOR
+               DC.W    16              ;DATA.
+               DC.W    19              ;VOLUME.
+               DC.W    23              ;PAN.
+               DC.W    27              ;PITCH.
+               DC.W    30              ;LEVEL.
+;
+POT_SCREEN     ASC    "DT VL  PA  PI LV"
+               ASC    "                "
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; DISPLAY PAD LEVELS:
+;
+PAD_LEVELS
+               MOVE.L  #CLEAR_SCREEN,A1     ;CLEAR OUT THE SCREEN.
+                ABS_LONG
+               JSR     DISP_SCREEN
+                ABS_SHORT
+;
+               BSR.S   PAD_LEV_SUB          ;ONE PASS THROUGH - DISPLAY VALUES FOR ALL PADS.
+               MOVE.L  #PAD_LEV_LOOP,A5
+               BRA     AWAIT_HANDS_OFF      ;WAIT FOR MR. TECH TO LET GO OF SWITCH.
+PAD_LEV_LOOP
+               BSR.S   PAD_LEV_SUB          ;DO IT AGAIN.
+               MOVE.L  #PAD_LEV_L_0,A6
+               BRA     SWITCH_SCAN          ;ANY SWITCHES DOWN NOW?
+PAD_LEV_L_0    TST     D0                   ;D0 TELLS ALL ....
+               BEQ     PAD_LEV_LOOP         ;BRANCH IF NOT, KEEP LOOPING.
+               BRA     MAIN_THING           ;ELSE - BACK TO THE BEGINNING, AGAIN.
+;
+;
+PAD_LEV_SUB
+               MOVEQ   #7,D7                ;D7 IS PAD INDEX - READ PADS 7 THROUGH 0.
+PAD_LEV_10
+               MOVE    D7,D0                ;COPY PAD INDEX FOR PAD SELECT.
+               ASL     #8,D0
+               OR      #0F000H,D0           ;(THIS KEEPS ALT-PARAM, AUTOREPEAT LEDs OFF,
+                                            ;LCD BACKLIGHT ON).
+               MOVE    D0,PAD_CONTROL
+;
+               CLR     D0                   ;PADS ARE ON FIRST ADC CHANNEL.
+               BSR     POT_READ             ;GO READ VALUE OF SELECTED PAD.
+;
+               MOVE    D7,A0                ;FETCH CURSOR POS FOR DISPLAY OF CURRENT PAD'S VALUE.
+               ADD     A0,A0                ;CREATE WORD OFFSET INTO CURSOR POSITION TABLE.
+               ADD.L   #PAD_CURSOR,A0
+               MOVE    (A0),D1
+                ABS_LONG
+               JSR     DISP_HEX             ;DISPLAY THE VALUE.
+                ABS_SHORT
+;
+               DBRA    D7,PAD_LEV_10        ;DO NEXT PAD IF ANY -
+               RTS                          ;ELSE, BACK UP TOP TO LOOK FOR SWITCH CLOSURES.
+;
+;
+PAD_CURSOR
+               DC.W    00              ;PAD 0.
+               DC.W    18              ;PAD 1.
+               DC.W    04              ;PAD 2.
+               DC.W    22              ;PAD 3.
+               DC.W    08              ;PAD 4.
+               DC.W    26              ;PAD 5.
+               DC.W    12              ;PAD 6.
+               DC.W    30              ;PAD 7.
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+PAD_STATES
+               MOVE.L  #CLEAR_SCREEN,A1     ;CLEAR OUT THE SCREEN.
+                ABS_LONG
+               JSR     DISP_SCREEN
+                ABS_SHORT
+;
+               BSR.S   PAD_STA_SUB          ;ONE PASS THROUGH - DISPLAY STATUS FOR ALL PADS.
+               MOVE.L  #PAD_STA_LOOP,A5
+               BRA     AWAIT_HANDS_OFF      ;WAIT FOR MR. TECH TO LET GO OF SWITCH.
+PAD_STA_LOOP
+               BSR.S   PAD_STA_SUB          ;DO IT AGAIN.
+               MOVE.L  #PAD_STA_L_0,A6
+               BRA     SWITCH_SCAN          ;ANY SWITCHES DOWN NOW?
+PAD_STA_L_0    TST     D0                   ;D0 TELLS ALL ....
+               BEQ     PAD_STA_LOOP         ;BRANCH IF NOT, KEEP LOOPING.
+               BRA     MAIN_THING           ;ELSE - BACK TO THE BEGINNING, AGAIN.
+;
+;
+PAD_STA_SUB
+               MOVEQ   #7,D7                ;D7 IS PAD INDEX - DO PADS 7 THROUGH 0.
+PAD_STA_10
+               MOVE    D7,D0
+               LSL     #8,D0                ;COPY PAD INDEX FOR PAD SELECT.
+               OR      #0F000H,D0           ;(THIS KEEPS ALT-PARAM, AUTOREPEAT LEDs OFF,
+                                            ;LCD BACKLIGHT ON).
+               MOVE    D0,PAD_CONTROL
+;
+               CLR     D0                   ;SET UP FOR "PAD OFF" DISPLAY,
+               BTST    #3,SWITCH_INPUT      ;CHECK STATUS OF THRESHOLD DETECT CIRCUIT -
+               BEQ.S   PAD_STA_20           ;BRANCH IF IT'S OFF, DISPLAY IS SET.
+               MOVEQ   #11H,D0              ;IF IT'S ON, WE WANT TO SEE 11 INSTEAD OF 00.
+PAD_STA_20
+               MOVE    D7,A0                ;FETCH CURSOR POS FOR DISPLAY OF CURRENT PAD'S VALUE.
+               ADD     A0,A0                ;CREATE WORD OFFSET INTO CURSOR POSITION TABLE.
+               ADD.L   #PAD_CURSOR,A0
+               MOVE    (A0),D1
+                ABS_LONG
+               JSR     DISP_HEX              ;DISPLAY THE VALUE.
+                ABS_SHORT
+;
+               DBRA    D7,PAD_STA_10        ;DO NEXT PAD IF ANY -
+               RTS                          ;ELSE, BACK UP TOP TO LOOK FOR SWITCH CLOSURES.
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; WRITE/VERIFY ALL OF RAM - EX-OR ADDRESS PATTERN -
+; D5 IS USED TO HOLD PASS AND FAIL COUNTS:
+;
+SEQUENCE_RAM
+               MOVE.L  #SEQ_RAMT_SCRN,A2
+               MOVE.L  #SEQ_RAM_0,A6
+               BRA     D_BUFFER
+SEQ_RAM_0      CLR.L   D5                   ;CLEAR PASS/FAIL COUNT ON FIRST ENTRY.
+               MOVE    #0,A5                ;USE A5 TO INVERT DATA PATTERN ON ALTERNATE PASSES.
+               BRA.S   RAMTST5_0C
+RAMTST5_02
+                                            ;RE-ENTRY AFTER EACH PASS -
+               MOVE    #0FFFFH,A5           ;TOGGLE THE DATA PATTERN.
+RAMTST5_0C
+;
+               MOVEA.L #0FFF80000H,A6       ;THIS IS THE PLACE - START AGAIN.
+RAMTST5_10
+               MOVE.L  A6,D7                ;CREATE ADDRESS EX-OR PATTERN - HI, LO WORDS.
+               MOVE    D7,D6
+               SWAP    D7
+               EOR     D7,D6
+               MOVE    A5,D7                ;DON'T FORGET DATA PATTERN TOGGLE.
+               EOR     D7,D6
+               MOVE    D6,(A6)+
+               CMPA.L  #0,A6                ;ALL OF RAM WRITTEN?
+               BNE     RAMTST5_10           ;LOOP AGAIN IF NOT.
+;
+;
+               MOVEA.L #0FFF80000H,A6       ;THIS IS THE PLACE - SAME PLACE - VERIFY DATA.
+RAMTST5_20
+               MOVE.L  A6,D7                ;CREATE ADDRESS EX-OR PATTERN - HI, LO WORDS.
+               MOVE    D7,D6
+               SWAP    D7
+               EOR     D7,D6
+               MOVE    A5,D7                ;DON'T FORGET DATA PATTERN TOGGLE.
+               EOR     D7,D6
+               MOVE    0(A6),D7             ;READ BACK A WORD,
+               CMP     D6,D7                ;COMPARE -
+               BNE.S   RAMTST5_30           ;BRANCH OUT IF ERROR FOUND.
+RAMTST5_25     LEA     2(A6),A6             ;UPDATE VERIFY POINTER -
+               CMPA.L  #0,A6                ;ALL OF RAM VERIFIED?
+               BNE     RAMTST5_20           ;LOOP AGAIN IF NOT,
+               CMP     #0FFFFH,A5
+               BNE     RAMTST5_02
+;
+RAMTST5_30      EOR    D6,D7                ;FIND BIT IN ERROR
+                OR     D7,D5                ;SAVE ERROR IN FLAG
+                CMPA.L #0,A6
+                BNE    RAMTST5_25
+                CMP    #0FFFFH,A5
+                BNE    RAMTST5_02           ;SEE IF SECOND TIME THROUGH
+                CMPA   #0,A4
+                BNE    BT_1                 ;IF BOARD TEST THEN EXIT
+;
+RAMTST5_4E      TST    D5                    ;CHECK FOR ERRORS
+                BEQ    RAMTST5_50
+                MOVE.L #SRAMTST_SCRN6,A2     ;PUT UP ERROR SCREEN
+                MOVE.L #RAMTST5_4ER,A6
+                BRA    D_BUFFER
+RAMTST5_4ER     MOVE   #15,D6
+                MOVEQ  #15,D1                   ;START AT POSITION 15
+RAMTST5_4F      MOVEQ  #1,D0
+                LSL    #1,D5                        FIGURE OUT ERROR BIT DISPLAY
+                BCC    RAMTST5_41
+                MOVE.L #F_SCREEN,A2
+                BRA    RAMTST5_42
+RAMTST5_41      MOVE.L #P_SCREEN,A2
+RAMTST5_42      MOVE.L #RAMTST5_420,A6
+                BRA    DISP_STRING              ;DISPLAY THE PASS/FAIL STRING
+RAMTST5_420     CMP    #8,D6
+                BLT.S  RAMTST5_43
+                SUBQ   #1,D1
+                BRA.S  RAMTST5_430
+RAMTST5_43      ADDQ   #1H,D1
+RAMTST5_430     CMP    #8,D6                   ;SEE IF INTO 2ND ROW OF LCD
+                BNE.S  RAMTST5_44
+                MOVE   #24,D1                   ;IF SO ADJUST CURSOR POSITION
+RAMTST5_44      DBRA   D6,RAMTST5_4F
+                BRA    RAMTST5_60
+
+
+RAMTST5_50      MOVE.L #RAMTST_SCRN1,A2
+                MOVE.L #RAMTST5_60,A6
+                BRA    D_BUFFER
+;
+RAMTST5_60
+               MOVE.L  #MAIN_THING,A5
+               BRA     AWAIT_HANDS_OFF      ;WAIT FOR ALL SWITCHES UP,
+;
+;
+SEQ_RAMT_SCRN   ASC    "    TESTING     "
+                ASC    "  SEQUENCE RAM  "
+RAMTST_SCRN1    ASC    " SEQUENCE  RAM  "
+                ASC    "    PASSES!!    "
+P_SCREEN        ASC    "P"
+F_SCREEN        ASC    "F"
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; REFRESH TEST OF SOUND RAM (READ WITHOUT WRITING) -
+; ASSUMES SOUND RAM READ/WRITE TEST HAS ALREADY BEEN SUCCESSFULLY DONE.
+;
+SNDRAM_REF
+                MOVE.L #RAMREF_SCRN,A1
+                ABS_LONG
+                JSR    DISP_SCREEN
+                ABS_SHORT
+                BRA    REF_TEST
+;
+RAMREF_SCRN     ASC    "  SAMPLE  RAM   "
+                ASC    "  REFRESH TEST  "
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+;
+;
+;
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; EXECUTE A TEST OF SAMPLE RAM, REPORT THE RESULTS - IN RESPONSE TO SOUND EDIT 1 SWITCH.
+;
+SOUND_RAM
+;
+               MOVE.L  #SRAMTST_SCRN1,A1    ;SET UP SAMPLE RAM TEST DISPLAY.
+                ABS_LONG
+               JSR     DISP_SCREEN
+                ABS_SHORT
+;
+SOUND_RAM_0
+               CLR.L   D0                   ;SAMPLE RAM BEGIN ADDRESS INTO D0,
+               MOVE.L  #7FFFFH,D1           ;SAMPLE RAM FINISH ADDRESS INTO D1 -
+                                            ;ALSO DATA WRITE COUNT.
+                ABS_LONG
+               JSR     WRITE_UPWARD         ;SET UP FOR TEST PATTERN WRITE.
+                ABS_SHORT
+;
+                                            ;SEED THE TEST PATTERN:
+               CLR     D2                   ;PATTERN-BOY.
+               CLR     D3                   ;WRAP COUNTER (12 BITS).
+               CLR     D4                   ;EEYORE (EOR - GET IT?).
+               CLR.L   D5
+               CLR.L   D6
+SRAMTST_20
+               BSR     GET_TEST_WORD        ;GET THAT WORD INTO D0.
+               MOVE    D0,WR_SAM_RAM        ;STICK IT OUT THERE.
+               SUBQ.L  #1,D1                ;DONE ENOUGH YET?
+               BPL     SRAMTST_20           ;LOOP IF NOT.
+;
+               CMPA   #0,A4                   ;SKIP DISPLAYS IF BOARD TEST
+               BNE.S   SKIP_1
+               MOVE.L  #SRAMTST_SCRN2,A1    ;TELL 'EM WHERE WE'RE AT -
+                ABS_LONG
+               JSR     DISP_SCREEN
+                ABS_SHORT
+;
+SKIP_1         CLR.L   D0                   ;SAMPLE RAM BEGIN ADDRESS INTO D0,
+               MOVE.L  #7FFFFH,D1           ;SAMPLE RAM FINISH ADDRESS INTO D1 -
+                                            ;ALSO DATA READ COUNT.
+                ABS_LONG
+               JSR     READ_UPWARD          ;SET UP FOR TEST PATTERN VERIFY.
+                ABS_SHORT
+;
+                                            ;SEED THE TEST PATTERN:
+               CLR     D2                   ;PATTERN-BOY.
+               CLR     D3                   ;WRAP COUNTER (12 BITS).
+               CLR     D4                   ;EEYORE (EOR - GET IT?).
+SRAMTST_30
+               BSR     GET_TEST_WORD        ;GET THAT WORD INTO D0.
+               MOVE    RD_SAM_RAM,D7        ;GET THIS WORD INTO D7.
+               AND     #0FFF0H,D7           ;ALWAYS MUST THESE BITS BE IGNOR'D.
+               CMP     D0,D7                ;PUT THIS UP AGAINST THAT.
+               BEQ.S   SRAMTST_31           ;BRANCH IF NOT THE SAME AS ON THE WAY OUT.
+               BSR     SRAMTST_ERR
+SRAMTST_31     SUBQ.L  #1,D1                ;SAME AS IT EVER WAS - DONE ENOUGH YET?
+               BPL     SRAMTST_30           ;LOOP IF NOT.
+;
+;
+                                            ;DO IT AGAIN WITH INVERTED DATA:
+;
+               CMPA   #0,A4                   ;SKIP DISPLAYS IF BOARD TEST
+               BNE.S   SKIP_2
+               MOVE.L  #SRAMTST_SCRN3,A1    ;TELL 'EM WHERE WE'RE AT -
+                ABS_LONG
+               JSR     DISP_SCREEN
+                ABS_SHORT
+;
+SKIP_2         CLR.L   D0                   ;SAMPLE RAM BEGIN ADDRESS INTO D0,
+               MOVE.L  #7FFFFH,D1           ;SAMPLE RAM FINISH ADDRESS INTO D1 -
+                                            ;ALSO DATA WRITE COUNT.
+                ABS_LONG
+               JSR     WRITE_UPWARD         ;SET UP FOR TEST PATTERN WRITE.
+                ABS_SHORT
+;
+                                            ;SEED THE TEST PATTERN:
+               CLR     D2                   ;PATTERN-BOY.
+               CLR     D3                   ;WRAP COUNTER (12 BITS).
+               MOVE    #0FFF0H,D4           ;EEYORE (EOR - GET IT?) - OPPOSITE OF LAST TIME.
+SRAMTST_40
+               BSR     GET_TEST_WORD        ;GET THAT WORD INTO D0.
+               MOVE    D0,WR_SAM_RAM        ;STICK IT OUT THERE.
+               SUBQ.L  #1,D1                ;DONE ENOUGH YET?
+               BPL     SRAMTST_40           ;LOOP IF NOT.
+;
+               CMPA   #0,A4                   ;SKIP DISPLAYS IF BOARD TEST
+               BNE.S   REF_TEST
+               MOVE.L  #SRAMTST_SCRN4,A1    ;TELL 'EM WHERE WE'RE AT -
+                ABS_LONG
+               JSR     DISP_SCREEN
+                ABS_SHORT
+;
+REF_TEST       CLR.L   D0                   ;SAMPLE RAM BEGIN ADDRESS INTO D0,
+               MOVE.L  #7FFFFH,D1           ;SAMPLE RAM FINISH ADDRESS INTO D1 -
+                                            ;ALSO DATA READ COUNT.
+                ABS_LONG
+               JSR     READ_UPWARD          ;SET UP FOR TEST PATTERN VERIFY.
+                ABS_SHORT
+;
+                                            ;SEED THE TEST PATTERN:
+               CLR     D2                   ;PATTERN-BOY.
+               CLR     D3                   ;WRAP COUNTER (12 BITS).
+               MOVE    #0FFF0H,D4           ;EEYORE (EOR - GET IT?) - OPPOSITE OF LAST TIME.
+SRAMTST_50
+               BSR     GET_TEST_WORD        ;GET THAT WORD INTO D0.
+               MOVE    RD_SAM_RAM,D7        ;GET THIS WORD INTO D7.
+               AND     #0FFF0H,D7           ;ALWAYS MUST THESE BITS BE IGNOR'D.
+               CMP     D0,D7                ;PUT THIS UP AGAINST THAT.
+               BEQ.S   SRAMTST_51           ;BRANCH IF NOT THE SAME AS ON THE WAY OUT.
+               BSR     SRAMTST_ERR
+SRAMTST_51     SUBQ.L  #1,D1                ;SAME AS IT EVER WAS - DONE ENOUGH YET?
+               BPL     SRAMTST_50           ;LOOP IF NOT.
+               CMPA   #0,A4                   ;EXIT IF BOARD TEST
+               BNE     BT_20
+;
+               TST     D5                   ;CHECK LOWER 256K FOR ERRORS
+               BNE     SRAMTST_ERR_DISP
+               TST     D6                   ;CHECK UPPER 256K FOR ERRORS
+               BNE     SRAMTST_ERR_DISP
+               MOVE.L  #SRAMTST_SCRN5,A1    ;NO ERRORS, TELL EM WHERE WE'RE AT -
+                ABS_LONG
+               JSR     DISP_SCREEN           ;A PLACE WHERE NOTHING EVER HAPPENS.
+                ABS_SHORT
+               BRA     SRAMTST_70
+;
+SRAMTST_ERR_DISP
+               MOVE.L  #SRAMTST_SCRN6,A1
+                ABS_LONG
+               JSR     DISP_SCREEN
+                ABS_SHORT
+               MOVE    #11,D3
+               MOVE    #0401H,D1
+SRAMTST_ERRD1  ASL     #1,D5                    ;DISPLAY ERROR BITS OF LOWER 256K
+               BCC     SRAMTST_ERRD11
+               MOVE.L  #F_SCREEN,A2
+               BRA     SRAMTST_ERRD12
+SRAMTST_ERRD11 MOVE.L  #P_SCREEN,A2
+                ABS_LONG
+SRAMTST_ERRD12 JSR     WRITE_STRING
+                ABS_SHORT
+               ADDI.W  #100H,D1
+               DBRA    D3,SRAMTST_ERRD1
+               MOVE    #11,D3
+               MOVE    #1401H,D1
+SRAMTST_ERRD2  ASL     #1,D6                    ;DISPLAY ERROR BITS OF UPPER 256K
+               BCC     SRAMTST_ERRD21
+               MOVE.L  #F_SCREEN,A2
+               BRA     SRAMTST_ERRD22
+SRAMTST_ERRD21 MOVE.L  #P_SCREEN,A2
+                ABS_LONG
+SRAMTST_ERRD22 JSR     WRITE_STRING
+                ABS_SHORT
+               ADDI.W  #100H,D1
+               DBRA    D3,SRAMTST_ERRD2
+                ABS_LONG
+               JSR     DISP_BUFFER
+                ABS_SHORT
+SRAMTST_70
+               BSET    #7,MISC_OUT_STAT          ;GO BACK TO FOUR-CHIP DAISY-CHAIN.
+               MOVE.B  MISC_OUT_STAT,MISC_OUT
+;
+SRAMTST_EXIT
+               MOVE.L  #MAIN_THING,A5
+               BRA     AWAIT_HANDS_OFF      ;WAIT FOR ALL SWITCHES UP,
+;
+;
+;
+GET_TEST_WORD
+                                            ;12-BIT UP-COUNT IN BITS 15-4 - ROTATES FORWARD BY ONE
+                                            ;STEP AT EACH 4K (1000H) BOUNDARY.
+               NOP                          ;FIRST, A BIT OF DELAY -
+               NOP                          ;KEEP LOOP TIME FROM GETTING TOO SMALL FOR "DAISY".
+               NOP
+               NOP
+               MOVE    D2,D0                ;COPY PATTERN-BOY,
+               EOR     D4,D0                ;THROW IN EEYORE.
+               ADD     #10H,D2              ;STEP PATTERN-BOY ALONG -
+               ADDQ    #1,D3                ;ARE WE PASSING A 4K BOUNDARY?
+               AND     #0FFFH,D3
+               BNE.S   GET_TST_EXIT         ;BRANCH IF NOT,
+               ADD     #10H,D2              ;ELSE GIVE PATTERN-BOY AN EXTRA PUSH.
+GET_TST_EXIT
+               RTS
+;
+SRAMTST_ERR    EOR     D0,D7                    ;GET ERROR BITS
+               CMP.L   #3FFFFH,D1               ;SEE IF LOWER OR UPPER 256K
+               BLE     SRAMTST_ERR1
+               OR      D7,D5                    ;SAVE ERROR BITS
+               BRA     SRAMTST_ERR2
+SRAMTST_ERR1   OR      D7,D6
+SRAMTST_ERR2   RTS
+;
+;
+SRAMTST_SCRN1
+               ASC     "SAMPLE RAM TEST "
+               ASC     "PASS 1 - WRITING"
+SRAMTST_SCRN2
+               ASC     "SAMPLE RAM TEST "
+               ASC     "PASS 1 - READING"
+SRAMTST_SCRN3
+               ASC     "SAMPLE RAM TEST "
+               ASC     "PASS 2 - WRITING"
+SRAMTST_SCRN4
+               ASC     "SAMPLE RAM TEST "
+               ASC     "PASS 2 - READING"
+SRAMTST_SCRN5
+               ASC     "SAMPLE RAM TEST "
+               ASC     "   PASSES!!     "
+SRAMTST_SCRN6
+               ASC     "L:              "
+               ASC     "U:              "
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; ZERO SAMPLE TEST:
+;
+ZERO_SAMPLE
+                MOVE.L  #ZEROTST_SCRN0,A1
+                ABS_LONG
+                JSR     DISP_SCREEN
+                ABS_SHORT
+ZERO_1          CLR     D2
+                BSET    #0,MISC_OUT_STAT        SELECT GROUNED FILTER INPUT
+                BSET    #1,MISC_OUT_STAT
+                MOVE.B  MISC_OUT_STAT,MISC_OUT   OUTPUT FILTER SELECT BITS
+                MOVE.B  #16,COUNTER_2           31.25Khz SAMPLE RATE
+                MOVE.L  #40000H,D5
+SELF1           SUBI.L  #1,D5
+                BNE     SELF1
+                BSR     ZEROTEST
+                BLE.S   ZERO_2                  PASSED WITH GROUNDED INPUT
+                MOVE.L  #ZEROTST_SCRN1,A1       DISPLAY ERROR MESSAGE
+                ABS_LONG
+                JSR     DISP_SCREEN
+                ABS_SHORT
+                BRA     ENDZERO                 ABORT REST OF TEST
+;
+ZERO_2          BCLR    #1,MISC_OUT_STAT
+                MOVE.B  MISC_OUT_STAT,MISC_OUT   6Khz FILTER SELECTED
+                MOVE.B  #32,COUNTER_2           16Khz SAMPLE RATE
+                MOVE.L  #40000H,D5
+SELF2           SUBI.L  #1,D5
+                BNE     SELF2
+                BSR     ZEROTEST
+                BLE.S   ZERO_3
+                BSET    #0,D2                   SET ERROR STATUS FLAG
+;
+ZERO_3          BSET    #0,MISC_OUT_STAT
+                MOVE.B  MISC_OUT_STAT,MISC_OUT   12Khz FILTER SELECTED
+                MOVE.B  #16,COUNTER_2           31.25Khz SAMPLE RATE
+                MOVE.L  #40000H,D5
+SELF3           SUBI.L  #1,D5
+                BNE     SELF3
+                BSR     ZEROTEST
+                BLE.S   ZERO_4
+                BSET    #1,D2                   SET ERROR FLAG
+;
+ZERO_4          BCLR    #0,MISC_OUT_STAT
+                BSET    #1,MISC_OUT_STAT
+                MOVE.B  MISC_OUT_STAT,MISC_OUT   20Khz FILTER  SELECTED
+                MOVE.B  #12,COUNTER_2           41.67Khz SAMPLE RATE
+                MOVE.L  #40000H,D5
+SELF4           SUBI.L  #1,D5
+                BNE     SELF4
+                BSR     ZEROTEST
+                BLE.S   ZERO_5
+                BSET    #2,D2                   SET ERROR FLAG
+;
+ZERO_5          TST     D2
+                BEQ     ZERO_8
+                MOVE.L  #ZEROTST_SCRN2,A1       SETUP FAILURE SCREEN
+                ABS_LONG
+                JSR     DISP_SCREEN
+                ABS_SHORT
+                BTST    #0,D2
+                BEQ     ZERO_6
+                MOVE    #6,D0                   6Khz FAILURE DISPLAY
+                MOVE    #24,D1
+                ABS_LONG
+                JSR     DISP_HEX
+                ABS_SHORT
+ZERO_6          BTST    #1,D2                   12Khz FAILURE DISPLAY
+                BEQ.S   ZERO_7
+                MOVE    #12H,D0
+                MOVE    #27,D1
+                ABS_LONG
+                JSR     DISP_HEX
+                ABS_SHORT
+ZERO_7          BTST    #2,D2
+                BEQ.S   ENDZERO
+                MOVE    #20H,D0
+                MOVE    #30,D1                  20Khz FAILURE DISPLAY
+                ABS_LONG
+                JSR     DISP_HEX
+                ABS_SHORT
+                BRA.S   ENDZERO
+ZERO_8          MOVE.L  #ZEROTST_SCRN3,A1       TEST PASS DISPLAY
+                ABS_LONG
+                JSR     DISP_SCREEN
+                ABS_SHORT
+;
+ENDZERO
+               MOVE.L  #MAIN_THING,A5
+               BRA     AWAIT_HANDS_OFF      ;WAIT FOR ALL SWITCHES UP,
+;
+;
+;*******************************************************************
+;
+;               ZERO TEST SUBROUTINE
+;TAKES 32K SAMPLE AND FINDS HIGHEST AND LOWEST SAMPLE IN THE SAMPLE.
+;IF GREATER THAN 2 BITS DIFFERENCE RETURNS WITH BIT SET
+;
+;*********************************************************************
+;
+ZEROTEST        MOVEA.L #0FFF80000H,A3          SETUP 8K  BUFFER OF ZERO SAMPLES
+                MOVE    SAMPLE_ADC,D3            CLEAR EOC LATCH
+ZEROT_1         MOVE    SWITCH_INPUT,D3         TST FOR EOC
+                BTST    #15,D3
+                BEQ.S   ZEROT_1                 WAIT FOR CONVERSION DONE
+                MOVE    SAMPLE_ADC,(A3)+              GET SAMPLE DATA
+                CMPA.L  #0FFF80800H,A3          SEE IF DONE WITH 8K
+                BNE.S   ZEROT_1                 JUMP IF NOT
+;
+ZEROH_1         MOVEA.L #0FFF80000H,A3          FIND HIGHEST SAMPLE IN 32K
+                MOVE    (A3)+,D3                GET FIRST BYTE
+ZEROH_2         CMP     (A3)+,D3                COMPARE PREVIOUS HIGH TO NEXT BYTE
+                BGE.S   ZEROH_3                 IF LESS THAN PREVIOUS DONT SAVE IT
+                MOVE    -2(A3),D3               SAVE NEW HIGH
+ZEROH_3         CMPA.L  #0FFF80800H,A3          SEE IF DONE WITH 8K
+                BNE.S   ZEROH_2                 SEE IF DONE WITH 8K
+;
+ZEROL_1         MOVEA.L #0FFF80000H,A3          FIND LOWEST SAMPLE IN 32K
+                MOVE    (A3)+,D4
+ZEROL_2         CMP     (A3)+,D4                COMPARE PREVIOUS LOW
+                BLE.S   ZEROL_3
+                MOVE    -2(A3),D4               SAVE NEW LOW
+ZEROL_3         CMPA.L  #0FFF80800H,A3          SEE IF DONE WITH 8K
+                BNE.S   ZEROL_2
+;
+ZEROT_4         SUB     D4,D3
+                CMP     #040H,D3                  COMPARE HIGH WITH LOW
+                RTS
+;
+;
+ZEROTST_SCRN0   ASC     "ZERO SAMPLE TEST"
+                ASC     "   SAMPLING....."
+ZEROTST_SCRN1   ASC     "0 SAMPLE FAILS  "
+                ASC     "AFTER U314      "
+;
+ZEROTST_SCRN2   ASC     "0 SAMPLE FAILS  "
+                ASC     "FILTER          "
+;
+ZEROTST_SCRN3   ASC     "ZERO SAMPLE TEST"
+                ASC     "   PASSES!!!    "
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; MIDI UART TEST:
+;
+MIDI_TEST
+                MOVE.L  #UARTTST_SCRN1,A1
+                ABS_LONG
+                JSR     DISP_SCREEN
+                ABS_SHORT
+UART_A_0        BTST    #5,SWITCH_INPUT+13      ;WAIT FOR TAP BUTTON
+                BEQ.S   UART_A_0
+UART_A          MOVE    #0FFFFH,D3              ;ENTER HERE FOR BOARD TEST
+UART_A_1        BTST    #1,UART_A_STATUS         ;WAIT FOR TRANSMIT BUFFER EMPTY
+                BNE.S   UART_A_2
+                DBRA    D3,UART_A_1
+                BRA      UART_A_ERR
+UART_A_2        MOVE.B  #55H,UART_A_DATA         ;SEND DATA BYTE
+                MOVE    #0FFFFH,D3
+UART_A_3        BTST    #0,UART_A_STATUS         ;SEE IF BYTE RECEIVED
+                BNE.S   UART_A_4
+                DBRA    D3,UART_A_3              ;IF TIMEOUT GO TO ERROR
+                BRA     UART_A_ERR
+UART_A_4        MOVE    #70H,D3
+                AND.B   UART_A_STATUS,D3         ;CHECK FOR FRAMING AND OVERRUN ERRORS
+                BNE     UART_A_ERR
+                CMP.B   #55H,UART_A_DATA          ;SEE IF DATA BYTE IS CORRECT
+                BNE     UART_A_ERR
+               CMPA   #0,A4                   ;SKIP DISPLAYS IF BOARD TEST
+               BNE.S   UART_B
+;
+                MOVE.L  #UARTTST_SCRN3,A1
+                ABS_LONG
+                JSR     DISP_SCREEN
+                ABS_SHORT
+UART_B_00       BTST    #5,SWITCH_INPUT+13
+                BNE.S   UART_B_00
+UART_B_0        BTST    #5,SWITCH_INPUT+13
+                BEQ.S   UART_B_0
+;
+                MOVE.L  #UARTTST_SCRN2,A1
+                ABS_LONG
+                JSR     DISP_SCREEN
+                ABS_SHORT
+UART_B_0000     BTST    #5,SWITCH_INPUT+13
+                BNE.S   UART_B_0000
+UART_B_000      BTST    #5,SWITCH_INPUT+13
+                BEQ.S   UART_B_000
+UART_B          MOVE    #0FFFFH,D3              ;ENTER HERE FOR BOARD TEST
+UART_B_1        BTST    #1,UART_B_STATUS
+                BNE.S   UART_B_2
+                DBRA    D3,UART_B_1
+                BRA     UART_B_ERR
+UART_B_2        MOVE.B  #55H,UART_B_DATA
+                MOVE    #0FFFFH,D3
+UART_B_3        BTST    #0,UART_A_STATUS
+                BNE.S   UART_B_4
+                DBRA    D3,UART_B_3
+                BRA.S   UART_B_ERR
+UART_B_4        MOVE    #70H,D3
+                AND.B   UART_A_STATUS,D3
+                BNE.S   UART_B_ERR
+                CMP.B   #55H,UART_A_DATA
+                BNE.S   UART_B_ERR
+               CMPA   #0,A4                   ;EXIT IF BOARD TEST
+               BNE     BT_X
+;
+                MOVE.L  #UARTTST_SCRN6,A1
+                ABS_LONG
+                JSR     DISP_SCREEN
+                ABS_SHORT
+                BRA.S   UARTEND
+;
+UART_A_ERR     CMPA   #0,A4                   ;EXIT IF BOARD TEST
+               BNE     BT_UA
+                 MOVE.L  #UARTTST_SCRN4,A1
+                ABS_LONG
+                JSR     DISP_SCREEN
+                ABS_SHORT
+                BRA     UART_B_00
+;
+UART_B_ERR     CMPA   #0,A4                   ;EXIT IF BOARD TEST
+               BNE     BT_UB
+                 MOVE.L  #UARTTST_SCRN5,A1
+                ABS_LONG
+                JSR     DISP_SCREEN
+                ABS_SHORT
+;
+UARTEND
+               MOVE.L  #MAIN_THING,A5
+               BRA     AWAIT_HANDS_OFF      ;WAIT FOR ALL SWITCHES UP,
+;
+;
+UARTTST_SCRN1   ASC     "MIDI IN--> OUT A"
+                ASC     "   PRESS  TAP   "
+UARTTST_SCRN2   ASC     "MIDI IN--> OUT B"
+                ASC     "   PRESS  TAP   "
+UARTTST_SCRN3   ASC     "   MIDI OUT  A  "
+                ASC     "    PASSES!!    "
+UARTTST_SCRN6   ASC     "   MIDI OUT B   "
+                ASC     "    PASSES!!    "
+UARTTST_SCRN4   ASC     "  MIDI OUT  A   "
+                ASC     "     FAILS      "
+UARTTST_SCRN5   ASC     "  MIDI OUT  B   "
+                ASC     "     FAILS      "
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+TERM_SYNC
+               TST     CLR_24_PPQN          ;CLEAR LEVEL 2 (CLICK) INTERRUPTUS FLAGGULUS.
+               TST     CLR_1_MSEC           ;CLEAR REAL-TIME INTERRUPT FLIP-FLOP.
+               TST.B   TC_READ              ;CLEARE LEVELE 5 (TIMINGE CHIPPE) INTERRUPTE.
+               OR.B    #18H,MISC_OUT_STAT
+               MOVE.B  MISC_OUT_STAT,MISC_OUT
+               MOVE    #2400H,SR            ;ENABLE INTERRUPTS - SET MASK LEVEL TO 0,
+                MOVE.L  #TERM_SYNC_SCRN,A1
+                ABS_LONG
+                JSR     DISP_SCREEN
+                ABS_SHORT
+TERM_SYNC_0     BTST    #5,SWITCH_INPUT+13
+                BNE.S   TERM_SYNC_0
+TERM_SYNC_1     BTST    #5,SWITCH_INPUT+13
+                BEQ.S   TERM_SYNC_1
+                CLR     TC_RCV_COUNT
+                CLR     TC_RCV_IN
+                CLR     TC_RCV_OUT
+                MOVEQ   #NEG_EXT+0F1H,D0    ;REQUEST DIRECT ACCESS TO 6803 UART
+                ABS_LONG
+                JSR     WRITE_TO_TC
+                ABS_SHORT
+                MOVEQ   #055H,D0
+                ABS_LONG
+                JSR     WRITE_TO_TC
+                ABS_SHORT
+                MOVEQ   #NEG_EXT+0FFH,D0
+                ABS_LONG
+                JSR     WRITE_TO_TC             ;DISCONNECT 6803
+                ABS_SHORT
+                MOVE.L  #100000,D0              ;WAIT
+WAIT_FOR_IT     TST     TC_RCV_COUNT
+                BNE.S   BYTE_RCVD
+                SUBQ.L  #1,D0
+                BNE.S   WAIT_FOR_IT
+ERR_SYNC        MOVE.L  #TERM_SYNC_FAIL,A1
+                ABS_LONG
+SYNC_0          JSR     DISP_SCREEN
+                ABS_SHORT
+                MOVE    #2700H,SR
+;
+SYNC_11
+               MOVE.L  #MAIN_THING,A5
+               BRA     AWAIT_HANDS_OFF      ;WAIT FOR ALL SWITCHES UP,
+;
+;
+                ABS_LONG
+BYTE_RCVD       JSR     UNLOAD_LEVEL_5          ;GET THE DATA
+                ABS_SHORT
+                CMP.B   #55H,D0
+                BNE.S   ERR_SYNC
+                MOVE.L  #TERM_SYNC_PASS,A1
+                BRA.S   SYNC_0
+;
+;
+TERM_SYNC_SCRN  ASC     "TERM/SYNC IN-OUT"
+                ASC     "PRESS TAP BUTTON"
+TERM_SYNC_FAIL  ASC     " TERMINAL/SYNC  "
+                ASC     "    FAILS       "
+TERM_SYNC_PASS  ASC     " TERMINAL_SYNC  "
+                ASC     "    PASSES!!!   "
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; SWITCH SCAN ROUTINE FOR USE BY DIAGNOSTICS:
+; RETURNS D0 = 0 IF NO SWITCHES CLOSED, ELSE RETURNS A NUMBER IN D0
+; REPRESENTING A CLOSED SWITCH - SWITCH NUMBERS START AT 1.
+;
+SWITCH_SCAN
+               MOVE.L  #SWITCH_INPUT,A0     ;POINT TO FIRST SWITCH MATRIX LOCATION.
+               MOVEQ   #1,D0                ;INTIALIZE SWITCH NUMBER COUNTER (START AT 1, NOT 0).
+SW_SCAN_20
+               MOVE.B  1(A0),D1             ;READ SWITCH MATRIX AT CURRENT LOCATION,
+               MOVEQ   #7,D2                ;INSPECT EIGHT BITS OF SWITCH STATUS.
+SW_SCAN_40
+               ASR     #1,D1                ;IS THIS SWITCH ON?
+               BCS.S   SW_SCAN_EXIT         ;EXIT IF YES - D0 CONTAINS ITS NUMBER.
+               ADDQ    #1,D0                ;ELSE, INCREMENT SWITCH COUNTER VALUE,
+               DBRA    D2,SW_SCAN_40        ;LOOP AGAIN IF ALL EIGHT SWITCH BITS NOT YET TESTED.
+;
+               ADDQ    #2,A0                ;NOTHING THERE - GO TO NEXT SWITCH MATRIX LOCATION,
+               CMP.L   #SWITCH_INPUT+14,A0  ;UNLESS THAT WAS THE LAST LOCATION -
+               BNE     SW_SCAN_20           ;BRANCH IF NOT DONE, LOOP AGAIN.
+;
+                                            ;NOTHING DOING ON FRONT PANEL -
+               MOVE.B  (A0),D1              ;READ FOOTSWITCH STATUS (M.S.BYTE OF ALL MATRIX LOCS).
+               BTST    #0,D1                ;FOOTSWITCH #2 CLOSED?
+               BEQ.S   SW_SCAN_EXIT         ;BRANCH IF YES (FOOTSWITCHES READ 0 IF CLOSED).
+               ADDQ    #1,D0                ;NO - SET SWITCH NUMBER FOR FOOTSWITCH #1,
+               BTST    #1,D1                ;TEST ITS STATUS -
+               BEQ.S   SW_SCAN_EXIT         ;BRANCH IF FOOTSWITCH #1 CLOSED.
+               ADDQ    #1,D0                ;ONE LAST POSSIBILITY - PLAY/STOP SWITCH -
+               BTST    #2,D1                ;IS IT?
+               BEQ.S   SW_SCAN_EXIT         ;IT IS.
+               CLR     D0                   ;IF NO SWITCHES CLOSED, WE RETURN D0 = 0 (REMEMBER?)
+SW_SCAN_EXIT
+               JMP     (A6)                 ;RETURN
+;
+;
+; EXTRA LITTLE GADGET ROUTINE -
+; WAIT FOR ALL SWITCHES TO BE OPEN (PLUS MINIMAL DEBOUNCE DELAY):
+;
+AWAIT_HANDS_OFF
+               MOVE.L  #AWAIT_0,A6
+               BRA     SWITCH_SCAN          ;LOOK 'EM OVER,
+AWAIT_0        TST     D0                   ;CHECK IT OUT,
+               BNE     AWAIT_HANDS_OFF      ;LOOP IF ANY SWITCH IS CLOSED.
+;
+               MOVEQ   #-1,D0               ;NOW - JUST WAIT A FRACTION ....
+AWAIT_DEBOUNCE
+               DBRA    D0,AWAIT_DEBOUNCE
+;
+               JMP     (A5)                 ;NOW IT'S DARK.
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+;SPECIAL DISPLAY ROUTINES WITHOUT RTS IN THEM THEY USE (A4) TO RETURN
+;
+D_BUFFER
+               MOVE.L  A6,A5                    ;SAVE RETURN ADDRESS
+               MOVEQ   #0,D1                    ;D1= POSITION OF TEXT IN LCD
+               MOVEQ   #16,D0                   ;D0= LENGTH OF STRING
+               MOVE.L  #D_BUFF_1,A6             ;RETURN ADDRESS
+               BRA.S   DISP_STRING
+D_BUFF_1       MOVEQ   #16,D0                   ;WRITE SECOND LINE OF LCD
+               MOVE    D0,D1
+               MOVE.L  A5,A6                    ;GET RETURN ADDRESS AND
+
+
+;***************************************************************************************
+DISP_STRING    MOVE    D1,D2
+               ADD     #80H,D1                  ;SET CURSOR POSITION OF LCD
+               CMP     #90H,D1                  ;2ND LINE OF LCD?
+               BLT.S   DISP_STR_10              ;
+               ADD     #30H,D1                  ;IF SO ADJUST CURSOR LOCATION
+DISP_STR_10
+               MOVE.L  #DISP_STR_11,A3
+               BRA     LCDWAIT
+DISP_STR_11    MOVE.B  D1,LCD_CONTROL           ;SET CURSOR POSITION
+
+               SUBQ    #1,D0                    ;SETUP D0 AS LOOP COUNTER
+               BMI.S   DISP_STR_30              ;IF 0 THEN EXIT
+DISP_STR_20
+               MOVE.L  #DISP_STR_21,A3
+               BRA     LCDWAIT
+DISP_STR_21    MOVE.B  (A2)+,LCD_DATA           ;OUTPUT STRING TO LCD
+               DBRA    D0,DISP_STR_20
+DISP_STR_30    MOVE    D2,D1
+               JMP     (A6)
+
+
+LCDWAIT
+               ABS_LONG
+               BTST.B  #7,LCD_CONTROL       ;TEST BUSY BIT -
+               ABS_SHORT
+               NOP
+               NOP
+               BNE     LCDWAIT              ;IF SET, KEEP WAITING.
+               JMP     (A3)
+

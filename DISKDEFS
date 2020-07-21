@@ -1,0 +1,688 @@
+               .OPTION LIST=SHOW_INCLUDES
+
+***************************************************************************************************
+***************************************************************************************************
+***                                                                                             ***
+***            MODEL 440 DISK SYSTEM DEFINITIONS (INCLUDING PLENTY 2000 LEFTOVERS)              ***
+***                                                                                             ***
+***************************************************************************************************
+***************************************************************************************************
+;
+; INCLUDE ME IN ALL DISK SYSTEM MODULES, AND IN ANY
+; MODULES WHICH ACCESS THE DISK SYSTEM.
+;
+; NOTE - ALL RAM LOCATIONS USED BY DISK SYSTEM
+; ARE DEFINED IN RAM_440:FRANK, INCLUDING DATA AREAS
+; WHICH ARE SAVED TO / LOADED FROM DISK.
+;
+; SOME OF THE DEFINITIONS INCLUDED HERE ARE MODEL 2000 ARTIFACTS
+; WITH NO PARTICULAR RELEVANCE TO THE 440 - MORE ON THAT LATER.
+               SKIP
+;
+;
+; FLOPPY DISK FORMAT EQUATES:
+;
+SEC_SIZE       EQU     1024            ;NUMBER OF BYTES/SECTOR IN SECTORS 0-4, ALL TRACKS.
+;
+SEC_5_SIZE     EQU     256             ;NUMBER OF BYTES/SECTOR IN SECTOR 5, ALL TRACKS.
+;
+SAM_REC_WORDS  EQU     2AAH            ;# OF WORDS IN MAXIMALLY-USED SAMPLE DATA SECTOR (682 DEC).
+;
+SAM_REC_BYTES  EQU     1023            ;NUMBER OF BYTES PER SAMPLE-DATA RECORD (EXCEPT END_RECORD).
+;
+END_RECORD     EQU     192             ;LOGICAL RECORD NUMBER FOR END RECORD OF SAMPLE SUB-FILE.
+;
+END_REC_WORDS  EQU     80H             ;NUMBER OF WORDS IN SAMPLE DATA FILE END RECORD.
+;
+END_REC_BYTES  EQU     192             ;NUMBER OF BYTES IN END RECORD OF SAMPLE DATA SUB-FILE.
+;
+SYS_REC_BYTES  EQU     256             ;NUMBER OF BYTES PER LOGICAL SYSTEM RECORD (ALL SAME SIZE).
+;
+REV_0          EQU     0               ;PROTOTYPICAL MODEL 440 DISKS - SOUND DISKS TAGGED WITH THIS
+                                       ;REVISION CODE HAVE SAME SAMPLE SUBFILE ARRANGEMENT ON BOTH
+                                       ;SIDES OF DISK.
+;
+REV_1          EQU     1               ;NEW, IMPROVED - SINCE WE ABANDONED IDEA OF A SEQUENCE FILE
+                                       ;ON SOUND DISKS, SIDE 1 SAMPLE SUBFILES WERE SHIFTED OUTWARD
+                                       ;BY TWO TRACKS IN AN ATTEMPT TO IMPROVE DISK RELIABILITY -
+                                       ;BY AVOIDING INNERMOST TRACKS ON DISK SIDE 1.  WILL IT WORK?
+;
+SUBFILE_0_TRK  EQU     2               ;STARTING TRACK FOR MODEL 440 SAMPLE SUBFILE 0 - ALSO FOR
+                                       ;SUBFILE 2 (SIDE 1 OUTER SUBFILE) ON A REV-0 DISK.
+;
+SUBFILE_1_TRK  EQU     41              ;STARTING TRACK FOR MODEL 440 SAMPLE SUBFILE 1 - ALSO FOR
+                                       ;SUBFILE 3 (SIDE 1 INNER SUBFILE) ON A REV-0 DISK.
+;
+SUBFILE_2_TRK  EQU     0               ;STARTING TRACK FOR MODEL 440 SAMPLE SUBFILE 2 -
+                                       ;SIDE 1 OUTER SUBFILE ON A REV-1 DISK.
+;
+SUBFILE_3_TRK  EQU     39              ;STARTING TRACK FOR MODEL 440 SAMPLE SUBFILE 3 -
+                                       ;SIDE 1 INNER SUBFILE ON A REV-1 DISK.
+;
+DELETED        EQU     0F8H            ;IN SAM_DISK_STAT OR SEQ_DISK_STAT, INDICATES DATA FILE ON
+                                       ;DISK IS EMPTY.  TRACK_WRITE USES TO FORMAT DELETED SECTORS.
+;
+NON_DELETED    EQU     0FBH            ;IN SAM_DISK_STAT OR SEQ_DISK_STAT, INDICATES DATA FILE ON
+                                       ;DISK HAS BEEN SAVED TO.
+;
+;
+; THIS STUFF - IS 2000 LEFTOVERS ....
+; SOME OF IT IS USED, FOR LOADING FROM 2000 DISKS:
+;
+REV_2_1        EQU  16             ;FORMERLY DIR_SIZE IN REV 2.1, NOW USED AS FIRMWARE_REV
+                                   ;IN DISK REV-LEVEL TESTING.
+;
+REV_3_0        EQU  30H            ;VALUE FOR FIRMWARE_REV FOR DISKS FORMATTED BY THIS VERSION.
+;
+LFT_FIL_TRK    EQU  1              ;STARTING TRACK # OF LEFT-HALF SAMPLE SUB-FILE (SAMPLES 0-7).
+;
+RGT_FIL_TRK    EQU  40             ;STARTING TRACK # OF RIGHT-HALF SAMPLE SUB-FILE (SAMPLES 8-15).
+;
+;04SEPMAX_SYS_REC    EQU  78             ;HIGHEST LOGICAL RECORD NUMBER FOR SYSTEM CODE RECORDS.
+;04SEP;
+;04SEPBOOT_TRACK     EQU  1              ;SYSTEM CODE AUTO-BOOT RECORD IS ON TRACK 01 (SECTOR 5).
+;
+;///DIR_SIZE_VAL   EQU  16             ;SYSTEM CREATES AND SAVES TO DISKS WITH 16-SAMPLE DIRECTORIES.
+;///;;
+; NOTE - ALL MODEL 2000 DISKS USE 16-SAMPLE DIRECTORIES REGARDLESS OF FORMAT.
+; SINCE REV 2.1 DISK SYSTEM DID NOT TEST ITS FW_REV AS READ FROM DISK, REV 3.0 HAS
+; REDEFINED FW_REV AS FORMAT_CODE, USED TO DISTINGUISH 1-SIDED DISKS FROM 2-SIDED ONES -
+; NOTE THAT REV 3.0 ENCOMPASSES BOTH 1- AND 2-SIDED FORMATS, FORMAT DOES NOT IMPLY REV LEVEL.
+; OWING TO MAP-TRANSPOSE INCOMPATIBILITIES BETWEEN 2.1 AND 3.0 IT IS ALSO NECESSARY TO
+; BE ABLE TO DISTINGUISH DISKS CONTAINING DATA FROM A 2.1 SYSTEM FROM THOSE CONTAINING
+; DATA FROM A 3.0 SYSTEM, HENCE REV 3.0 ALSO REDEFINES DIR_SIZE_VAL AS FIRMWARE_REV
+; (THE OLD FULL CIRCLE ROUTINE) - THIS IS TESTED BY REV 2.1 (ALBEIT AS DIR_SIZE), THUS
+; PROVIDING A MEANS FOR KEEPING REV 2.1 MACHINES FROM WRITING TO A REV 3.0 DISK,
+; AS WELL AS FOR INVOKING ROUTINES IN REV 3.0 WHICH TRANSPARENTLY PROVIDE UPWARD
+; COMPATIBILITY FOR REV 2.1 DISKS (RE MAP TRANSPOSE).
+;
+; MODEL 2000/2002 SOUND CONTROL BLOCK OFFSETS:
+; ONLY THE DISK SYSTEM NEEDS 'EM, SO THEY'RE STUCK IN HERE.
+;
+SBEGHI         EQU     14H             ;SAMPLE BEGIN ADDRESS.
+STARTHI        EQU     17H             ;PLAYBACK START ADDRESS.
+SUSTHI         EQU     1AH             ;SUSTAIN LOOP START ADDRESS.
+SUSENDHI       EQU     1DH             ;SUSTAIN LOOP END ADDRESS.
+SRELSTHI       EQU     20H             ;RELEASE LOOP START ADDRESS.
+SRENDHI        EQU     23H             ;RELEASE LOOP END ADDRESS.
+SENDHI         EQU     26H             ;PLAYBACK END ADDRESS.
+SFINHI         EQU     29H             ;SAMPLE FINISH ADDRESS.
+SAMSTAT        EQU     2CH             ;SAMPLE STATUS.
+SVELMOD        EQU     2DH             ;START-POINT VELOCITY MOD SETTING.
+SRATE          EQU     48H             ;SAMPLE RATE SETTING.
+SRLEN          EQU     4CH             ;SIZE OF SINGLE SOUND CONTROL BLOCK.
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; DISK_OP_CODE BIT DEFINITIONS -
+; USED BY 440 SYSTEM TO GENERATE DISK SYSTEM ACCESS CODES.
+; NOTE - HD_UTIL_BIT IS A SORT OF "SHIFT" BIT USED TO INVOKE HARD DISK
+; UTILITIES CONCERNED WITH WHOLE DRIVES AS OPPOSED TO DATA TRANSFERS
+; WITHIN THE CONTEXT OF A SINGLE BANK - IT MODIFIES THE MEANINGS OF THE
+; OTHER DISK_OP_CODE BITS WHICH ACCOMPANY IT.
+;
+HD_UTIL_MASK   EQU     0100000000000000B    ;1 FOR SCSI HARD DISK SPECIAL UTILITY, 0 OTHERWISE.
+HD_UTIL_BIT    EQU     14
+;
+SONG_MASK      EQU     0010000000000000B    ;1 FOR ACCESS TO SONG-LIST FILE, 0 OTHERWISE.
+SONG_BIT       EQU     13
+;
+CUELIST_MASK   EQU     0001000000000000B    ;1 FOR ACCESS TO CUE LIST FILE, 0 OTHERWISE.
+CUELIST_BIT    EQU     12
+;
+KIT_MASK       EQU     0000100000000000B    ;1 FOR ACCESS TO PAD KIT FILE, 0 OTHERWISE.
+KIT_BIT        EQU     11
+;
+CONTROL_MASK   EQU     0000010000000000B    ;1 FOR ACCESS TO SAMPLE CONTROLS ONLY, 0 OTHERWISE.
+CONTROL_BIT    EQU     10
+;
+DIR_MASK       EQU     0000001000000000B    ;1 FOR DIRECTORY ACCESS, 0 OTHERWISE.
+DIR_BIT        EQU     9
+;
+SAM_MASK       EQU     0000000100000000B    ;1 FOR TRANSFERS OF SAMPLE/SOUND-CONTROL DATA,
+SAM_BIT        EQU     8                    ;0 OTHERWISE.
+;
+SEQ_MASK       EQU     0000000010000000B    ;1 FOR TRANSFERS OF SEQUENCE DATA,
+SEQ_BIT        EQU     7                    ;0 OTHERWISE.
+;
+SYSTEM_MASK    EQU     0000000001000000B    ;1 FOR TRANSFERS OF SYSTEM SETUP DATA, 0 OTHERWISE.
+SYSTEM_BIT     EQU     6
+;
+ALT_MASK       EQU     0000000000100000B    ;1 FOR ACCESS TO DISK SYSTEM ALTERNATE FUNCTIONS,
+ALT_BIT        EQU     5                    ;0 OTHERWISE.
+;
+MOV_ALL_MASK   EQU     0000000000010000B    ;0 FOR SINGLE-UNIT LOAD, 1 FOR FULL-FILE TRANSFER.
+MOV_ALL_BIT    EQU     4
+;
+LOAD_MASK      EQU     0000000000001000B    ;1 FOR LOAD OPERATION, 0 OTHERWISE.
+LOAD_BIT       EQU     3
+;
+SAVE_MASK      EQU     0000000000000100B    ;1 FOR SAVE OPERATION, 0 OTHERWISE.
+SAVE_BIT       EQU     2
+;
+VERIFY_MASK    EQU     0000000000000010B    ;1 FOR VERIFY OPERATION, 0 OTHERWISE.
+VERIFY_BIT     EQU     1
+;
+FORMAT_MASK    EQU     0000000000000001B    ;1 FOR FORMAT OPERATION, 0 OTHERWISE.
+FORMAT_BIT     EQU     0
+;
+;
+;
+; ALTERNATE FUNCTION LIST -
+; ALTERNATE FUNCTION CODES PASSED TO DISK SYSTEM IN D1
+; IF ALT_BIT IS SET IN DISK_OP_CODE.
+;
+CHECK_FLOPPY   EQU     0               ;FLOPPY DRIVE STATUS CHECK WITHOUT HANG-UP IN ERROR HANDLER.
+;
+SCSI_RESET     EQU     1               ;RESET SCSI BUS, REINIT SCSI DISK INTERNAL CONTROLLER(S).
+;
+;
+;
+;
+; COMBINATIONS OF DISK_OP_CODE_BITS CURRENTLY IN USE:
+;
+; LOAD OPERATIONS:
+;  LOAD,SAM,MOV_ALL,KIT,SYSTEM         -    SOUNDS/KITS/CONFIGURATION
+;  LOAD,SAM,MOV_ALL,KIT                -    SOUNDS AND KITS
+;  LOAD,SAM,MOV_ALL                    -    SOUNDS ONLY (INCL. SOUND CONTROLS)
+;  LOAD,SEQ,MOV_ALL,SONG,SYSTEM        -    SEQUENCES/SONGS/CONFIGURATION
+;  LOAD,SEQ,MOV_ALL,SONG               -    SEQUENCES AND SONGS
+;  LOAD,SEQ,MOV_ALL                    -    SEQUENCES ONLY
+;  LOAD,CONTROL,MOV_ALL                -    SOUND CONTROLS ONLY
+;  LOAD,KIT                            -    KITS AND BANKS ONLY
+;  LOAD,SYSTEM                         -    CONFIGURATION ONLY
+;  LOAD,SONG,MOV_ALL                   -    SONGS ONLY
+;  LOAD,CUELIST                        -    SMPTE CUE LIST
+;
+; SAVE OPERATIONS:
+;  SAVE,SAM,MOV_ALL,KIT,SYSTEM         -    SOUNDS/KITS/CONFIGURATION
+;  SAVE,SAM,MOV_ALL,KIT                -    SOUNDS AND KITS
+;  SAVE,SAM,MOV_ALL                    -    SOUNDS ONLY (INCL. SOUND CONTROLS)
+;  SAVE,SEQ,MOV_ALL,SONG,SYSTEM        -    SEQUENCES/SONGS/CONFIGURATION
+;  SAVE,SEQ,MOV_ALL,SONG               -    SEQUENCES AND SONGS
+;  SAVE,SEQ,MOV_ALL                    -    SEQUENCES ONLY
+;  SAVE,CONTROL,MOV_ALL                -    SOUND CONTROLS ONLY
+;  SAVE,KIT                            -    KITS AND BANKS ONLY
+;  SAVE,SYSTEM                         -    CONFIGURATION ONLY
+;  SAVE,SONG,MOV_ALL                   -    SONGS ONLY
+;  SAVE,CUELIST                        -    SMPTE CUE LIST
+;
+; DIRECTORY EXTRACTION OPERATIONS:
+;  DIR,SAM                             -    SOUNDS DIRECTORY
+;  DIR,SEQ                             -    SEQUENCES DIRECTORY
+;  DIR,SONG                            -    SONGS DIRECTORY
+;  DIR,HD_UTIL                         -    SCSI DISK ALL-BANKS DIRECTORY
+;
+; SINGLE-UNIT TRANSFERS:
+;  LOAD,SAM                            -    LOAD ONE SOUND
+;  LOAD,SEQ                            -    LOAD ONE SEQUENCE
+;  LOAD,SONG                           -    LOAD ONE SONG
+;  SAVE,SONG                           -    SAVE ONE SONG
+;  VERIFY,SONG                         -    COMPARE ONE SONG
+;
+; OTHER:
+;  FORMAT                              -    FORMAT FLOPPY DISK
+;  HD_UTIL,SAVE                        -    SCSI BANK WRITE-PROTECT
+;  HD_UTIL,FORMAT                      -    WRITE NEW DIRECTORY ON SCSI DISK
+;  HD_UTIL,CONTROL                     -    SET NEW SCSI ID FOR CURRENT DRIVE
+;  ALT                                 -    ALTERNATE FUNCTIONS:
+;                                                RESET SCSI DISKS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; DISK SYSTEM ERROR CODES WHICH PRODUCE VISIBLE, UNMODIFIED MESSAGES -
+; TEXT ADAPTED FROM CODED_MESSAGES STRING TABLE (DISKMAIN) TO PRESERVE
+; CORRECT ORDER AND ACCOMPANYING DOCUMENTATION (A WORD TO THE WISE....)
+; MANY CODES APPLY TO BOTH FLOPPY AND SCSI DISK OPERATIONS.
+;
+FDC_IS_HUNG    EQU     1               ;CANNOT OBTAIN FDC NOT-BUSY STATUS
+                                       ;FOLLOWING FORCE_INTERRUPT COMMAND.
+;
+NO_DISK        EQU     2               ;TIMED OUT AWAITING DRQ TRUE OR
+                                       ;INDEX BIT STATE CHANGE FROM FDC.
+;
+SEEK_ERROR     EQU     3               ;FDC TIMEOUT WHILE RECALIBRATING OR
+                                       ;SEEKING, OR TRACK 00 NOT DETECTED.
+;
+PROTECTD_DISK  EQU     4               ;FLOPPY DISK WRITE-PROTECT TAB SET.
+;
+PROTECTD_BANK  EQU     5               ;WRITE-PROTECT SWITCH SET IN BANK
+                                       ;DESCRIPTOR ON SCSI HARD DISK.
+;
+FORMAT_INCMPLT EQU     6               ;INDEX PULSE DETECTED BEFORE FLOPPY
+                                       ;DISK TRACK COMPLETELY FORMATTED.
+;
+OVER_SPEED     EQU     7               ;FLOPPY DRIVE INDEX PULSES COMING IN
+                                       ;TOO CLOSE TOGETHER.
+;
+UNDER_SPEED    EQU     8               ;FLOPPY DRIVE INDEX PULSES ARE BEING
+                                       ;RECEIVED, BUT ARE TOO FAR APART.
+;
+FORMAT_OVRUN   EQU     9               ;INDEX PULSE NOT SEEN WHEN EXPECTED
+                                       ;DURING FLOPPY TRACK FORMATTING.
+;
+NO_FORMAT      EQU     10              ;NO SECTOR ID SEEN ON FLOPPY DISK
+                                       ;TRACK BEING READ.
+;
+INVAL_FORMAT   EQU     11              ;DATA ON DISK DOES NOT CONFORM TO
+                                       ;SEQUENTIAL DISK DATA STRUCTURE, OR
+                                       ;FLOPPY TRACK/SIDE NUMBER MISMATCH.
+;
+NOT_BLANK      EQU     12              ;SEQUENTIAL OR OTHER FORMAT DETECTED
+                                       ;ON DISK BY PRE-FORMATTING CHECK.
+;
+GENERIC_ERROR  EQU     13              ;BLANKET CODE FOR MOST LOW LEVEL
+                                       ;DATA ERROR CONDITIONS FROM FDC.
+;
+VERIFY_ERR     EQU     14              ;DATA COMPARE ERROR DURING ANY
+                                       ;VERIFY OPERATION.
+;
+NO_ROOM        EQU     15              ;INSUFFICIENT SPACE FOR REQUESTED
+                                       ;ONE-SOUND OR ONE-SEQUENCE LOAD.
+;
+NOT_ALLOWED    EQU     16              ;OPERATION OTHER THAN ALL SOUNDS OR
+                                       ;ALL SEQS ON EMPTY DISK/BANK.
+;
+SOURCE_DELETED EQU     17              ;ATTEMPTED ONE-SOUND LOAD OF SOUND
+                                       ;NOT PRESENT ON DISK OR IN BANK.
+;
+TARGET_EXISTS  EQU     18              ;ATTEMPTED ONE-SOUND LOAD OVER SOUND
+                                       ;CURRENTLY PRESENT IN MEMORY.
+;
+NEWER_DISK_REV EQU     19              ;DISK FIRMWARE REV IS HIGHER THAN
+                                       ;THAT OF OPERATING FIRMWARE IN USE.
+;
+NOT_440_DISK   EQU     20              ;DISK HAS VALID SEQUENTIAL FORMAT
+                                       ;FROM PRODUCT OTHER THAN STUDIO 440.
+;
+FILE_NOT_EMPTY EQU     21              ;WARNING OF SAVE OVER EXISTING
+                                       ;FILE(S) WITH SAME TYPE OF DATA.
+;
+SND_FILE_HERE  EQU     22              ;WARNING OF SAVE OVER EXISTING SOUND
+                                       ;FILE(S) WITH ANOTHER TYPE OF DATA.
+;
+SEQ_FILE_HERE  EQU     23              ;WARNING OF SAVE OVER EXISTING SEQ
+                                       ;FILE(S) WITH ANOTHER TYPE OF DATA.
+;
+OTH_FILE_HERE  EQU     24              ;WARNING OF SAVE OVER EXISTING OTHER
+                                       ;FILE(S) WITH ANOTHER TYPE OF DATA.
+;
+DATA_NOT_PRES  EQU     25              ;LOAD/VERIFY FROM EMPTY FILE OR FROM
+                                       ;WRONG FILE TYPE FOR DATA REQUESTED.
+;
+SOURCE_SEQ_DEL EQU     26              ;ATTEMPTED ONE-SEQUENCE LOAD OF
+                                       ;EMPTY SEQUENCE FROM DISK.
+;
+TARGET_SEQ_EST EQU     27              ;WARNING OF ONE-SEQUENCE LOAD INTO
+                                       ;SEQUENCE WHICH IS NOT EMPTY.
+;
+UNRECOVERABLE  EQU     28              ;SEQUENCE DATA READ ERROR RECOVERY
+                                       ;ATTEMPT UNSUCCESSFUL (FLOPPY DISK).
+;
+MEM_ALLOC_ERR  EQU     29              ;REACHED END OF FREE MEMORY STRING
+                                       ;UNEXPECTEDLY DURING ONE-SEQ LOAD.
+;
+BAD_SEQ_DIR    EQU     30              ;ONE-SEQ LOAD: SOURCE SEQUENCE START
+                                       ;BLOCK INDEX ON DISK IS INVALID.
+;
+SELECT_FAILED  EQU     31              ;/BSY NOT ASSERTED IN RESPONSE TO
+                                       ;/SEL FROM 440 - NO DEVICE THERE?
+;
+MUST_SEL_SCSI  EQU     32              ;ATTEMPT TO EXECUTE SCSI DISK UTIL
+                                       ;WITH DRIVE_SEL = -1 (FLOPPY DRIVE).
+;
+NO_SUCH_BANK   EQU     33              ;ATTEMPT TO ACCESS BANK WITH NUMBER
+                                       ;TOO HIGH FOR EXISTING DIRECTORY.
+;
+SET_JUMPERS    EQU     34              ;ATTEMPT TO USE SCSI ID CHANGE UTIL
+                                       ;ON OLDER DATAFRAME WITH ID JUMPERS.
+;
+SCSI_ID_USED   EQU     35              ;ATTEMPT TO CHANGE DEVICE SCSI ID TO
+                                       ;ONE ALREADY USED BY ANOTHER DEVICE.
+;
+;
+;
+;
+; INTERNAL ERROR CODES FOR FLOPPY DISK SYSTEM -
+; THESE CORRESPOND TO ERROR CONDITIONS WHICH ARE TRANSLATED, INTERPRETED
+; OR OTHERWISE DIGESTED BEFORE PRESENTING ANY MESSAGES TO USER.
+;
+FLPYCODEOFFS   EQU     70
+;
+NO_SECTOR      EQU     FLPYCODEOFFS+0  ;SECTOR ADDRESS ID NOT FOUND - SOUGHT-FOR SECTOR DOES NOT EXIST,
+                                       ;OR DISK IS NOT FORMATTED.
+;
+BAD_SECTOR     EQU     FLPYCODEOFFS+1  ;SECTOR ID WAS FOUND, BUT ADDRESS CRC DID NOT MATCH.
+;
+BAD_DATA       EQU     FLPYCODEOFFS+2  ;DATA FIELD CRC DID NOT MATCH ON READ.
+;
+DATA_LOST      EQU     FLPYCODEOFFS+3  ;READ DATA MISSED OR WRITE DATA NOT SUPPLIED BY CPU IN TIME.
+;
+DATA_DELETED   EQU     FLPYCODEOFFS+4  ;DELETED DATA MARK WAS ENCOUNTERED DURING SECTOR READ.
+;
+DRQ_TIMEOUT    EQU     FLPYCODEOFFS+5  ;TIMEOUT OCCURRED WHILST AWAITING AN INITIAL DRQ.
+;
+;
+;
+;
+; SCSI SYSTEM ERROR CODE DEFINITIONS:
+; THESE CORRESPOND TO SPECIFIC SCSI-BUS CONDITIONS AS OPPOSED TO ERRORS
+; WHICH OCCUR DURING NORMAL DISK OPERATIONS (E.G., VERIFY ERROR) -
+; THEY ARE HANDLED BY A SEPARATE HANDLER WHICH PRESENTS AN ERROR MESSAGE
+; CONTAINING BUS STATUS INFORMATION AS WELL AS THE TEXT OF THE MESSAGE.
+;
+SCSICODEOFFS   EQU     90              ;OFFSET REMOVED BY SCSI ERROR CODE HANDLER.
+;
+BUS_NOT_FREE   EQU     SCSICODEOFFS+0  ;BUS NOT FREE WHEN EXPECTED.
+;
+STUCK_PHASE    EQU     SCSICODEOFFS+1  ;PHASE CHANGE NOT OCCURRING WHEN EXPECTED.
+;
+WRONG_PHASE    EQU     SCSICODEOFFS+2  ;PHASE CHANGE TO PHASE OTHER THAN EXPECTED PHASE.
+;
+REQ_TIMEOUT    EQU     SCSICODEOFFS+3  ;EXPECTED DMA REQUEST DID NOT OCCUR WITHIN TIMEOUT PERIOD.
+;
+STATUS_ERROR   EQU     SCSICODEOFFS+4  ;TARGET RETURNED STATUS BYTE OTHER THAN 00H (GOOD).
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;
+;                      ******  WD1770 FDC ADDRESS DEFINITIONS  ******
+;
+; NOTE: ACTUAL ADDRESS DEFINITIONS ARE IN EQUATES:FRANK -
+;       THIS INFO IS PROVIDED AS ADDITIONAL DISK SYSTEM DOCUMENTATION.
+;
+;    DISK_STAT         -         ;1770 STATUS REGISTER, READ-ONLY.  MEANING OF SOME BITS
+;                                ;DEPENDS UPON WHICH TYPE OF COMMAND WAS LAST EXECUTED.
+;
+;    DISK_CMD          -         ;1770 COMMAND REGISTER, WRITE-ONLY.  NOTE: COMMAND AND
+;                                ;STATUS REGISTERS ARE AT SAME ADDRESS.
+;
+;    DISK_TRACK        -         ;1770 TRACK REGISTER, READ/WRITE.  AUTOMATICALLY INCREMENTED
+;                                ;OR DECREMENTED DURING SEEK, OPTIONALLY ALSO DURING STEP IN/OUT.
+;                                ;CAN BE AUTOMATICALLY COMPARED WITH RECORDED TRACK ID (VERIFY)
+;                                ;ON DESTINATION TRACK.
+;
+;    DISK_SEC          -         ;1770 SECTOR REGISTER, READ/WRITE. HOLDS DESIRED SECTOR NUMBER
+;                                ;DURING SECTOR READ AND WRITE OPERATIONS.  AUTOMATICALLY INCREMENTED
+;                                ;DURING MULTI-SECTOR READS AND WRITES.
+;
+;    DISK_DATA         -         ;1770 DATA REGISTER, READ/WRITE.  HOLDS DISK DATA DURING READ AND
+;                                ;WRITE OPERATIONS, HOLDS DESIRED TRACK NUMBER DURING SEEKS.
+               SKIP
+****************************************************************************************************
+*                                                                                                  *
+*                   DESCRIPTION OF MODEL 440 FLOPPY DISK COMMAND/DATA INTERFACE                    *
+*                                                                                                  *
+****************************************************************************************************
+;
+;
+;
+;
+;Commands are initiated by writing a command byte to DISK_CMD following any necessary setup of
+;other FDC registers.  Command word may be written only when FDC is not BUSY (i.e. DISK_STAT(0) = 0)
+;except for FORCE INTERRUPT command which may be used to abort other commands.
+;
+;
+;The drive READY line is not monitored.  When commands are issued, the 1770 checks the status of its
+;MOTOR ON output (MO) which is used to select the drive and turn on its spindle motor (drive must be
+;strapped accordingly).  If it is low (off), it is set high and the command is delayed until six
+;revolutions of the spindle motor are detected (via the INDEX line), guaranteeing a one-second
+;spin-up time.  When the command completes, the 1770 will maintain MOTOR ON high for another ten
+;revolutions of the disk and then set it low if no new command has been issued during this time.
+;If a new command is issued while MOTOR ON is still high, the drive is assumed to be ready and
+;the command executes without delay.
+;
+;
+;Write operations are immediately aborted if the FDC WRITE PROTECT input is true - this can be tested
+;at DISK_STAT(6) following a completed or aborted write command (1 = protected).  This status bit is
+;undefined after a Type I command (SEEK, STEP, etc.).
+;
+;
+;During read and write operations, the DRQ bit (Data ReQuest, DISK_STAT(1)) is set high every 32 usec
+;to request data service by the CPU.  The CPU has approx. 24 usec per data byte to
+;service the data request and avert a LOST DATA error (which would by indicated by DISK_STAT(2) = 1
+;at the end of the command).  DRQ is polled in a loop which also tests the above-mentioned BUSY bit
+;to provide the means for determining when a command to the 1770 has terminated (since the other
+;possible method, namely the 1770 IRQ output, is not used in the 440).
+;
+;
+****************************************************************************************************
+               SKIP
+;                   ******  FDC COMMAND CODE DEFINITIONS  ******
+;
+;
+;
+;                   TYPE I  -  TRACK-TO-TRACK MOVEMENT
+;
+;    Bits 1-0 are 00 in these commands to select 6 msec step rate.  Bit 3 = 0 to enable spin-up
+;    sequence.  Commands include a track verify which provides a 30 msec head-settling period at the
+;    end of the command and allow a read or write command to follow immediately. The track verify
+;    can be defeated by writing the command with bit 2 = 0.
+;
+RESTORE        EQU     04H       ;RESTORE HEAD TO TRACK 00.  CLEARS TRACK REGISTER TO 00.
+                                 ;RESTORE OCCURS AUTOMATICALLY AFTER RESET.
+;
+SEEK           EQU     14H       ;DATA REGISTER MUST CONTAIN DESTINATION TRACK NUMBER.
+                                 ;STEP PULSES ARE ISSUED WITH APPROPRIATE DIRECTION UNTIL
+                                 ;DESTINATION TRACK IS REACHED. TRACK REGISTER IS UPDATED.
+;
+STEP           EQU     34H       ;A SINGLE STEP PULSE IS ISSUED TO THE DRIVE - THE DIRECTION
+                                 ;IS THE SAME AS WAS USED IN LAST STEP COMMAND. THE TRACK
+                                 ;REGISTER IS UPDATED.
+;
+STEP_IN        EQU     54H       ;A SINGLE STEP-IN PULSE IS ISSUED, TRACK REGISTER IS UPDATED.
+;
+STEP_OUT       EQU     74H       ;A SINGLE STEP-OUT PULSE IS ISSUED, TRACK REGISTER IS UPDATED.
+;
+DONT_VER       EQU     0FBH      ;"AND" WITH ANY OF ABOVE COMMAND BYTES BEFORE WRITING TO 1770
+                                 ;TO SUPPRESS DESTINATION TRACK VERIFY.
+;
+;
+;
+;                   TYPE II  -  SECTOR READ/WRITE
+;
+;    Bit 3 = 0 to enable spin-up sequence.  On WRITE and DELETE commands, write precompensation
+;    may be enabled by writing the command byte with bit 1 = 0 (used on tracks 40-80).
+;    Setting bit 2 to 1 in these com}ands invokes a 30 msec pre-command head-settling delay.
+;
+READ_SECTOR    EQU     80H       ;READ A SINGLE SECTOR. SECTOR REGISTER MUST CONTAIN
+                                 ;NUMBER OF SECTOR TO BE READ.
+;
+READ_MULTPL    EQU     90H       ;READ MULTIPLE SECTORS.  SECTOR REGISTER MUST CONTAIN NUMBER
+                                 ;OF THE FIRST SECTOR TO BE READ AND IS AUTOMATICALLY UPDATED
+                                 ;AS EACH SECTOR IS READ.  COMMAND TERMINATES WHEN NUMBER IN
+                                 ;SECTOR REGISTER EXCEEDS NUMBER OF SECTORS ON TRACK, OR IN
+                                 ;RESPONSE TO FORCE INTERRUPT COMMAND.
+;
+WRITE_SECTOR   EQU     0A2H      ;WRITE A SECTOR (AS PER READ_SEC).
+;
+WRITE_MULTPL   EQU     0B2H      ;WRITE MULTIPLE SECTORS (AS PER READ_MUL).
+;
+DELETE_SECTOR  EQU     0A3H      ;WRITE SECTOR WITH DELETED DATA MARK.
+;
+DELETE_MULTPL  EQU     0B3H      ;MULTIPLE-SECTOR DELETE.
+;
+SETTLE_HEAD    EQU     04H       ;"OR" WITH ANY OF ABOVE TO INVOKE 30 MSEC HEAD-SETTLING DELAY.
+               SKIP
+;
+;
+;                   TYPE III  -  NON-SECTOR READ/WRITE
+;
+;    Comments as per Type II commands.
+;
+READ_ADDR      EQU     0C0H      ;THE NEXT-ENCOUNTERED ID FIELD IS READ AND SENT TO CPU (6 BYTES).
+;
+READ_TRACK     EQU     0E0H      ;THE ENTIRE CURRENT TRACK IS READ BEGINNING WITH THE INDEX MARK.
+                                 ;ALL DATA (INCLUDING GAP AND ID BYTES) ARE SENT TO CPU.
+;
+WRITE_TRACK    EQU     0F6H      ;THIS IS THE COMMAND USED TO FORMAT A TRACK.
+                                 ;THE ENTIRE TRACK IS WRITTEN BEGINNING WITH THE INDEX MARK.
+                                 ;CPU PROVIDES ALL DATA, BUT CODES F5H-F7H ARE ID FORMATTING COMMANDS
+                                 ;WHICH DO NOT GET WRITTEN DIRECTLY TO DISK:
+                                 ;    F5H  ==   WRITES A1H WITH MISSING CLOCK TRANSITION BETWEEN
+                                 ;              BITS 4 AND 5 (BEGINNING OF AN ID OR DATA FIELD IN MFM),
+                                 ;              INITIALIZES 1770 CRC GENERATOR.
+                                 ;    F6H  ==   WRITES C2H WITH MISSING CLOCK TRANSITION BETWEEN
+                                 ;              BITS 3 AND 4  -  NOT USED.
+                                 ;    F7H  ==   CAUSES 2 CRC BYTES TO BE WRITTEN
+                                 ;              (END OF ID OR DATA FIELD).
+                                 ;A FULL DISCUSSION OF DISK FORMAT IS PRESENTED ELSEWHERE.
+                                 ;(NOT NECESSARILY IN THIS LISTING, MIND YOU.)
+                                 ;THIS COMMAND IS USED WITH STEP_INWARD, WHICH DOES NO TRACK POSITION
+                                 ;VERIFY (BECAUSE IT WILL USUALLY BE USED ON AN UNFORMATTED DISK) -
+                                 ;HENCE, BIT 2 = 1 TO INVOKE 30 MSEC PRE-WRITE HEAD-SETTLING DELAY.
+;
+;
+;
+;
+;
+;
+;
+;
+;                   TYPE IV  -  FORCE INTERRUPT
+;
+;    The FORCE INTERRUPT command will immediately abort any command which is currently executing.
+;    The BUSY bit in DISK_STAT is cleared, and all DISK_STAT bits are updated to reflect Type I status.
+;    An immediate or conditional interrupt can be forced, but this does not apply to the 2000,
+;    which does not use the 1770 INTRQ output.
+;
+FORC_INTR      EQU     0D0H
+               SKIP
+*******************************************************************************************
+*                                                                                         *
+*                     1770 STATUS REGISTER (DISK_STAT) DESCRIPTION                        *
+*                                                                                         *
+*******************************************************************************************
+;                                                                                         ;
+;    BIT            STATUS AFTER                       STATUS AFTER                       ;
+;     #            TYPE I COMMAND                  TYPE II OR III COMMAND                 ;
+;------------------------------------------------------------------------------------------
+;                                                                                         ;
+;    7             MOTOR ON                        MOTOR ON                               ;
+;                                                                                         ;
+;    6             -------------                   WRITE PROTECT (AFTER WRITE ONLY)       ;
+;                                                                                         ;
+;    5             SPIN-UP COMPLETE                RECORD TYPE (0=DATA, 1=DELETED DATA)   ;
+;                                                                                         ;
+;    4             TRACK NOT FOUND                 SECTOR NOT FOUND                       ;
+;                                                                                         ;
+;    3                        IF BIT 4 SET:    ID FIELD ERROR                             ;
+;                             IF BIT 4 CLEAR:  DATA FIELD ERROR                           ;
+;                                                                                         ;
+;    2             TRACK 00 STATUS                 LOST DATA ERROR                        ;
+;                                                                                         ;
+;    1             INDEX STATUS                    DATA REQUEST                           ;
+;                                                                                         ;
+;    0             FDC BUSY                        FDC BUSY                               ;
+;                                                                                         ;
+;------------------------------------------------------------------------------------------
+;
+; STATUS FLAG EQUATES - BIT POSITION NUMBERS FOR USE WITH BTST INSTRUCTION:
+;
+MOTOR_ON       EQU     7
+;
+WRT_PROT       EQU     6
+;
+SPIN_UP        EQU     5
+;
+DEL_DATA       EQU     5
+;
+TRK_NOT_FND    EQU     4
+;
+SEC_NOT_FND    EQU     4
+;
+CRC_ERR        EQU     3
+;
+TRACK_00       EQU     2
+;
+LOST_DATA      EQU     2
+;
+INDEX          EQU     1
+;
+DRQ            EQU     1
+;
+FDC_BUSY       EQU     0
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; SCSI BUS PHASE CODES -
+; ALIGNED PER 5380 CURRENT SCSI BUS STATUS REGISTER FOR MATCH TESTING,
+; WHAT I MEAN IS:      BIT 4 = MSG
+;                      BIT 3 = C/-D
+;                      BIT 2 = I/-O
+; OTHER BITS PRESENT IN THIS REGISTER ARE "DON'T CARES" HERE.
+; REMEMBER: INITIATOR 'R' US, TARGET IS THE EXTERNAL HARD DISK.
+;
+DAT_OUT_PHASE  EQU     00H             ;DATA FROM INITIATOR OUT TO TARGET.
+DAT_IN_PHASE   EQU     04H             ;DATA FROM TARGET IN TO INITIATOR.
+CMD_PHASE      EQU     08H             ;COMMAND FROM INITIATOR OUT TO TARGET.
+STATUS_PHASE   EQU     0CH             ;STATUS FROM TARGET IN TO INITIATOR.
+MSG_OUT_PHASE  EQU     18H             ;MESSAGE FROM INITIATOR OUT TO TARGET.
+MSG_IN_PHASE   EQU     1CH             ;MESSAGE FROM TARGET IN TO INITIATOR.
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+;
+;
+;
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; SCSI HARD DISK MODEL IDENTIFICATION CODES:
+; USED IN MAIN DISK DESCRIPTOR TO INDICATE WHAT KIND OF DRIVE WE GOT,
+; AS WELL AS WHAT KIND OF CONTROLLER WHERE APPROPRIATE.
+;
+std_ccs        equ     0               ; standard (Common Command Set) drive -
+                                       ; no specific make or model assumed,
+                                       ; no special controller accommodations,
+                                       ; capacity info is obtained from drive
+                                       ; via standard Read Capacity command.
+;
+DF20_3100      EQU     1               ;DATAFRAME 20 WITH OMTI 3100 CONTROLLER.
+;
+DF20_3103      EQU     2               ;DATAFRAME 20 WITH OMTI 3103 CONTROLLER.
+;
+DF20_3105      EQU     3               ;DATAFRAME 20 WITH OMTI 3105 CONTROLLER.
+;
+DF40_3103      EQU     4               ;DATAFRAME 40 WITH OMTI 3103 CONTROLLER.
+;
+DF40_3105      EQU     5               ;DATAFRAME 40 WITH OMTI 3105 CONTROLLER.
+;
+                                       ;TO BE CONTINUED .... (?)
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+;
+;
+;
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; OTHER SCSI STUFF, WHICH, WHERE ELSE TO PUT, I KNEW NOT -
+;
+DF_BASE_REC    EQU     32*17           ;FOR ALL DATAFRAME DRIVES - LOGICAL BLOCK ADDRESS FOR FIRST
+                                       ;RECORD USED FOR DATA STORAGE.  LOOK - IT'S LIKE THIS -
+                                       ;ALL OF THESE TRACKS HAVE 17 (SEVENTEEN) RECORDS PER ....
+                                       ;LEAVE TRACK 0 ALONE, SINCE OMTI 3103/3105 CONTROLLERS USE
+                                       ;RECORD 0 TO STORE DRIVE PARAMETERS VIA TRACK REFORMATTING.
+                                       ;TRACKS 1-30 ARE RESERVED FOR ALTERNATE-TRACK USE, IN THE
+                                       ;EVENT THAT UP TO 30 DISK DEFECTS PROMPT TRACK REASSIGNMENT.
+                                       ;TRACK 31 IS LEFT ALONE JUST FOR FORM'S SAKE, CAN YOU DIG?
+;
+                                       ; Additional note - this offset is used
+                                       ; on "standard" non-Dataframe drives
+                                       ; as well, even though not necessary,
+                                       ; in order to keep file access procedures
+                                       ; consistent for all drive types.
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+;
+;
+;
+***************************************************************************************************
+***************************************************************************************************
+***                                                                                             ***
+***            THIS IS THE END OF SOURCE FILE DISKDEFS                                          ***
+***                                                                                             ***
+***************************************************************************************************
+***************************************************************************************************
+               .OPTION LIST="ON"
+

@@ -1,0 +1,57 @@
+
+               .REGION OFFSETS
+
+               OFFSET  6800H
+               .ALONG
+FUCK_YOU       BRA     _FUCK_YOU
+FUCK_ME        BRA     _FUCK_ME
+FUCK_THEM      BRA     _FUCK_THEM
+FUCK_EVERYBODY BRA     _FUCK_EVERYBODY
+EAT_SHIT       JMP     _EAT_SHIT
+DRINK_PISS     JMP     _DRINK_PISS
+SUCK_MY_COCK   BRA     _SUCK_MY_COCK
+LICK_HER_CUNT  JMP     _LICK_HER_CUNT
+               .AWORD
+
+               .IMPORT SOMEWHERES
+
+               INCLUDE HPFIXUPS
+
+               INCLUDE EQUATES
+
+               INCLUDE TRAPDEFS
+
+
+               .REGION MAIN
+
+               HEX     2,4,6,8,0C,10,18,20
+               HEX     FF0C,ABCD,EFAB,9,C,D,B,000C
+               MOVEQ   #83H,D0
+               MOVEQ   #03H,D0
+               EVEN
+
+               CALL    1,23
+               JUMP    4,48
+
+               MOVE    #23&0xF0,D0
+               MOVE.W  SYM1,D0
+               JMP     SOMEWHERES
+
+
+               JSR     FUCK_YOU
+               JSR     FUCK_ME
+               JSR     FUCK_THEM
+               JSR     FUCK_EVERYBODY
+               JSR     EAT_SHIT
+               JSR     DRINK_PISS
+               JSR     SUCK_MY_COCK
+               JSR     LICK_HER_CUNT
+
+               go jerk off!
+
+
+               .REGION SHORTRAM
+
+SYM1           DS.W    1
+
+

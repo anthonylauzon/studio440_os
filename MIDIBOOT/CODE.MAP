@@ -1,0 +1,2 @@
+    1FE00H boot_rcv        @MAIN          
+    1FFECH boot_cap        @MAIN          

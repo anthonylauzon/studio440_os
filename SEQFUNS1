@@ -1,0 +1,1519 @@
+               INCLUDE HPFIXUPS
+               TITLE "SEQFUNS1"
+***************************************************************************************************
+***************************************************************************************************
+***                                                                                             ***
+***            SEQFUNS1 - SUBFUNCTIONS UNDER "SET UP", "RECORD 1" FUNCTION SWITCHES             ***
+***                                                                                             ***
+***************************************************************************************************
+***************************************************************************************************
+;
+NEG_EXT        EQU     0FFFFFF00H      ;USE IN MOVEQ INSTRUCTIONS WHERE ARG IS
+                                       ;80H OR LARGER - HP XASM DOES NOT HANDLE
+                                       ;SIGN-EXTEND CORRECTLY.  COSMETIC, KEEPS
+                                       ;ACTUAL BYTE VALUE CLEARER.
+;
+               ABS_SHORT
+;
+               INCLUDE FIELD_EQU       ;SUBFUNCTION/FIELD BLOCK DEFINITIONS.
+;
+               GLB     WRITE_SEQ_NAME,CLICKS_DIS_BAR,UPDATE_AUTOCORRECT
+               GLB     UPDATE_TIME_SIG,FORCED_ALLOCATE,DENOM_STRINGS
+;
+               EXTERNAL  Q_STATUS           ;SEQUENCE DIRECTORY ELEMENTS.
+               EXTERNAL  Q_TIME_NUM
+               EXTERNAL  Q_TIME_DENOM
+               EXTERNAL  Q_TOTAL_BARS
+;21JUL               EXTERNAL  Q_XS_BEATS
+               EXTERNAL  Q_NAME
+               EXTERNAL  Q_MEM_USED
+               EXTERNAL  Q_START_BLK
+               EXTERNAL  Q_RPT_START
+               EXTERNAL  Q_RPT_END
+               EXTERNAL  Q_RPT_COUNT
+;
+               EXTERNAL  WRITE_NEW_P_OFFS,WRITE_NEW_M_OFFS
+               EXTERNAL  WRITE_PARAM_STRING,DISP_SCREEN
+               EXTERNAL  GET_CUR_SEQ_DIR
+               EXTERNAL  ZERO_VAL
+               EXTERNAL  SET_ENTER_FLASH,WIPE_OUT_ENTER
+               EXTERNAL  USER_STALL
+               EXTERNAL  SEQ_NDRD_EATER,SEQ_NDSTR_READ,SEQ_NDRD_SETUP
+               EXTERNAL  SEQ_WRITE
+               EXTERNAL  SEQ1_DRD_SETUP,SEQ_CHANGE_SUB
+               EXTERNAL  SEQ_TURNAROUND,UPDATE_SEQ_SIZE
+               EXTERNAL  GO_TO_NEXT_FIELD
+               EXTERNAL  NOTHINGNESS
+               EXTERNAL  SET_NAME_BUF_ACC,FETCH_NAME
+               EXTERNAL  NAME_CURS_LEFT,NAME_CURS_RIGHT,CHAR_EDIT_LIM
+               EXTERNAL  WRITE_NAME_BUF,STORE_NAME_BUF,NOT_SAVED_WARNING
+               EXTERNAL  SEQ_RUNNING_TEST,STOP_THE_SEQUENCER
+;
+               EXTERNAL  PARAM_HI_LIM,PARAM_LO_LIM
+               EXTERNAL  NOW_TRACK,NOW_UART,SWING_AMT
+               EXTERNAL  CURRENT_SEQUENCE,AUTOCORRECT_TYPE
+               EXTERNAL  SWING_PER,RAW_MET,MET_COUNT
+;23JUN               EXTERNAL  RAW_OFFSET,OFFSET_INDEX
+               EXTERNAL  RECORDING,ERASING,NOW_MET_COUNT,METRO_TONE
+               EXTERNAL  PHASE_LENGTHS,SWING_PER_TBL,PHASE_TABLES_TBL
+               EXTERNAL  NEW_PHASE_LEN,NEW_PHASE_LIST
+               EXTERNAL  RAW_DENOMINATOR
+               EXTERNAL  NOW_NUMERATOR,NOW_DENOMINATOR
+               EXTERNAL  CLICKS_THIS_BAR,CLICKS_THIS_DENOM
+               EXTERNAL  AC_TYPE
+               EXTERNAL  TOTAL_BARS
+;21JUL               EXTERNAL  RAW_EXCESS
+               EXTERNAL  CUR_SUB_BLOCK
+               EXTERNAL  SUBFUN_INSTALL
+               EXTERNAL  DISP_STRNG_PTR
+               EXTERNAL  SEQ_BLOCK_LIST,CR_BAR
+               EXTERNAL  SEQ_DIR_99,LOOP_RECORD
+               EXTERNAL  DI_TEMP_1_B
+               EXTERNAL  NOW_BAR,NOW_CLICK
+               EXTERNAL  CUR_FLD_INDEX,NOW_SEQ_STATUS
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; FOR STARTERS, GLOBAL DECLARATIONS FOR THE SUBFUNCTION BLOCKS -
+; THEY'RE ACCESSED FROM SWITCHBOY MODULE:
+;
+                                            ;SETUP_GROUP.
+               GLB     SEQ_NAME_SUB
+               GLB     TIME_SIG_SUB
+               GLB     REC_TIME_SIG_SUB
+               GLB     MEASURES_SUB
+               GLB     SEQ_REPEAT_SUB
+               GLB     SEQ_MEM_STAT_SUB
+                                            ;RECORD_1_GROUP.
+               GLB     TRACK_TYPE_SUB
+               GLB     AUTOCORRECT_SUB
+               GLB     METRONOME_SUB
+               GLB     SWING_SUB
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; TIME SIG SUBFUNCTION - IF SEQUENCE UNALLOCATED, USER PICKS TIME SIG HERE AND THE
+;  NUMBER OF BARS IN THE 'LENGTH' SUBFUNCTION.  IF ALLOCATED, INSTALLS REC_ VERSION
+;  OF THIS SUBFUNCTION, IN WHICH USER EDITS THE BAR NUMBER, AND THE 440 RESPONDS WITH
+;  THE TIME SIG OF THAT BAR.
+;
+TIME_SIG_SUB
+;
+               ASC     "TIME SIG  SEQ.  "
+               ASC     " (EMPTY)    /   "
+
+;SEQUENCE NOMBRE FIELD
+
+               DC.B    14
+               DC.B    2
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+SET_PTR
+               DC.L    TIME_SIG_ACCESS
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    DISPLAY+MAX_LIMIT
+               DC.W    99
+               DC.W    DISPLAY+MAX_STRNG
+               DC.L    XX_NULL_SEQ_STRING
+               DC.W    FIELD_END
+
+;NUMERATOR FIELD
+
+               DC.B    26
+               DC.B    2
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+SET_PTR
+               DC.L    NUM_ACCESS
+               DC.W    EDIT+LO_LIMIT
+               DC.W    1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    64
+               DC.W    EDIT+ED_VEC
+               DC.L    UPDATE_NUMERATOR
+               DC.W    FIELD_END
+
+;DENOMINATOR FIELD
+
+               DC.B    29
+               DC.B    2
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+SET_PTR
+               DC.L    DENOM_ACCESS
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    DENOM_STRINGS
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    7
+               DC.W    EDIT+ED_VEC
+               DC.L    UPDATE_DENOMINATOR
+               DC.W    SUBFUN_END
+
+
+DENOM_STRINGS
+               ASC     "2 4 6 8 12162432"
+;
+;
+XX_NULL_SEQ_STRING
+               DC.B    14
+               DC.B    10
+               ASC     "xxnull seq"
+;
+;
+TIME_SIG_ACCESS        ; MAINLY, POINT AT CURRENT_SEQUENCE.  IF THE SELECTED SEQUENCE HAS BEEN
+; ALLOCATED, THEN FUCK THIS STUFF AND REINSTALL A REC_ VERSION OF THIS (BELOW).
+               CMP     #99,CURRENT_SEQUENCE ;IF THE NULL SEQUENCE, THEN ALLOWED TO ADJUST TIME SIG
+               BEQ.S   UMMA_1               ; (FOR INSERTING, ETC. BLANK BARS)
+               JSR     GET_CUR_SEQ_DIR      ;WHERE BE THAT DIRECTORY OF THE CURRENT SEQUENCE?
+               TST     Q_STATUS(A0)         ; DO WE EXIST?
+               BEQ.S   UMMA_1               ;    IF NOT, ES COOL...
+               MOVE.L  #REC_TIME_SIG_SUB,CUR_SUB_BLOCK     ;ELSE, INSTALL REC_ VERSION OF US
+               ST      SUBFUN_INSTALL
+UMMA_1
+               MOVE.L  #CURRENT_SEQUENCE,D0      ;POINT TO SEQ NUMBER, LIKE EXPECTED OF US.
+               RTS
+
+
+NUM_ACCESS             ; ALTER NUMERATOR OF CURRENT_SEQUENCE.
+               JSR     GET_CUR_SEQ_DIR      ;POINT TO DIRECTORY
+               LEA     Q_TIME_NUM(A0),A0    ; POINT TO NUMERATOR
+               MOVE.L  A0,D0
+               RTS
+
+
+DENOM_ACCESS           ; ALTER RAW DENOMINATOR VALUE OF CURRENT_SEQUENCE.
+               JSR     GET_CUR_SEQ_DIR      ;POINT...
+               LEA     Q_TIME_DENOM(A0),A0  ;     ...AND SHOOT
+               MOVE.L  A0,D0
+               RTS
+
+
+UPDATE_NUMERATOR       ; COPY NUMERATOR OF CURRENT_SEQUENCE TO VARIABLE NOW_NUMERATOR.
+               JSR     GET_CUR_SEQ_DIR      ;POINT TO CUR_SEQ's DIRECTORY
+               MOVE    Q_TIME_NUM(A0),NOW_NUMERATOR   ;MOVE COMPLETE
+               BRA.S   CLICKS_DIS_BAR       ;CLOSE OUT BY CALCing CLICKS IN THIS FIRST BAR.
+
+
+UPDATE_DENOMINATOR     ; COPY RAW DENOMINATOR OF CURRENT_SEQUENCE TO VARIABLE RAW_DENOMINATOR.
+               JSR     GET_CUR_SEQ_DIR      ;POINT...
+               MOVE    Q_TIME_DENOM(A0),RAW_DENOMINATOR    ;...AND COPY
+
+CLICKS_DIS_BAR         ; CONVERT FROM RAW_DENOMINATOR TO CLICKS IN THIS DENOM, MULT BY NUMERATOR
+; TO GET CLICKS THIS BAR.
+               MOVE    RAW_DENOMINATOR,D0   ;GET RAW 0->7 VALUE
+               LSL     #1,D0
+               MOVE    DENOM_AECODE(PC,D0),NOW_DENOMINATOR ;GET CODED DENOM VALUE
+               MOVE    DENOM_ALICKS(PC,D0),D0    ;GET CLICKS THIS DENOM
+               MOVE    D0,CLICKS_THIS_DENOM
+               MULU    NOW_NUMERATOR,D0     ;FIND CLICKS THIS BAR
+               MOVE.L  D0,CLICKS_THIS_BAR
+               RTS
+
+
+DENOM_AECODE           ;TIME SIG DENOM - 2,4,6,8,12,16,24,32
+               HEX     2,4,6,8,0C,10,18,20
+
+DENOM_ALICKS           ;CLICKS PER ABOVE DENOMS - 48,24,16,12,8,6,4,2
+               HEX     30,18,10,0C,8,6,4,2
+
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; TIME SIG SUBFUNCTION - IF SEQUENCE UNALLOCATED, INSTALLS STRAIGHT VERSION OF THE
+;  SUBFUNCTION IN WHICH THE USER TWIDDLES HIS DO_DAH (SEE ABOVE).  IF ALLOCATED, THE
+;  USER EDITS THE BAR NUMBER, AND THE 440 RESPONDS WITH THE TIME SIG OF THAT BAR.
+;
+REC_TIME_SIG_SUB
+
+               ASC     "TIME SIG  SEQ.  "
+               ASC     " BAR:       /   "
+
+;SEQUENCE NOMBRE FIELD
+
+               DC.B    14
+               DC.B    2
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+SET_PTR
+               DC.L    REC_TIME_SIG_ACCESS
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    FIELD_END
+
+;BAR NUMBER FIELD
+
+               DC.B    21
+               DC.B    3
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    NOW_BAR
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+LO_LIMIT
+               DC.W    1
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    BAR_TIME_SIG_LIMIT
+               DC.W    EDIT+ED_VEC
+               DC.L    UPDATE_TIME_SIG
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+
+;NUMERATOR FIELD - NO EDITS, JUST STIMULUS (ABOVE)/RESPONSE
+
+               DC.B    26
+               DC.B    2
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    NOW_NUMERATOR
+               DC.W    FIELD_END
+
+;DENOMINATOR FIELD.  NO EDITS, JUST LIKE NUMERATOR ABOVE.
+
+               DC.B    29
+               DC.B    2
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    RAW_DENOMINATOR
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    DENOM_STRINGS
+               DC.W    SUBFUN_END
+
+;02AUG
+;02AUGREC_TIME_SIG_ACCESS    ; MAINLY, POINT AT CURRENT_SEQUENCE.  IF THE SELECTED SEQUENCE HASN'T BEEN
+;02AUG; ALLOCATED, THEN FUCK THIS STUFF AND REINSTALL THE STRAIGHT VERSION OF THIS (ABOVE).
+;02AUG               ABS_LONG
+;02AUG               JSR     GET_CUR_SEQ_DIR      ;WHERE BE THAT DIRECTORY OF THE CURRENT SEQUENCE?
+;02AUG               ABS_SHORT
+;02AUG               TST     Q_STATUS(A0)         ; DO WE EXIST?
+;02AUG               BNE.S   UMMA_2               ;    IF NOT, ES COOL...
+;02AUG               MOVE.L  #TIME_SIG_SUB,CUR_SUB_BLOCK    ;ELSE, INSTALL REC_ VERSION OF US
+;02AUG               ST      SUBFUN_INSTALL
+;02AUGUMMA_2
+;02AUG               MOVE.L  #CURRENT_SEQUENCE,D0 ;POINT TO SEQ NUMBER, LIKE EXPECTED OF US.
+;02AUG               RTS
+;02AUG
+;
+;
+; ACCESS VECTOR FOR SEQUENCE NUMBER FIELD -
+; MAIN TASK IS TO RETURN POINTER TO CURRENT SEQUENCE IN D0(.L).
+; WHILE WE'RE AT IT, WE CHECK TO SEE IF THE INDICATED SEQUENCE EXISTS -
+; IF NOT, WE TRIGGER INSTALLATION OF TIME_SIG_SUB (ABOVE), WHICH APPLIES
+; TO UNBORN SEQUENCES (AND ALLOWS ADJUSTMENT OF TIME SIGNATURE VARS).
+; IF IT DOES EXIST, BIZ AZ YOOZHWUL - UNLESS WE'RE DEALING WITH THE NULL
+; SEQUENCE, WHICH (THOUGH IT ALWAYS EXISTS) CAN ALWAYS HAVE ITS TIME SIG
+; ADJUSTED (MAINLY FOR THE BENEFIT OF THE "INSERT EMPTY BARS" FEATURE OF
+; THE "INSERT" FUNCTION, WHICH IS ACHIEVED BY INSERTING FROM THIS SEQ,
+; ALLOWING INSERTION OF BARS BEARING ARBITRARY TIME SIGNATURES).
+;
+REC_TIME_SIG_ACCESS
+               JSR     GET_CUR_SEQ_DIR      ;A0 POINTS TO SEQ DIR BLOCK -
+               TST     Q_STATUS(A0)         ;DOES THIS SEQ EXIST?
+               BEQ.S   RTSA_20              ;BRANCH IF NOT, INSTALL THE OTHER BROTHER.
+               CMP     #99,CURRENT_SEQUENCE ;IT EXISTS, BUT - ARE WE LOOKING AT THE NULL SEQUENCE?
+               BNE.S   RTSA_40              ;BRANCH IF NOT - FORWARD WE SURGE.
+RTSA_20
+               MOVE.L  #TIME_SIG_SUB,CUR_SUB_BLOCK    ;ELSE, INSTALL OUR BROTHER SUBFUNCTION.
+               ST      SUBFUN_INSTALL
+RTSA_40
+               MOVE.L  #CURRENT_SEQUENCE,D0
+RTSA_EXIT
+               RTS
+;
+;
+;
+BAR_TIME_SIG_LIMIT     ; UPPER LIMIT ON BAR TO LOOK AT IS NUMBER OF BARS IN THIS SEQEUNCE (+ 1,
+; IF THERE BE ANY EXCESS).
+               JSR     GET_CUR_SEQ_DIR      ;POINT TO OUT PUPPY'S DIRECTORY
+               MOVE    Q_TOTAL_BARS(A0),PARAM_HI_LIM  ;LOAD UP MAX BAR NOMBRE.
+;
+;21JUL               TST     Q_XS_BEATS(A0)       ;ANY EXCESS?
+;21JUL               BEQ.S   UMMA_3               ;    IF NOT, THEN GO...
+;21JUL               ADDQ    #1,PARAM_HI_LIM      ;         ELSE, ADD ONE TO MAKE UP FOR HIM/IT.
+;21JULUMMA_3
+;                      (SEE EPITAPH FOR Q_XS_BEATS IN Q_BLK_EQU.)
+;
+               RTS
+
+
+UPDATE_TIME_SIG        ; FIND BAR IN QUESTION, FIND IT'S TIME SIG, AND LOAD IT.
+;
+               JSR     STOP_THE_SEQUENCER   ;MAKE SURE SEQUENCER IS NOT RUNNING.
+               TST     NOW_SEQ_STATUS       ;IF CHOSEN SEQUENCE DOES NOT EXIST
+               BEQ     SPLASH_1             ;    THEN DO NOT LOOK THROUGH IT
+
+               MOVE    #2300H,SR            ;FIRST - SINCE WE TAKE AWHILE, AT LEAST BLOCK REALTIME.
+               MOVE    CURRENT_SEQUENCE,D0  ; NEXT - POINT TO THE SEQ WE BE WORKING ON
+               JSR     SEQ_NDRD_SETUP       ;  SET UP FOR A NONDESTRUCTIVE READ
+
+SEARCH_LOOP_2
+               JSR     SEQ_NDSTR_READ       ;READ FIRST WORD - PUT IN D7
+
+TIME_SIG_SEARCH_LOOP
+               MOVE    D7,D0                ;MAKE A COPY
+               ANDI    #0FH,D0              ;MASK - LOOKING FOR BAR MARKERS
+               CMP     #8,D0                ; IS THIS A BAR MARKER?
+               BNE.S   SEARCH_ONWARDS       ;    IF NOT, LOOK FOR ONE
+                                            ;         ELSE, EXTRACT TIME SIG
+               LSR.B   #4,D7
+               MOVE.B  D7,RAW_DENOMINATOR+1
+               LSR     #8,D7
+               MOVE    D7,NOW_NUMERATOR
+
+               JSR     SEQ_NDSTR_READ       ;         GET 2nd WORD - BAR NOMBRE, NUMERATOR
+
+               CMP     NOW_BAR,D7           ;THE BAR WE'RE LOOKING FOR?
+               BNE     SEARCH_LOOP_2        ;    IF NOT, LOOK ON FURTHER...
+                                            ;         ELSE, TA DA!  EXTRACT TIME SIG.
+               BSR     CLICKS_DIS_BAR       ;TURN INTO CLICKS_THIS_BAR, FOR THE HELL OF IT
+SPLASH_1
+               MOVE    #2000H,SR            ;RE-FREE INTERRUPTS
+               RTS                          ;     AND GET US GONE.
+
+
+SEARCH_ONWARDS
+               JSR     SEQ_NDRD_EATER            ;GET FULLY RID OF THIS UNWANTED PIECE OF DATA
+               BRA     TIME_SIG_SEARCH_LOOP ;    CONTINUE THE SEARCH.
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; NUMBER OF BARS & XTRA BEATS SUBFUNCTION - IF SEQUENCE UNALLOCATED, ENTER LED BLINKS
+; BEGGING USER TO ALLOCATE US (USES TIME SIG DECIDED ON ABOVE).  IF ALLOCATED, FLICKS
+; OVER TO A DISPLAY-ONLY SUBFUNCTION.
+;
+MEASURES_SUB
+;
+;21JUL               ASC     "          SEQ.  "
+;21JUL               ASC     "BARS:    XTRA:  "
+;
+               ASC     "          SEQ.  "
+               ASC     "TOTAL BARS: bbb "
+;
+;                      (SEE EPITAPH FOR Q_XS_BEATS IN Q_BLK_EQU.)
+
+;NAME FIELD - NO EDITS
+
+               DC.B    0
+               DC.B    8
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+SET_PTR
+               DC.L    ZERO_VAL
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_SEQ_NAME
+               DC.W    FIELD_END
+
+;SEQUENCE NOMBRE FIELD
+
+               DC.B    14
+               DC.B    2
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+SET_PTR
+               DC.L    MEAS_ACCESS
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+HI_LIMIT
+               DC.W    98
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    EDIT+ENTR_VEC
+               DC.L    ALLOCATE_SEQ
+               DC.W    FIELD_END
+
+;BARS FIELD
+
+               DC.B    28
+               DC.B    3
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CR_BAR
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+LO_LIMIT
+               DC.W    1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    999
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ENTER_FLASH
+               DC.W    EDIT+ED_VEC
+               DC.L    UPDATE_TOTAL_BARS
+               DC.W    EDIT+ENTR_VEC
+               DC.L    ALLOCATE_SEQ
+;21JUL               DC.W    FIELD_END
+               DC.W    SUBFUN_END
+;
+;
+;21JUL;XTRAS OF DENOMINATOR FIELD
+;21JUL
+;21JUL               DC.B    30
+;21JUL               DC.B    2
+;21JUL               DC.W    ACCESS+WORD
+;21JUL               DC.W    ACCESS+SET_PTR
+;21JUL               DC.L    MEAS_EXCESS_ACCESS
+;21JUL               DC.W    EDIT+CUSTOMIZE
+;21JUL               DC.L    EXCESS_LIMIT
+;21JUL               DC.W    EDIT+ED_VEC
+;21JUL               DC.L    UPDATE_EXCESS
+;21JUL               DC.W    EDIT+ENTR_VEC
+;21JUL               DC.L    ALLOCATE_SEQ
+;21JUL               DC.W    SUBFUN_END
+;21JUL
+;                      (SEE EPITAPH FOR Q_XS_BEATS IN Q_BLK_EQU.)
+
+
+NO_SEQ_CREATE_SCREEN
+               ASC     "CANNOT CREATE - "
+               ASC     "NEED MORE MEMORY"
+
+
+WRITE_SEQ_NAME         ; THROW THE NAME UP ON THE LCD.
+               JSR     GET_CUR_SEQ_DIR      ;POINT TO CURRENT_SEQUENCE'S DIRECTORY
+               LEA     Q_NAME(A0),A0        ; POINT TO NAME (POINTLESS EXERCISE - FIRST ADDRESS)
+               MOVE.L  A0,DISP_STRNG_PTR   ;  LOAD AS WHERE STRING IS WE WANT TO DISPLAY
+               ABS_LONG
+               JMP     WRITE_PARAM_STRING   ;   PRINT IT.
+               ABS_SHORT
+
+
+MEAS_ACCESS            ; IS CURRENT SEQ ALLOCATED YET?  IF SO, SWITCH TO A DISPLAY-ONLY SUBFUNCTION.
+               CMP     #99,CURRENT_SEQUENCE ;IF JOKER IN THE NULL_SEQ
+               BNE.S   CHROME_111           ;    THEN POP HIM DOWN  - CAN'T RENAME
+               CLR     CURRENT_SEQUENCE
+CHROME_111
+               JSR     GET_CUR_SEQ_DIR      ;LOOK AT DIRECTORY
+               TST     Q_STATUS(A0)         ; MAKE  The Test.
+               BEQ.S   UMMA_4               ;    IF UNALLOCATED, WE BELONG WHERE WE ARE.
+               MOVE.L  #REC_MEASURES_SUB,CUR_SUB_BLOCK
+               ST      SUBFUN_INSTALL
+UMMA_4
+               MOVE.L  #CURRENT_SEQUENCE,D0 ;POINT TO SEQ_NOMBRE - REASON WE'RE HERE.
+               RTS
+
+;21JUL
+;21JULMEAS_EXCESS_ACCESS     ; WRITE EXCESS INTO THIS DIRECTORY.  EXCESS IN UNITS OF CURRENT DENOMINTOR.
+;21JUL               ABS_LONG
+;21JUL               JSR     GET_CUR_SEQ_DIR
+;21JUL               ABS_SHORT
+;21JUL               LEA     Q_XS_BEATS(A0),A0
+;21JUL               MOVE.L  A0,D0
+;21JUL               RTS
+;21JUL
+;                      (SEE EPITAPH FOR Q_XS_BEATS IN Q_BLK_EQU.)
+
+;21JUL
+;21JULEXCESS_LIMIT   ; EXCESS IS NUMBER OF XTRA DENOMINATORS (2's, 4's, ETC.).  THEREFORE, IS LIMITED
+;21JUL; BY OUR NUMERATOR.
+;21JUL               MOVE    NOW_NUMERATOR,PARAM_HI_LIM
+;21JUL                ABS_LONG
+;21JUL               JSR     SET_ENTER_FLASH      ;FLASH THE ENTER LED
+;21JUL                ABS_SHORT
+;21JUL               RTS
+;21JUL
+;                      (SEE EPITAPH FOR Q_XS_BEATS IN Q_BLK_EQU.)
+;
+;
+UPDATE_TOTAL_BARS      ; COPY BAR COUNT FROM VARIABLE TOTAL_BARS TO THE DIRECTORY
+               JSR     GET_CUR_SEQ_DIR
+               MOVE    CR_BAR,Q_TOTAL_BARS(A0)
+               MOVE    #1,NOW_BAR
+               CLR     NOW_CLICK
+               RTS
+
+;21JUL
+;21JULUPDATE_EXCESS          ; COPY EXCESS COUNT IN DIRECTORY TO VARIABLE RAW_EXCESS.
+;21JUL               ABS_LONG
+;21JUL               JSR     GET_CUR_SEQ_DIR
+;21JUL               ABS_SHORT
+;21JUL               MOVE    Q_XS_BEATS(A0),RAW_EXCESS
+;21JUL               RTS
+;21JUL
+;                      (SEE EPITAPH FOR Q_XS_BEATS IN Q_BLK_EQU.)
+;
+;
+;
+; THE USER WANTS TO GIVE BIRTH TO A NEW SEQUENCE!  GREAT!!
+; FIRST MAKE SURE WE WILL LEAVE AT LEAST TWO SEQ MEM BLOCKS FREE -
+; IF NOT, WE WON'T BE ALLOWED TO RECORD ANYWAY, SO BAIL OUT.
+; THEN WHAT WE HAVE TO DO IS CREATE A SEQUENCE CONSISTING SOLELY OF BAR
+; MARKERS WITH THE TIME SIGNATURE THE USER HAS SELECTED, IN AN AMOUNT
+; EQUAL TO THE NUMBER OF BARS WHICH HAS BEEN DIALED IN.
+;
+;21JUL;
+;21JUL; IF EXCESS BEATS ARE CALLED OUT, CREATE A BAR FOR THEM AT THE END.
+;21JUL;
+;                      (SEE EPITAPH FOR Q_XS_BEATS IN Q_BLK_EQU.)
+;
+; FOLLOW ALL OF THIS WITH A BAR MARKER, FOLLOWED BY END-OF-SEQ MARKER.
+; TACK ON A NAME, DIDDLE SEQUENCE DIRECTORY AND MEMORY BLOCK LIST TO
+; JIVE WITH THE NEW SEQUENCE RAM REALITY.
+;
+ALLOCATE_SEQ
+               JSR     SEQ_RUNNING_TEST     ;IS SEQUENCER RUNNING? (NOT COOL TO AUTO-STOP IT ....)
+               BNE     CANT_STOP_NOW        ;EXIT IF YES (MESSAGE IS IN LCD ....)
+;
+FORCED_ALLOCATE
+                ABS_LONG
+               JSR     WIPE_OUT_ENTER       ;IN CASE WE GO TO "NO ROOM" SCREEN ....
+                ABS_SHORT
+               JSR     GET_CUR_SEQ_DIR      ;A0 POINTS TO DIRECTORY ENTRY FOR NEW SEQUENCE.
+               MOVE.L  #SEQ_DIR_99,A1       ;A1 POINTS TO NULL SEQUENCE DIRECTORY ENTRY.
+;
+               MOVE    CR_BAR,TOTAL_BARS    ;FETCH "NUMBER OF BARS" SETTING FOR SEQUENCE CREATION.
+               BNE.S   FRAME_0              ; IF NON-ZERO, COOL
+               MOVE    #4,TOTAL_BARS        ;    ELSE, LOAD A DEFAULT
+FRAME_0
+               MOVE    TOTAL_BARS,D1        ;FIRST - ROOM FOR JUST THE BAR MARKERS (4 BYTES EACH)?
+;
+;21JUL               TST     RAW_EXCESS           ;ADD ONE BAR IF ANY EXCESS BEATS TO BE INCLUDED.
+;21JUL               BEQ.S   UMMA_5
+;21JUL               ADDQ    #1,D1
+;21JULUMMA_5
+;                      (SEE EPITAPH FOR Q_XS_BEATS IN Q_BLK_EQU.)
+;
+               ADDQ    #1,D1                ;ADD ONE MORE FOR END MARKER (ACTUALLY ONLY TWO BYTES).
+
+               MULU    #6,D1                ;EACH BAR TAKES UP 6 BYTES - 4 FOR THE BAR_MARKER,
+                                            ; 2 FOR THE UART ADVANCE/DELAY MESSAGE.  SEE HOW
+                                            ; MANY BYTES WE BE TALKIN'
+
+               MOVE    D1,D0                ;SEE IF WE HIT A ROUND MULTIPLE OF 1K-BYTES
+               AND     #3FFH,D0
+               BEQ.S   NUM_NUTZ             ;WE DID, SO LEVA LONE.
+               ADD     #1024,D1             ;ELSE, ROUND UP COUNT OF BARS WE'LL NEED BY 1 BLOCK.
+NUM_NUTZ
+               LSR     #8,D1                ;DIVIDE BY 256 TO GET NUMBER OF 1Kbyte BLOCKS WE NEED -
+               LSR     #2,D1                ; UH, 1024 BYTES PER BLOCK
+;
+               MOVE    Q_MEM_USED(A1),D2    ;FETCH NUMBER OF BLOCKS IN FREE RAM STRING,
+               SUB     D1,D2                ;SUBTRACT THE NUMBER OF BLOCKS WE'D USE FOR NEW SEQ -
+               CMP     #2,D2                ;GOTTA LEAVE AT LEAST TWO FREE BLOCKS, OR NO DICE.
+               BLT     NO_ROOM_FOR_SEQ      ;BRANCH IF NO DICE, NO WAY, UH-UH, FORGET IT, GO FISH.
+;
+               MOVE    Q_START_BLK(A1),D2   ;ELSE, COOL - PULL 1 BLOCK FROM HEAD OF NULL SEQ -
+               MOVE    D2,Q_START_BLK(A0)   ;THIS BLOCK BECOMES NEW SEQUENCE START BLOCK - FOR NOW.
+                                            ;NOTE - THIS IS DONE AS FORMALITY TO SATISFY CONDITIONS
+                                            ;FOR USE OF SEQ1_DRD_SETUP / SEQ_WRITE TO PUMP INITIAL
+                                            ;DATA INTO NEW SEQUENCE - THIS BLOCK NEVER ACTUALLY HAS
+                                            ;ANY DATA WRITTEN INTO IT, AND WHEN THE DUST SETTLES,
+                                            ;IT'LL WIND UP BACK AT THE END OF THE FREE MEMORY LIST.
+                                            ;CONFUSED?  TRY PORING OVER THE ROUTINES IN SEQSUBS -
+                                            ;YOU DON'T KNOW THE MEANING OF CONFUSION, BUD.
+;
+               MOVE    #0FFFFH,Q_STATUS(A0) ;MARK NEW SEQUENCE AS "NOT EMPTY."
+               MOVE    TOTAL_BARS,Q_TOTAL_BARS(A0)    ;SET TOTAL NUMBER OF BARS,
+               MOVE    #1,Q_RPT_START(A0)             ;SET UP DEFAULT PLAYBACK REPEAT LOOP LIMITS -
+               MOVE    TOTAL_BARS,Q_RPT_END(A0)
+               ST      Q_RPT_COUNT(A0)                ;INITIALLY, INFINITE LOOP ON PLAYBACK.
+;
+                                            ;D2 IS INDEX OF NEW SEQUENCE'S ONLY MEM BLOCK (SO FAR):
+               MOVE    D2,A2                ;ACCESS ITS LINK POINTER -
+               ADD     A2,A2                ;COPY INDEX OF BLOCK IT LINKS TO AS NEW FIRST FREE BLK.
+               MOVE    SEQ_BLOCK_LIST(A2),Q_START_BLK(A1)
+               MOVE    #-1,SEQ_BLOCK_LIST(A2)    ;BREAK ITS LINK TO FREE MEMORY STRING -
+                                                 ;IT'S NOW THE END OF NEW SEQUENCE'S MEMORY STRING.
+               MOVE.L  #UNNAMED_STRING,A2   ;NOW, JUST JAM IN A POINTLESS KINDA NAME ....
+               MOVE.L  (A2)+,Q_NAME(A0)
+               MOVE.L  (A2),Q_NAME+4(A0)
+;
+;
+;
+; NEXTORDABIZNISS - LOAD INITIAL DATA INTO THE SEQUENCE ITSELF:
+;
+               JSR     SEQ1_DRD_SETUP       ;SET UP FOR WRITE AND (BOGUS) DESTRUCTIVE READ,
+                                            ;AS THOUGH WE WERE GOING TO RECORD INTO SEQUENCE.
+;
+;
+; CREATE PROTOTYPICAL BAR MARKER.  BAR MARKERS LOOK LIKE THIS:
+;              aaaaaaaa bbb 1000    aaaaaaaa = NUMERATOR,  bbb = RAW_DENOMINATOR (0->7)
+;              cccccccccccccccc          c's = BAR NUMBER
+;
+               MOVE    NOW_NUMERATOR,D7     ;LOAD UP HIGH WORD - START WITH NUMERATOR
+               BNE.S   FRAME_1              ; IF NON-ZERO, COOL
+               MOVEQ   #4,D7                ;    ELSE, LOAD A DEFAULT
+FRAME_1
+               LSL     #8,D7                ; ROTATE INTO PLACE
+               MOVE.B  RAW_DENOMINATOR+1,D7 ;LOAD UP RAW_DENOMINATOR
+               LSL.B   #4,D7                ; DENOM ROTATED INTO PLACE
+               OR      #8,D7                ;  MASK ON ID
+
+               SWAP    D7                   ; NOW WORK ON LOWER WORD
+
+               MOVEQ   #1,D6                ;INIT BAR NOMBRE
+               MOVE    #1,D7                ; MASK INITIAL BAR NOMBRE INTO THE FIRST BAR MARKER
+
+                                            ;LOOP POINT TO SPREAD THE NEW WORD...
+PROPAGATE_BAR_MARKS
+               SWAP    D7                   ;WORDS PROPERLY ORDERED - HIGH WORD WRITTEN FIRST
+               JSR     SEQ_WRITE
+               SWAP    D7
+               JSR     SEQ_WRITE
+               MOVE.L  D7,D6                ;SAVE BAR_MARKER ASIDE...
+               MOVE    #820CH,D7            ; WRITE DISABLED UART TIMING MARKER
+               JSR     SEQ_WRITE
+               MOVE.L  D6,D7                ;  BRING BACK BAR_MARKER
+;
+               ADDQ    #1,D7                ;INCREMENT BAR NUMBER (IN LOW WORD)
+               CMP     TOTAL_BARS,D7        ; SEE IF HAVE WRITTEN ENOUGH YET
+               BGT.S   UMMA_7               ;    IF HAVE EXCEEDED TOTAL_BARS, CHECK IF AN EXCESS BAR
+               BRA     PROPAGATE_BAR_MARKS  ;         ELSE, DO ANOTHER
+;
+UMMA_7
+;
+;
+;21JUL               TST     RAW_EXCESS           ;SUPPOSED TO BE A BAR FOR EXCESS BEATS?
+;21JUL               BEQ.S   UMMA_8               ;    IF NOT, THEN DONE CREATING
+;21JUL
+;21JUL               SWAP    D7                   ;         ELSE, CREATE A SHORT BAR
+;21JUL               ROR     #8,D7                ;ROTATE AROUND TO WORD ON NUMERATOR
+;21JUL               MOVE.B  RAW_EXCESS+1,D7      ; MOVE IN EXCESS AS NEW NUMERATOR
+;21JUL               ROR     #8,D7                ;  ROTATE BACK
+;21JUL;
+;21JUL                ABS_LONG
+;21JUL               JSR     SEQ_WRITE            ;AS IT SEZ ABOVE - PROPERLY, AHEM, TO START WRITING
+;21JUL               SWAP    D7
+;21JUL               JSR     SEQ_WRITE
+;21JUL               MOVE.L  D7,D6                ;SAVE BAR_MARKER ASIDE...
+;21JUL               MOVE    #820CH,D7            ; WRITE DISABLED UART TIMING MARKER
+;21JUL               JSR     SEQ_WRITE
+;21JUL               MOVE.L  D6,D7                ;  BRING BACK BAR_MARKER
+;21JUL                ABS_SHORT
+;21JUL               ADDQ    #1,D7                ;BUMP BAR NOMBRE FOR END_OF_SEQ MARKER
+;
+;                      (SEE EPITAPH FOR Q_XS_BEATS IN Q_BLK_EQU.)
+;
+;
+;
+; NOW, ONE MORE BAR MARKER TO PRECEDE THE END-OF-SEQUENCE MARKER:
+;
+UMMA_8
+               SWAP    D7                   ;USE FIRST WORD OF 'LAST' BAR_MARKER
+               JSR     SEQ_WRITE            ;WRITE...
+               SWAP    D7
+               JSR     SEQ_WRITE            ;WRITE TIME_MARKER
+               MOVE.L  D7,D6                ;SAVE BAR_MARKER ASIDE...
+               MOVE    #820CH,D7            ; WRITE DISABLED UART TIMING MARKER
+               JSR     SEQ_WRITE
+               MOVE.L  D6,D7                ;  BRING BACK BAR_MARKER
+BADGE_58
+               MOVEQ   #0FH,D7              ;FINAL TASK - CAP SEQUENCE WITH AN END_OF_SEQ
+               JSR     SEQ_WRITE
+               JSR     SEQ_TURNAROUND       ;REGROOVE LINKS, START-BLK PTRS FOR NEW SEQ, NULL SEQ.
+               JSR     UPDATE_SEQ_SIZE      ;UPDATE MEMORY-USAGE FIGURES FOR BOTH.
+;
+;08DEC;
+;08DEC               MOVE    #-1,FORMER_SEQUENCE  ;REDISCOVER WHAT THIS SEQUENCE IS ALL ABOUT (IN BACKGROUND)
+;08DEC;
+;08DEC;        PROBLEMS - THIS APPROACH BLOCKS POT RANGE FROM GETTING AUTO-REGROOVED - IN THE CASE
+;08DEC;        WHERE WE WERE IN BARS FIELD (RANGE 0-999), WE END UP IN SEQUENCE NUMBER FIELD
+;08DEC;        RANGE (0-98) WITH POT STILL THINKING RANGE IS 1-999 - NOT GOOD AT ALL.
+;08DEC;        CONFUSED?  YA JUS' MUS' BELIEVE, MON.
+;
+               MOVE    CURRENT_SEQUENCE,D0  ;TAKE CARE OF NEW SEQUENCE HOUSEWARMING THIS WAY,
+               JSR     SEQ_CHANGE_SUB
+               ST      SUBFUN_INSTALL       ;TAKE CARE OF SCREEN TRANSITION LIKE SO.
+;
+               RTS                          ;DONE!!!!!!
+;
+;
+;
+; SORRY, THERE IS NO ROOM AT THE INN .... TELL USER: NOT ENOUGH MEMORY
+; LEFT TO ALLOCATE REQUESTED SEQUENCE.
+;
+NO_ROOM_FOR_SEQ
+               MOVE.L  #NO_SEQ_CREATE_SCREEN,A1  ;LOAD UP BAD NEWS SCREEN
+               ABS_LONG
+               JSR     DISP_SCREEN
+;
+CANT_STOP_NOW
+               JMP     USER_STALL           ;HOLD HERE UNTIL THE USER DOES SOMETING ELSE.
+               ABS_SHORT
+;
+;
+UNNAMED_STRING
+               ASC     "unnamed "
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             NUMBER OF BARS & XTRA BEATS SUBFUNCTION - IF SEQUENCE UNALLOCATED, FLICKS OVER TO
+;              ABOVE SUBFUNCTION, ASKING USER TO ALLOCATE US.  IF NOT, STAYS HERE TO JUST DISPLAY
+;              THIS SEQ's LENGTH.
+;
+REC_MEASURES_SUB
+;
+;21JUL               ASC     "          SEQ.  "
+;21JUL               ASC     "BARS:    XTRA:  "
+;
+               ASC     "          SEQ.  "
+               ASC     "TOTAL BARS: bbb "
+;
+;                      (SEE EPITAPH FOR Q_XS_BEATS IN Q_BLK_EQU.)
+;
+;NAME FIELD - NO EDITS
+
+               DC.B    0
+               DC.B    8
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+SET_PTR
+               DC.L    ZERO_VAL
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_SEQ_NAME
+               DC.W    FIELD_END
+
+;SEQUENCE NOMBRE FIELD
+
+               DC.B    14
+               DC.B    2
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+SET_PTR
+               DC.L    REC_MEAS_ACCESS
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+HI_LIMIT
+               DC.W    98
+               DC.W    FIELD_END
+
+;BARS FIELD
+
+               DC.B    28
+               DC.B    3
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+SET_PTR
+               DC.L    MEAS_BAR_ACCESS
+               DC.W    DISPLAY+NO_ZERO_BLANK
+;21JUL               DC.W    FIELD_END
+               DC.W    SUBFUN_END
+
+;21JUL;
+;21JUL;XTRAS OF DENOMINATOR FIELD
+;21JUL
+;21JUL               DC.B    30
+;21JUL               DC.B    2
+;21JUL               DC.W    EDIT+NO_EDITS
+;21JUL               DC.W    ACCESS+WORD
+;21JUL               DC.W    ACCESS+SET_PTR
+;21JUL               DC.L    MEAS_EXCESS_ACCESS
+;21JUL               DC.W    SUBFUN_END
+;21JUL
+;                      (SEE EPITAPH FOR Q_XS_BEATS IN Q_BLK_EQU.)
+;
+;
+MEAS_BAR_ACCESS        ; POINT INTO DIRECTORY TO FIND BARS IN THIS SEQ
+               JSR     GET_CUR_SEQ_DIR      ;TALKIN' ABOUT THAT CURRENT_SEQUENCE
+               LEA     Q_TOTAL_BARS(A0),A0
+               MOVE.L  A0,D0
+               RTS
+
+
+REC_MEAS_ACCESS        ; IS CURRENT SEQ ALLOCATED YET?  IF NOT, SWITCH TO A ABOVE SUBFUNCTION.
+               CMP     #99,CURRENT_SEQUENCE ;IF JOKER IN THE NULL_SEQ
+               BNE.S   REC_MEAS_0           ;    THEN POP HIM DOWN - CAN'T RENAME
+               CLR     CURRENT_SEQUENCE
+REC_MEAS_0     JSR     GET_CUR_SEQ_DIR      ;LOOK AT DIRECTORY
+               TST     Q_STATUS(A0)         ; MAKE  The Test.
+               BNE.S   UMMA_9               ;    IF ALLOCATED, WE BELONG WHERE WE ARE.
+               MOVE.L  #MEASURES_SUB,CUR_SUB_BLOCK    ;ELSE, FLIP CUBFUNCTIONS
+               ST      SUBFUN_INSTALL
+UMMA_9
+               MOVE.L  #CURRENT_SEQUENCE,D0 ;POINT TO SEQ_NOMBRE - REASON WE'RE HERE.
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;
+SEQ_REPEAT_SUB
+               ASC     "SEQ.qq  REPT:rrr"
+               ASC     "BARS bbb --> eee"
+;
+               DC.B    4                    ;SEQUENCE NUMBER FIELD.
+               DC.B    2
+               DC.W    ACCESS+SET_PTR
+               DC.L    SEQ_NUM_ACC
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+LINKED
+               DC.W    EDIT+HI_LIMIT
+               DC.W    98
+               DC.W    FIELD_END
+;
+               DC.B    13                   ;NUMBER-OF-REPEATS FIELD.
+               DC.B    3
+               DC.W    ACCESS+SET_PTR
+               DC.L    RPT_CNT_ACCESS
+               DC.W    DISPLAY+MAX_STRNG
+               DC.L    INF_RPT_STRING
+               DC.W    DISPLAY+MAX_LIMIT
+               DC.W    255
+               DC.W    EDIT+HI_LIMIT
+               DC.W    255
+               DC.W    FIELD_END
+;
+               DC.B    21                   ;STARTING BAR NUMBER.
+               DC.B    3
+               DC.W    ACCESS+SET_PTR
+               DC.L    RPT_ST_ACCESS
+               DC.W    ACCESS+WORD
+               DC.W    EDIT+LO_LIMIT
+               DC.W    1
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    RPT_ST_HI_LIMIT
+               DC.W    FIELD_END
+;
+               DC.B    29                   ;FINAL BAR NUMBER.
+               DC.B    3
+               DC.W    ACCESS+SET_PTR
+               DC.L    RPT_END_ACCESS
+               DC.W    ACCESS+WORD
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    RPT_END_LIMITS
+               DC.W    SUBFUN_END
+;
+;
+RPT_ST_ACCESS
+               JSR     GET_CUR_SEQ_DIR      ;A0 POINTS TO CURRENT_SEQUENCE DIRECTORY BLOCK.
+               ADD     #Q_RPT_START,A0      ;OFFSET FOR STARTING BAR NUMBER.
+               MOVE.L  A0,D0                ;RETURN POINTER IN D0.L -
+               RTS
+;
+;
+RPT_END_ACCESS
+               JSR     GET_CUR_SEQ_DIR      ;A0 POINTS TO CURRENT_SEQUENCE DIRECTORY BLOCK.
+               ADD     #Q_RPT_END,A0        ;OFFSET FOR FINAL LOOP BAR NUMBER.
+               MOVE.L  A0,D0                ;RETURN POINTER IN D0.L -
+               RTS
+;
+;
+RPT_CNT_ACCESS
+               JSR     GET_CUR_SEQ_DIR      ;A0 POINTS TO CURRENT_SEQUENCE DIRECTORY BLOCK.
+               ADD     #Q_RPT_COUNT,A0      ;OFFSET FOR REPEAT COUNT SETTING.
+               MOVE.L  A0,D0                ;RETURN POINTER IN D0.L -
+               RTS
+;
+;
+; LOOP STARTING BAR MUST BE LESS THAN OR EQUAL TO LOOP FINAL BAR.
+;
+RPT_ST_HI_LIMIT
+               JSR     GET_CUR_SEQ_DIR      ;A0 POINTS TO CURRENT_SEQUENCE DIRECTORY BLOCK.
+               MOVE    Q_RPT_END(A0),PARAM_HI_LIM
+               RTS
+;
+;
+; LOOP FINAL BAR MUST BE GREATER THAN OR EQUAL TO LOOP STARTING BAR,
+; LESS THAN OR EQUAL TO SEQUENCE FINAL BAR.
+;
+RPT_END_LIMITS
+               JSR     GET_CUR_SEQ_DIR      ;A0 POINTS TO CURRENT_SEQUENCE DIRECTORY BLOCK.
+               MOVE    Q_RPT_START(A0),PARAM_LO_LIM
+               MOVE    Q_TOTAL_BARS(A0),PARAM_HI_LIM
+               RTS
+;
+;
+INF_RPT_STRING
+               DC.B    13
+               DC.B    3
+               ASC     "INF"
+               EVEN
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; FIND OUT HOW MUCH MEMORY THIS SEQUENCE TAKES UP.  REFERENCING SEQUENCE 99 SHOWS HOW
+;  MUCH FREE SEQUENCE MEMORY THERE IS.  ALWAYS ROUND THE PERCENTAGES UP, IN CASE SOME
+;  CHEESEBOX USER TRIES TO ADD UP PERCENTAGES PER SEQUENCE AND CLAIMS THERE'S MEMORY
+;  LEFT THAT THE 440's NOT LETTING HIM/HER USE.
+;
+SEQ_MEM_STAT_SUB
+               ASC     "          SEQ.  "
+               ASC     "MEMORY USED:   %"
+
+;NAME FIELD - NO EDITS
+
+               DC.B    0
+               DC.B    8
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+SET_PTR
+               DC.L    ZERO_VAL
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_SEQ_NAME
+               DC.W    FIELD_END
+
+;SEQUENCE NOMBRE FIELD
+
+               DC.B    14
+               DC.B    2
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CURRENT_SEQUENCE
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    DISPLAY+MAX_LIMIT
+               DC.W    99
+               DC.W    DISPLAY+MAX_STRNG
+               DC.L    MEM_ALL_STRING
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+
+;MEMORY USED FIELD
+
+               DC.B    28
+               DC.B    3
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+SET_PTR
+               DC.L    CALC_MEM_USED
+               DC.W    SUBFUN_END
+
+
+MEM_ALL_STRING
+               DC.B    14
+               DC.B    14
+               ASC     "xxMEMORY FREE:"
+               EVEN
+
+CALC_MEM_USED          ; CACLULATE MEMORY USED, IN PERCENTAGE (ROUNDED UP).  DISPLAY.
+               JSR     GET_CUR_SEQ_DIR      ;POINT TO CURRENT SEQ's DIRECTORY
+               MOVE    Q_MEM_USED(A0),D0    ;GET NUMBER OF BLOCKS WE USE.
+               EXT.L   D0                   ; (EXTEND, FOR UPCOMING DIVIDE.)
+               DIVU    #4,D0                ;DIVIDE BY 400 TOTAL BLOCKS, MULT BY 100 FOR PERCENTAGE.
+               SWAP    D0                   ;IS THERE ANY REMAINDER AT ALL?
+               CMP     #99,CURRENT_SEQUENCE ;    (UNLESS NULL_SEQ - DON'T ROUND) UP.
+               BEQ.S   UMMA_10
+               TST     D0
+               BEQ.S   UMMA_10              ;    IF NOT, DO NOT ROUND UP
+               ADD.L   #10000H,D0           ;         ELSE, ADD ONE (REMEBER - % IN UPPER WORD HERE)
+UMMA_10
+               SWAP    D0                   ;REORIENT D0
+               MOVE    D0,DI_TEMP_1_B       ;STORE
+               MOVE.L  #DI_TEMP_1_B,D0      ;POINT TO, TO DISPLAY
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; SEQUENCE NAME EDIT -
+; NOTE:  NAME-EDIT SUBROUTINES ARE IN SYSFUNS2 UNDER BANK_NAME_SUB.
+;
+SEQ_NAME_SUB
+               ASC     "SEQ.nn          "
+               ASC     " EDIT SEQ NAME  "
+;
+               DC.B    4
+               DC.B    2
+               DC.W    ACCESS+SET_PTR
+               DC.L    SEQ_NUM_ACC
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+HI_LIMIT
+               DC.W    98
+               DC.W    EDIT+LINKED
+               DC.W    EDIT+CURS_LFT        ;SCROLL FROM SEQ NUMBER
+               DC.L    GO_TO_NEXT_FIELD     ;TO FIRST NAME CHAR FIELD
+               DC.W    FIELD_END            ;WITH EITHER SCROLL BUTTON.
+;
+               DC.B    0                    ;NAME-FETCH FIELD - INVISIBLE.
+               DC.B    0
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+SET_PTR
+               DC.L    FETCH_SEQ_NAME
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    NOTHINGNESS
+               DC.W    FIELD_END
+;
+               DC.B    8                    ;NAME FIELD.
+               DC.B    8
+               DC.W    ACCESS+SET_PTR
+               DC.L    SET_NAME_BUF_ACC
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_NAME_BUF
+               DC.W    EDIT+NO_KEYPAD       ;SORRY, BUD.
+               DC.W    EDIT+HI_LIMIT
+               DC.W    CHAR_EDIT_LIM
+               DC.W    EDIT+CURS_RGT
+               DC.L    NAME_CURS_RIGHT
+               DC.W    EDIT+CURS_LFT
+               DC.L    NAME_CURS_LEFT
+               DC.W    EDIT+ED_VEC
+               DC.L    NOT_SAVED_WARNING
+               DC.W    EDIT+ENTR_VEC
+               DC.L    STORE_SEQ_NAME
+               DC.W    SUBFUN_END
+;
+;
+;
+; MAKE SURE WE AREN'T TRYING TO EDIT NAME OF THE NULL SEQUENCE -
+; CHANGE CURRENT_SEQUENCE VALUE IF NECESSARY.
+;
+SEQ_NUM_ACC
+               CMP     #99,CURRENT_SEQUENCE
+               BNE.S   SEQ_NUM_ACC_1
+               CLR     CURRENT_SEQUENCE
+SEQ_NUM_ACC_1
+               MOVE.L  #CURRENT_SEQUENCE,D0      ;RETURN POINTER TO CURRENT_SEQUENCE IN D0.L.
+               RTS
+;
+;
+;
+; SET A0 AS POINTER TO SEQUENCE NAME PER CURRENT_SEQUENCE:
+; SINCE THIS IS DONE AS PART OF FETCHING OR STORING A SEQUENCE NAME,
+; AS A BY-PRODUCT WE SET UP TO SETTLE ON FIRST FIELD IN SCREEN -
+; THE SEQUENCE NUMBER FIELD - TO HELP AVERT ACCIDENTAL NAME EDITS.
+;
+GET_SEQNAME_PTR
+               CLR     CUR_FLD_INDEX        ;WHEN SUBFUN INSTALLED, SETTLE ON UNIT SELECTION FIELD.
+               JMP     GET_CUR_SEQ_DIR      ;SET A0 AS POINTER TO CURRENT_SEQUENCE DIR BLOCK -
+                                            ;SEQ NAME IS AT THE BEGINNING - THEN RETURN THROUGH.
+;
+;
+;
+; FETCH NAME FROM CURRENT_SEQUENCE DIR BLOCK INTO NAME EDIT BUFFER:
+; AS A BY-PRODUCT, WE SET UP TO SETTLE ON FIRST FIELD IN SCREEN -
+; THE SEQUENCE NUMBER FIELD - TO HELP AVERT ACCIDENTAL NAME EDITS.
+;
+FETCH_SEQ_NAME
+               BSR     GET_SEQNAME_PTR      ;SET A0 AS POINTER TO NAME,
+                ABS_LONG
+               JMP     FETCH_NAME           ;RETURN THROUGH GENERAL NAME-FETCH PROCEDURE.
+                ABS_SHORT
+;
+;
+;
+; STORE BUFFERED/EDITED SEQ NAME BACK TO CURRENT_SEQUENCE DIR BLOCK:
+; AS A BY-PRODUCT, WE SET UP TO SETTLE ON FIRST FIELD IN SCREEN -
+; THE SEQUENCE NUMBER FIELD - TO HELP AVERT ACCIDENTAL NAME EDITS.
+;
+STORE_SEQ_NAME
+               ST      SUBFUN_INSTALL       ;AFTER WE'RE DONE HERE, REINSTALL SUBFUNCTION.
+               BSR     GET_SEQNAME_PTR      ;SET A0 AS POINTER TO NAME SLOT IN DIRECTORY BLOCK,
+                ABS_LONG
+               JMP     STORE_NAME_BUF       ;RETURN THROUGH GENERAL NAME-STORE PROCEDURE.
+                ABS_SHORT
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; RECORD_1_GROUP:
+;
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             TRACK TYPE SUBFUNCTION
+;
+TRACK_TYPE_SUB
+               ASC     "TRACK:    SEQ.  "
+               ASC     "MIDI->  (      )"
+
+;CURRENT TRACK FIELD
+
+               DC.B    7
+               DC.B    1
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    NOW_TRACK
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    7
+               DC.W    EDIT+ED_VEC
+               DC.L    CLOSE_OUT_TRACK
+               DC.W    FIELD_END
+
+;SEQUENCE NOMBRE FIELD
+
+               DC.B    14
+               DC.B    2
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+SET_PTR
+               DC.L    SEQ_NUM_ACC
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+HI_LIMIT
+               DC.W    98
+               DC.W    FIELD_END
+
+;UART SELECT FIELD
+
+               DC.B    22
+               DC.B    1
+               DC.W    ACCESS+DIR_PTR
+               DC.W    NOW_UART
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    AB_STRING
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    1
+               DC.W    FIELD_END
+
+;LOOPING RECORD SELECT
+
+               DC.B    25
+               DC.B    6
+               DC.W    ACCESS+DIR_PTR
+               DC.W    LOOP_RECORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    LOOP_REC_STRING
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    1
+               DC.W    SUBFUN_END
+
+
+AB_STRING
+               ASC     "AB"
+
+LOOP_REC_STRING
+               ASC     "SINGLE"
+               ASC     "LOOPED"
+
+
+CLOSE_OUT_TRACK        ; USER HATH CHANGED TRACK NUMBER - WRITE LINGERING ON's AS OFF's, START
+; FRESH.  SORRY, CAN'T/WON'T REWRITE HANGING ON's AS ON's ON THE NEW TRACK.
+                ABS_LONG
+               JSR     WRITE_NEW_P_OFFS     ;CLOSE OUT PADS
+               JSR     WRITE_NEW_M_OFFS     ;CLOSE OUT MIDI
+                ABS_SHORT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             AUTOCORRECT SUBFUNCTION
+;
+AUTOCORRECT_SUB
+               ASC     "AUTOCORRECT  #  "
+               ASC     "    (SHIFT: 0  )"
+
+;SEQUENCE NOMBRE FIELD
+
+               DC.B    14
+               DC.B    2
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+SET_PTR
+               DC.L    SEQ_NUM_ACC
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+HI_LIMIT
+               DC.W    98
+               DC.W    EDIT+ENTR_VEC
+               DC.L    FLIP_AC_TYPE
+               DC.W    FIELD_END
+
+;BASE CORRECT FIELD
+
+               DC.B    16
+               DC.B    3
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    AUTOCORRECT_TYPE
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    BASE_CORRECT_STRINGS
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    8
+               DC.W    EDIT+ED_VEC
+               DC.L    NEW_BASE_CORRECT
+               DC.W    EDIT+LINKED
+               DC.W    EDIT+ENTR_VEC
+               DC.L    FLIP_AC_TYPE
+               DC.W    FIELD_END
+
+;AUTOCORRECT TYPE FIELD - NO EDITS; TOGGLED BY ENTER SWITCH IN THIS SCREEN
+
+               DC.B    19
+               DC.B    1
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    AC_TYPE
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    PERIOD_OR_NO
+;
+               DC.W    SUBFUN_END
+;
+;
+;23JUN               DC.W    FIELD_END
+;23JUN
+;23JUN;OFFSET FIELD
+;23JUN
+;23JUN               DC.B    28
+;23JUN               DC.B    3
+;23JUN               DC.W    ACCESS+WORD
+;23JUN               DC.W    ACCESS+SIGNED
+;23JUN               DC.W    ACCESS+DIR_PTR
+;23JUN               DC.W    RAW_OFFSET
+;23JUN               DC.W    DISPLAY+NO_ZERO_BLANK
+;23JUN               DC.W    EDIT+CUSTOMIZE
+;23JUN               DC.L    SET_UP_OFFSET_LIMITS
+;23JUN               DC.W    EDIT+ED_VEC
+;23JUN               DC.L    NEW_OFFSET
+;23JUN               DC.W    EDIT+ENTR_VEC
+;23JUN               DC.L    FLIP_AC_TYPE
+;23JUN               DC.W    SUBFUN_END
+;              KISS AUTOCORRECT OFFSET G' BYE!
+;
+
+
+BASE_CORRECT_STRINGS
+               ASC     "OFF32t 3216t 16 8t 8  4t 4 "
+               EVEN
+
+
+PERIOD_OR_NO
+               ASC     " ."
+               EVEN
+
+
+NEW_BASE_CORRECT       ; HERE, WE GOTTA CLEAR OUT ANY LINGERING SWING OR OFFSET.  WHY?  BECAUSE
+; THE NEW AUTOCORRECT VALUE COULD HAVE INVALIDATED THEM (LIKE 'OFF', WITH A SWING OF 75%). ALSO
+; GOTTA LOAD THE NEW PAHSE LENGTH AND POINT TO APROPOS PAHSE TABLE.
+               CLR     SWING_AMT            ;FIRST - CLEAR OUT STUFF
+;
+;23JUN               CLR     RAW_OFFSET
+;23JUN               CLR     OFFSET_INDEX
+;              NOT USING THESE ANYMORE .... (AUTOCORRECT SHIFT BOZONS)
+
+UPDATE_AUTOCORRECT     ; (ENTER TO UPDATE RECORD PHASE STUFF IN GENERAL)
+
+               MOVE.L  #PHASE_LENGTHS,A0    ;FIRST - HOW MANY RECORD PHASE STEPS TO THIS SUCKER?
+               MOVE    AUTOCORRECT_TYPE,D0
+               LSL     #1,D0
+               MOVE    0(A0,D0),NEW_PHASE_LEN
+
+               MOVE.L  D1,-(A7)
+
+               MOVE.L  #PHASE_TABLES_TBL,A0 ;NEXT, POINT TO APROPOS PHASE TABLE
+               LSL     #1,D0                ; (LONG WORD DEFS - MUL D0 BY 4 BY NOW)
+               MOVE.L  0(A0,D0),A0          ;OKAY - SET UP BY AUTOCORRECT
+               MOVE    SWING_AMT,D1         ; NOW, TAKE SWING INTO ACCOUNT
+               LSL     #2,D1                ; (AGAIN, LONG WORD DEFS)
+               MOVE.L  0(A0,D1),NEW_PHASE_LIST  ;    TA DA!  CORRECT ONE.
+
+               MOVE.L  #SWING_PER_TBL,A0    ;FINALLY, POINT TO CORRECT LIST OF SWING PERCENTAGES
+               MOVE.L  0(A0,D0),A0
+               LSR     #1,D1                ; (JUST NEED WORD OFFSET HERE OFF OF SWING)
+               MOVE    0(A0,D1),SWING_PER   ; LOAD UP ACTUAL SWING PERCENTAGE
+
+               MOVE.L  (A7)+,D1
+               RTS
+;
+;
+;
+;
+;23JUN
+;23JUNSET_UP_OFFSET_LIMITS   ; MAXIMUM OFFSET (ROTATION OF AUTOCORRECT INTERVALS WITH RESPECT TO BAR
+;23JUN; BOUNDRY) IS PHASE_LEN/4.
+;23JUN               MOVE    NEW_PHASE_LEN,D0     ;PHASE LENGTH
+;23JUN               LSR     #1,D0
+;23JUN               MOVE    D0,PARAM_HI_LIM
+;23JUN               LSR     PARAM_HI_LIM
+;23JUN               SUB     NEW_PHASE_LEN,D0     ;+/- VALUE
+;23JUN               MOVE    D0,PARAM_LO_LIM
+;23JUN               ASR     PARAM_LO_LIM
+;23JUN               TST     AUTOCORRECT_TYPE     ;IF ANY NOT-OFF AUTO-C SET
+;23JUN               BNE.S   BROWN_1              ;    THEN ABOVE CALCS COOL
+;23JUN               CLR     PARAM_LO_LIM         ;         ELSE, ZERO OUT PARAM_LO_LIM - FALLS OUT OF
+;23JUNBROWN_1                                     ;         MATH, SINCE ALLOWING A (ROUNDED) 50% SHIFT
+;23JUN               RTS
+;23JUN
+;23JUN
+;23JUNNEW_OFFSET             ; NEW OFFSET MEANS SLIGHT ALTERATION SO AS NOT TO BE NEGATIVE.  NAMELY, IF
+;23JUN; NEGATIVE, ADD PHASE_LEN/2 (ie. -2/-1/0/1/2 BECOMES 2/3/0/1/2).
+;23JUN               MOVE    RAW_OFFSET,D0
+;23JUN               NEG     D0
+;23JUN               BPL.S   LAGOON_1
+;23JUN               LSL     #1,D0
+;23JUN               ADD     NEW_PHASE_LEN,D0
+;23JUN               LSR     #1,D0
+;23JUNLAGOON_1
+;23JUN               MOVE    D0,OFFSET_INDEX
+;23JUN               RTS
+;23JUN
+;
+;
+;
+;
+FLIP_AC_TYPE   ; ENTER SWITCH TOGGLES VARIABLE 'TWEEN 0 & 1.  0 = AUTOCORRECT MODUS WHERE NOTE OFFS
+; NEVER GET AUTO-Ced EARLIER; 1 = EVERYBODY GETS AUTOCORRECTED
+               MOVE    AC_TYPE,D0           ;GET - IF ALREADY 1
+               BNE.S   BROWN_2              ;    THEN MAKE A '0'
+               MOVE    #1,AC_TYPE           ;         ELSE, SET TO A '1'
+               BRA.S   X_FLIP_AC
+BROWN_2
+               CLR     AC_TYPE
+X_FLIP_AC
+               ST      SUBFUN_INSTALL       ;DISPLAY THAT DOT...
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; SWING! SUBFUNCTION
+;
+; (eeeeee-yuucccchhhh!!!!)
+;
+SWING_SUB
+               ASC     "SWING     SEQ.  "
+               ASC     "CLICKS:    (  %)"
+
+;SEQUENCE NOMBRE FIELD
+
+               DC.B    14
+               DC.B    2
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CURRENT_SEQUENCE
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    FIELD_END
+
+;SWING AMOUNT FIELD
+
+               DC.B    23
+               DC.B    3
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    SWING_AMT
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SWING_LIMIT_CALC
+               DC.W    EDIT+ED_VEC
+               DC.L    UPDATE_AUTOCORRECT
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+
+;PERCENTAGE FIELD
+
+               DC.B    28
+               DC.B    2
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    SWING_PER
+               DC.W    SUBFUN_END
+
+
+SWING_LIMIT_CALC       ; SWING IS RESTRICTED BY PHASE_LEN/4.
+               MOVE    NEW_PHASE_LEN,D0
+               LSR     #2,D0
+               MOVE    D0,PARAM_HI_LIM
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             METERDOME SUBFUNCTION
+;
+METRONOME_SUB
+               ASC     "METRONOME SEQ.  "
+               ASC     "TONE:    RES:   "
+
+;SEQUENCE NOMBRE FIELD
+
+               DC.B    14
+               DC.B    2
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+SET_PTR
+               DC.L    SEQ_NUM_ACC
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+HI_LIMIT
+               DC.W    98
+               DC.W    FIELD_END
+
+;TONE FIELD
+
+               DC.B    21
+               DC.B    2
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    METRO_TONE
+               DC.W    EDIT+HI_LIMIT
+               DC.W    20
+               DC.W    FIELD_END
+
+;RESOLUTION FIELD
+
+               DC.B    29
+               DC.B    3
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    RAW_MET
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    METRO_STRINGS
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    6
+               DC.W    EDIT+ED_VEC
+               DC.L    REAL_MET_VALUE
+               DC.W    SUBFUN_END
+
+
+METRO_STRINGS
+               ASC     "OFF16t 16 8t 8  4t 4 "
+               EVEN
+
+
+REAL_MET_VALUE         ; CONVERT FROM RAW_MET TO HOW MANY CLICKS PER MET CLICK.
+               MOVE    RAW_MET,D0
+               LSL     #1,D0
+               MOVE    MET_CLICK_TBL(PC,D0),MET_COUNT
+;12JUN;
+;12JUN               TST     RECORDING            ;CURRENTLY RECORDING?
+;12JUN;
+               MOVE.B  RECORDING,D0         ;RECORDING "OR" ERASING (I.E., METRONOME AUDIBLE)?
+               OR.B    ERASING,D0
+;
+               BNE.S   FORMENTERA_1         ;IF YES, LET IT DOWNLOAD NEW VALUE AT BAR MARKER
+               MOVE    MET_COUNT,NOW_MET_COUNT   ;ELSE, DO IT NOW FOR OUR SAKE
+FORMENTERA_1
+               RTS
+
+
+MET_CLICK_TBL
+               HEX     0,4,6,8,0C,10,18
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA

@@ -1,0 +1,50 @@
+
+
+Why can't I get .OPTION LIST=switch to work the way I want?
+
+
+Is there any option which controls the expansion of INCLUDE files and macro
+definitions in assember listing output, so I don't have to mess with the
+LIST option?  If not, could this go on the wish list?
+
+     No.
+
+
+Is there some automatic way for the macro processor to issue an error
+message if it is passed more parameters than are defined in the macro?
+Alternatively, is there a way for it to provide repetitive identical
+handling of each parameter it is passed, in a variable-length parameter
+list?
+
+     Can check number of parameters passed, emit warning message -
+     use:
+               .IF \#>nn
+               .MSG
+               .ENDIF
+
+     or, use:
+
+               .FOR <symbol> IN \*     ; concatenation of all input args
+               .........
+               .ENDFOR
+
+
+What are the parameters of the -Q option that make it effective?
+Does it depend upon the size of the file being assembled?
+
+
+
+
+What about automatic override of .AWORD for locally-defined long address
+accesses?  (Check this first).  Or at least a warning of truncation?
+
+     No problem dude, it covers it.
+
+
+
+Is there a way to effect #define substitution of parentheses for square
+brackets?
+
+
+
+

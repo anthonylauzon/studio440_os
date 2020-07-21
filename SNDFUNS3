@@ -1,0 +1,1797 @@
+               INCLUDE HPFIXUPS
+               TITLE "SOUNDFUN3"
+***************************************************************************************************
+***************************************************************************************************
+***                                                                                             ***
+***            SOUNDFUN3 - ATTACK/DECAY/RELEASE/BEND EDIT SUBFUNCTIONS                          ***
+***                                                                                             ***
+***************************************************************************************************
+***************************************************************************************************
+;
+NEG_EXT        EQU     0FFFFFF00H      ;USE IN MOVEQ INSTRUCTIONS WHERE ARG IS
+                                       ;80H OR LARGER - HP XASM DOES NOT HANDLE
+                                       ;SIGN-EXTEND CORRECTLY.  COSMETIC, KEEPS
+                                       ;ACTUAL BYTE VALUE CLEARER.
+;
+               ABS_SHORT
+;
+               INCLUDE S_BLK_EQU       ;SOUND CONTROL BLOCK DEFINITIONS.
+;
+               INCLUDE FIELD_EQU       ;SUBFUNCTION/FIELD BLOCK DEFINITIONS.
+;
+                                            ;EXTERNAL ROM - ROUTINES AND CONSTANTS.
+               EXTERNAL  UNPLUG_ALL_EDITS
+               EXTERNAL  WRITE_NAME_2
+               EXTERNAL  WRITE_PARAM_VALUE
+               EXTERNAL  WRITE_PARAM_STRING,WRITE_STRING
+               EXTERNAL  ZERO_VAL
+               EXTERNAL  ALT_PARAM_STRING
+               EXTERNAL  GET_PROP_BLK_PTR
+;
+               EXTERNAL  B_RATE_VEL_BIT     ;BIT MASKS FOR VEL INIT LIST.
+               EXTERNAL  B_LEV_VEL_BIT
+               EXTERNAL  F_REL_VEL_BIT
+               EXTERNAL  F_TIM_VEL_BIT
+               EXTERNAL  F_LEV_VEL_BIT
+               EXTERNAL  F_ATT_VEL_BIT
+               EXTERNAL  A_REL_VEL_BIT
+               EXTERNAL  A_TIM_VEL_BIT
+               EXTERNAL  A_LEV_VEL_BIT
+               EXTERNAL  A_ATT_VEL_BIT
+;
+               EXTERNAL  CURRENT_SOUND      ;RAM.
+               EXTERNAL  ALT_PARAM_FLAG
+               EXTERNAL  VCF_VCA_FLAG
+               EXTERNAL  PARAM_HI_LIM
+               EXTERNAL  PARAM_LO_LIM
+               EXTERNAL  PARAM_BUFFER
+               EXTERNAL  SCREEN_BUFFER
+               EXTERNAL  SIGN_ENABLE
+               EXTERNAL  LEV_TIME_FLAG
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; FOR STARTERS, GLOBAL DECLARATIONS FOR THE SUBFUNCTION BLOCKS -
+; THEY'RE ACCESSED FROM SWITCHBOY MODULE:
+;
+                                            ;ATTACK_GROUP.
+               GLB     INIT_ATTACK_SUB
+               GLB     ATT_PITCH_TRK_SUB
+               GLB     ATT_VEL_TRK_SUB
+                                            ;SUSTAIN_GROUP.
+               GLB     SUS_DURATION_SUB
+               GLB     SUS_PITCH_DUR_SUB
+               GLB     SUS_LEVEL_SUB
+               GLB     SUS_CUTOFF_TRK_SUB
+               GLB     SUS_VEL_TRK_SUB
+                                            ;RELEASE_GROUP.
+               GLB     INIT_RELEASE_SUB
+               GLB     REL_PITCH_TRK_SUB
+               GLB     REL_VEL_TRK_SUB
+                                            ;BEND_GROUP.
+               GLB     BEND_DEPTH_SUB
+               GLB     BEND_RATE_SUB
+               GLB     BEND_PITCH_TRK_SUB
+               GLB     BEND_VEL_TRK_SUB
+               GLB     BEND_MODE_SUB
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; THE SUBFUNCTION BLOCKS -
+; EACH BEGINS WITH THE DEFAULT SCREEN TEXT FOR THE SUBFUNCTION.
+;
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;SOUND EDIT ATTACK FUNCTION
+;
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             INITIAL ATTACK SUBFUNCTION
+;
+INIT_ATTACK_SUB
+               ASC     "             VC "
+               ASC     "ATTACK RATE =   "
+
+;NAME FIELD (NOTE - NOT EDITABLE)
+
+               DC.B    0
+               DC.B    8
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+SET_PTR
+               DC.L    ZERO_VAL
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_NAME_2
+               DC.W    FIELD_END
+
+;SOUND NUMBER FIELD
+
+               DC.B    9
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CURRENT_SOUND
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    31
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+
+;ALT PARAM FIELD - NOTE THAT THIS IS A NO-EDIT FIELD
+
+               DC.B    11
+               DC.B    1
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+DIR_PTR
+               DC.W    ALT_PARAM_FLAG
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    ALT_PARAM_STRING
+               DC.W    FIELD_END
+
+;VCF/VCA SELECT FIELD
+
+               DC.B    15
+               DC.B    1
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    VCF_VCA_FLAG
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    F_A_STRING
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    1
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+
+;INITIAL RATE FIELD
+
+               DC.B    29
+               DC.B    3
+               DC.W    ACCESS+SET_PTR
+               DC.L    INIT_ATTACK_ACCESS
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_ATT_LO_LIMIT
+               DC.W    SUBFUN_END
+
+
+F_A_STRING
+               ASC     "FA"
+;
+;
+; POINT TO CORRECT SUBBLOCK; THEN LOOK AT THE VCF/VCA FLAG TO SEE WHO
+; TO AFFECT.
+;
+INIT_ATTACK_ACCESS
+               BSR     GET_PROP_BLK_PTR     ;A0 ---> CURRENT SOUND BLOCK, D0 = SUB-BLOCK OFFSET.
+               TST     VCF_VCA_FLAG         ;0=VCF, 1=VCA
+               BNE.S   HE_BE_VCA_1
+               LEA     S_F_INIT_ATT(A0,D0),A0
+               BRA.S   EXIT_A_F_1
+HE_BE_VCA_1
+               LEA     S_A_INIT_ATT(A0,D0),A0
+               ST      SIGN_ENABLE          ;SIGNED DISPLAY FOR VCA ATTACK RATE ONLY.
+EXIT_A_F_1
+               MOVE.L  A0,D0
+               RTS
+;
+;
+; IF EDITING VCA ATTACK, SET LOWER LIMIT TO -99.
+;
+SET_ATT_LO_LIMIT
+               TST     VCF_VCA_FLAG
+               BEQ.S   SET_A_LO_EXIT
+               MOVE    #-99,PARAM_LO_LIM
+SET_A_LO_EXIT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             ATTACK RATE/PITCH TRACKING SUBFUNCTION
+;
+ATT_PITCH_TRK_SUB
+               ASC     "             VC "
+               ASC     "ATT/PIT TRK:   %"
+
+;NAME FIELD (NOTE - NOT EDITABLE)
+
+               DC.B    0
+               DC.B    8
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+SET_PTR
+               DC.L    ZERO_VAL
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_NAME_2
+               DC.W    FIELD_END
+
+;SOUND NUMBER FIELD
+
+               DC.B    9
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CURRENT_SOUND
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    31
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+
+;ALT PARAM FIELD - NOTE THAT THIS IS A NO-EDIT FIELD
+
+               DC.B    11
+               DC.B    1
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+DIR_PTR
+               DC.W    ALT_PARAM_FLAG
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    ALT_PARAM_STRING
+               DC.W    FIELD_END
+
+;VCF/VCA SELECT FIELD
+
+               DC.B    15
+               DC.B    1
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    VCF_VCA_FLAG
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    F_A_STRING
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    1
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+
+;INITIAL RATE FIELD
+
+               DC.B    29
+               DC.B    3
+               DC.W    ACCESS+SET_PTR
+               DC.L    ATT_PIT_ACCESS
+               DC.W    ACCESS+SIGNED
+               DC.W    EDIT+LO_LIMIT
+               DC.W    -99
+               DC.W    SUBFUN_END
+;
+;
+; POINT TO CURRENT SUBBLOCK.  THEN, FIGURE OUT IF AFFECTING VCF OR VCA,
+; AND POINT TO THAT.
+;
+ATT_PIT_ACCESS
+               BSR     GET_PROP_BLK_PTR     ;A0 ---> CURRENT SOUND BLOCK, D0 = SUB-BLOCK OFFSET.
+               TST     VCF_VCA_FLAG         ;0=VCF, 1=VCA
+               BNE.S   HE_BE_VCA_2
+               LEA     S_F_PITCH_ATT(A0,D0),A0
+               BRA.S   EXIT_A_F_2
+HE_BE_VCA_2
+               LEA     S_A_PITCH_ATT(A0,D0),A0
+EXIT_A_F_2
+               MOVE.L  A0,D0
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             ATTACK VS. VELOCITY SUBFUNCTION
+;
+ATT_VEL_TRK_SUB
+               ASC     "             VC "
+               ASC     "ATT/VELOC:     %"
+
+;NAME FIELD (NOTE - NOT EDITABLE)
+
+               DC.B    0
+               DC.B    8
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+SET_PTR
+               DC.L    ZERO_VAL
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_NAME_2
+               DC.W    FIELD_END
+
+;SOUND NUMBER FIELD
+
+               DC.B    9
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CURRENT_SOUND
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    31
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+
+;ALT PARAM FIELD - NOTE THAT THIS IS A NO-EDIT FIELD
+
+               DC.B    11
+               DC.B    1
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+DIR_PTR
+               DC.W    ALT_PARAM_FLAG
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    ALT_PARAM_STRING
+               DC.W    FIELD_END
+
+;VCF/VCA SELECT FIELD
+
+               DC.B    15
+               DC.B    1
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    VCF_VCA_FLAG
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    F_A_STRING
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    1
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+
+;ATTACK vs. VELOCITY FIELD
+
+               DC.B    29
+               DC.B    3
+               DC.W    ACCESS+SET_PTR
+               DC.L    ATT_VEL_ACCESS
+               DC.W    ACCESS+SIGNED
+               DC.W    EDIT+LO_LIMIT
+               DC.W    -99
+               DC.W    EDIT+ED_VEC
+               DC.L    SET_ATT_VEL_FLAG
+               DC.W    SUBFUN_END
+;
+;
+; POINT TO CURRENT SUBBLOCK.  THEN, FIGURE OUT IF AFFECTING VCF OR VCA,
+; AND POINT TO THAT.
+;
+ATT_VEL_ACCESS
+               BSR     GET_PROP_BLK_PTR     ;A0 ---> CURRENT SOUND BLOCK, D0 = SUB-BLOCK OFFSET.
+               TST     VCF_VCA_FLAG         ;0=VCF, 1=VCA
+               BNE.S   HE_BE_VCA_3
+               LEA     S_F_VEL_ATT(A0,D0),A0
+               BRA.S   EXIT_A_F_3
+HE_BE_VCA_3
+               LEA     S_A_VEL_ATT(A0,D0),A0
+EXIT_A_F_3
+               MOVE.L  A0,D0
+               RTS
+;
+;
+; SET OR CLEAR BIT FLAG IN S_VEL_LIST ACCORDING TO WHETHER NEW VELOCITY
+; SENSITIVITY SETTING IS ZERO OR SOMETHING OTHER THAN -
+; AFFECTS VOICE INIT PATH WHEN THIS SOUND IS PLAYED.
+;
+SET_ATT_VEL_FLAG
+               BSR     GET_PROP_BLK_PTR     ;POINT TO CURRENT SOUND, SUB-BLOCK.
+               LEA     0(A0,D0),A0
+               TST     VCF_VCA_FLAG         ;EDITING VCF OR VCA?
+               BNE.S   SAV_FLAG_20          ;BRANCH IF VCA,
+               MOVE    #F_ATT_VEL_BIT,D0    ;ELSE LOAD BIT MASK FOR VCF ATTACK VEL INIT.
+               BRA.S   SAV_FLAG_40
+SAV_FLAG_20
+               MOVE    #A_ATT_VEL_BIT,D0
+SAV_FLAG_40
+               TST     PARAM_BUFFER         ;DID WE JUST SET VEL SENSITIVITY TO ZERO?
+               BNE.S   SAV_FLAG_60          ;BRANCH IF NOT - SET BIT.
+               NOT     D0                   ;ELSE, CLEAR BIT TO SKIP VEL INIT CODE FOR THIS PARAM.
+               AND     D0,S_VEL_LIST(A0)
+               BRA.S   SAV_FLAG_EXIT
+SAV_FLAG_60
+               OR      D0,S_VEL_LIST(A0)    ;SET BIT TO USE VEL INIT CODE FOR THIS PARAM.
+SAV_FLAG_EXIT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;SOUND EDIT SUSTAIN FUNCTION
+;
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             SUSTAIN DURATION SUBFUNCTION
+;
+SUS_DURATION_SUB
+               ASC     "             VC "
+               ASC     "SUST TIME =     "
+
+;NAME FIELD (NOTE - NOT EDITABLE)
+
+               DC.B    0
+               DC.B    8
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+SET_PTR
+               DC.L    ZERO_VAL
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_NAME_2
+               DC.W    FIELD_END
+
+;SOUND NUMBER FIELD
+
+               DC.B    9
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CURRENT_SOUND
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    31
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+
+;ALT PARAM FIELD - NOTE THAT THIS IS A NO-EDIT FIELD
+
+               DC.B    11
+               DC.B    1
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+DIR_PTR
+               DC.W    ALT_PARAM_FLAG
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    ALT_PARAM_STRING
+               DC.W    FIELD_END
+
+;VCF/VCA SELECT FIELD
+
+               DC.B    15
+               DC.B    1
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    VCF_VCA_FLAG
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    F_A_STRING
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    1
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+
+;INITIAL TIME FIELD
+
+               DC.B    29
+               DC.B    3
+               DC.W    ACCESS+SET_PTR
+               DC.L    SUS_DURA_ACCESS
+               DC.W    ACCESS+SIGNED        ;NEEDED FOR -1 (GATE) VALUE.
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_SUS_TIME       ;NEEDED TO ERADICATE SIGN CHARACTER FROM DISPLAY.
+               DC.W    DISPLAY+MIN_STRNG
+               DC.L    GATE_STRING
+               DC.W    DISPLAY+MIN_LIMIT
+               DC.W    -1
+               DC.W    EDIT+LINKED
+               DC.W    EDIT+LO_LIMIT
+               DC.W    -1
+               DC.W    SUBFUN_END
+
+GATE_STRING
+               DC.B    28
+               DC.B    4
+               ASC     "GATE"
+;
+;
+; POINT TO CURRENT SUBBLOCK.  THEN, FIGURE OUT IF AFFECTING VCF OR VCA,
+; AND POINT TO THAT.  NOTE THAT VALUE OF 'FF' MEANS SUSTAIN TRACKS GATE.
+;
+SUS_DURA_ACCESS
+               BSR     GET_PROP_BLK_PTR     ;A0 ---> CURRENT SOUND BLOCK, D0 = SUB-BLOCK OFFSET.
+               TST     VCF_VCA_FLAG         ;0=VCF, 1=VCA
+               BNE.S   HE_BE_VCA_5
+               LEA     S_F_INIT_TIME(A0,D0),A0
+               BRA.S   EXIT_A_F_5
+HE_BE_VCA_5
+               LEA     S_A_INIT_TIME(A0,D0),A0
+EXIT_A_F_5
+               MOVE.L  A0,D0
+               RTS
+;
+;
+; DO NORMAL PARAM VALUE DISPLAY FOR SUSTAIN TIME -
+; ERASE "+" IF PRESENT.
+;
+WRITE_SUS_TIME
+                ABS_LONG
+               JSR     WRITE_PARAM_VALUE
+                ABS_SHORT
+               CMP.B   #"+",SCREEN_BUFFER+29     ;THIS IS ONE PLACE WHERE IT WOULD SHOW UP.
+               BNE.S   WR_SUSTIME_20
+               MOVE.B  #" ",SCREEN_BUFFER+29
+WR_SUSTIME_20
+               CMP.B   #"+",SCREEN_BUFFER+30     ;THIS BEING THE OTHER PLACE.
+               BNE.S   WR_SUSTIME_EGG_SIT
+               MOVE.B  #" ",SCREEN_BUFFER+30
+WR_SUSTIME_EGG_SIT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             SUSTAIN/PITCH TRACK SUBFUNCTION
+;
+SUS_PITCH_DUR_SUB
+               ASC     "             VC "
+               ASC     "SUS/PIT TRK:   %"
+
+;NAME FIELD (NOTE - NOT EDITABLE)
+
+               DC.B    0
+               DC.B    8
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+SET_PTR
+               DC.L    ZERO_VAL
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_NAME_2
+               DC.W    FIELD_END
+
+;SOUND NUMBER FIELD
+
+               DC.B    9
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CURRENT_SOUND
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    31
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+
+;ALT PARAM FIELD - NOTE THAT THIS IS A NO-EDIT FIELD
+
+               DC.B    11
+               DC.B    1
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+DIR_PTR
+               DC.W    ALT_PARAM_FLAG
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    ALT_PARAM_STRING
+               DC.W    FIELD_END
+
+;VCF/VCA SELECT FIELD
+
+               DC.B    15
+               DC.B    1
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    VCF_VCA_FLAG
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    F_A_STRING
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    1
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+
+;TRACK PERCENTAGE FIELD
+
+               DC.B    29
+               DC.B    3
+               DC.W    ACCESS+SET_PTR
+               DC.L    PITCH_DURA_ACCESS
+               DC.W    ACCESS+SIGNED
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    DISP_PITCH_SUS
+               DC.W    EDIT+LO_LIMIT
+               DC.W    -99
+               DC.W    EDIT+CUSTOMIZE       ;MUST BE LAST EDIT SPEC, SINCE IT MAY UNPLUG_ALL_EDITS.
+               DC.L    P_TRK_GATE
+               DC.W    SUBFUN_END
+;
+;
+;
+; POINT TO CURRENT SUBBLOCK.  THEN, FIGURE OUT IF AFFECTING VCF OR VCA,
+; AND POINT TO THAT.
+;
+PITCH_DURA_ACCESS
+               BSR     GET_PROP_BLK_PTR     ;A0 ---> CURRENT SOUND BLOCK, D0 = SUB-BLOCK OFFSET.
+               TST     VCF_VCA_FLAG         ;0=VCF, 1=VCA
+               BNE.S   HE_BE_VCA_6
+               LEA     S_F_PITCH_TIME(A0,D0),A0
+               BRA.S   EXIT_A_F_6
+HE_BE_VCA_6
+               LEA     S_A_PITCH_TIME(A0,D0),A0
+EXIT_A_F_6
+               MOVE.L  A0,D0
+               RTS
+;
+;
+;
+; IF SUSTAIN IS UNDER GATE CONTROL, PITCH TRACKING OF SUSTAIN TIME IS
+; IRRELEVANT AND THEREFORE SHOULD NOT BE EDITED - GOTTA UNPLUG.
+; ELSE, SET POINTER TO THE APPROPRIATE (VCA OR VCF) PARAMETER.
+;
+DISP_PITCH_SUS
+               BSR     GET_PROP_BLK_PTR     ;A0 ---> CURRENT SOUND BLOCK, D0 = SUB-BLOCK OFFSET.
+               TST     VCF_VCA_FLAG         ; SEE IF VCF OR VCA
+               BNE.S   IGUANA_1             ; (SERVICE VCA DOWNWIND A BIT)
+               ADD     #S_F_INIT_TIME,D0
+               BRA.S   IGUANA_2
+IGUANA_1
+               ADD     #S_A_INIT_TIME,D0
+IGUANA_2
+               TST.B   0(A0,D0)             ;IS SUSTAIN TIME UNDER GATE CONTROL (SETTING = -1)?
+               BMI     IGUANA_21
+                ABS_LONG
+               JMP     WRITE_PARAM_VALUE    ;BRANCH IF NOT - DISPLAY PITCH TRACK SETTING NORMALLY.
+                ABS_SHORT
+IGUANA_21      MOVE    #1010H,D1            ;ELSE, TELL MR. USER THE (GOOD?/BAD?) NEWS.
+               MOVE.L  #FOA_STRING,A2
+                ABS_LONG
+               JMP     WRITE_STRING
+                ABS_SHORT
+;
+;
+FOA_STRING
+               ASC     "SUS GATE, NO TRK"
+;
+;
+;
+; IF SUSTAIN IS UNDER GATE CONTROL, BLOCK EDITING OF PITCH TRACK AMOUNT.
+;
+P_TRK_GATE
+               BSR     GET_PROP_BLK_PTR     ;A0 ---> CURRENT SOUND BLOCK, D0 = SUB-BLOCK OFFSET.
+               TST     VCF_VCA_FLAG         ; SEE IF VCF OR VCA
+               BNE.S   IGUANA_3             ; (SERVICE VCA DOWNWIND A BIT)
+               ADD     #S_F_INIT_TIME,D0
+               BRA.S   IGUANA_4
+IGUANA_3
+               ADD     #S_A_INIT_TIME,D0
+IGUANA_4
+               TST.B   0(A0,D0)             ;SEE IF GATE OR NORMAL TIME
+               BPL.S   EXIT_P_TRK_GATE      ;IF NORMAL, THEN LEAVE BE -
+                ABS_LONG
+               JSR     UNPLUG_ALL_EDITS     ;ELSE, DISCONNECT EVAHBODY.
+                ABS_SHORT
+EXIT_P_TRK_GATE
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             SUSTAIN LEVEL SUBFUNCTION
+;
+SUS_LEVEL_SUB
+               ASC     "             VC "
+               ASC     "ENVELOPE AMT:   "
+
+;NAME FIELD (NOTE - NOT EDITABLE)
+
+               DC.B    0
+               DC.B    8
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+SET_PTR
+               DC.L    ZERO_VAL
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_NAME_2
+               DC.W    FIELD_END
+
+;SOUND NUMBER FIELD
+
+               DC.B    9
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CURRENT_SOUND
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    31
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+
+;ALT PARAM FIELD - NOTE THAT THIS IS A NO-EDIT FIELD
+
+               DC.B    11
+               DC.B    1
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+DIR_PTR
+               DC.W    ALT_PARAM_FLAG
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    ALT_PARAM_STRING
+               DC.W    FIELD_END
+
+;VCF/VCA SELECT FIELD
+
+               DC.B    15
+               DC.B    1
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    VCF_VCA_FLAG
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    F_A_STRING
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    1
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+
+;14AUG;CUTOFF (FILTER)/VOLUME (AMP) FIELD.  NOT EDITABLE - HINGES OFF VCF_VCA_FLAG
+;14AUG
+;14AUG               DC.B    18
+;14AUG               DC.B    6
+;14AUG               DC.W    EDIT+NO_EDITS
+;14AUG               DC.W    ACCESS+WORD
+;14AUG               DC.W    ACCESS+DIR_PTR
+;14AUG               DC.W    VCF_VCA_FLAG
+;14AUG               DC.W    DISPLAY+DISP_VEC
+;14AUG               DC.L    WRITE_PARAM_STRING
+;14AUG               DC.W    DISPLAY+DISP_STRNG
+;14AUG               DC.L    VOL_CUT_STRINGS
+;14AUG               DC.W    FIELD_END
+
+;VALUE FIELD
+
+               DC.B    29
+               DC.B    2
+               DC.W    ACCESS+SET_PTR
+               DC.L    SUS_LEVEL_ACCESS
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    SET_LEVEL_HI_LIMIT
+               DC.W    SUBFUN_END
+
+
+VOL_CUT_STRINGS
+               ASC     "CUTOFF"
+               ASC     "VOLUME"
+;
+;
+;
+; POINT TO EITHER SOUND LEVEL SETTING (NOT SAME AS PERFORMANCE LEVEL)
+; OR TO FILTER CUTOFF SETTING.
+;
+SUS_LEVEL_ACCESS
+               BSR     GET_PROP_BLK_PTR     ;A0 ---> CURRENT SOUND BLOCK, D0 = SUB-BLOCK OFFSET.
+               TST     VCF_VCA_FLAG         ;WELL - WHO IS IT FOR?
+               BNE.S   SUSLEVACC_20         ;IF VCA, THEN HANDLE BELOW - ELSE, IT'S VCF -
+               LEA     S_F_ENV_AMT(A0,D0),A0
+               BRA.S   SUSLEVACC_40
+SUSLEVACC_20
+               LEA     S_A_LEVEL(A0,D0),A0
+SUSLEVACC_40
+               MOVE.L  A0,D0
+               RTS
+;
+;
+; IF DEALING WITH THE VCA LEVEL, CHANGE UPPER LIMIT TO 31, NOT 99.
+;
+SET_LEVEL_HI_LIMIT
+               TST     VCF_VCA_FLAG
+               BEQ.S   SET_L_HI_LIM_EXIT    ;IF DEALING WITH VCF, WE'RE ALREADY SET (LIMIT = 99).
+               MOVE    #31,PARAM_HI_LIM     ;ELSE, SET CEILING VCA LEVEL ( = 31).
+SET_L_HI_LIM_EXIT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             FILTER SUSTAIN CUTOFF TRACKING SUBFUNCTION
+;
+SUS_CUTOFF_TRK_SUB
+               ASC     "VCF CUT:    #   "
+               ASC     "CUTOFF TRACK:   "
+
+;14AUG;NAME FIELD (NOTE - NOT EDITABLE)
+;14AUG
+;14AUG               DC.B    0
+;14AUG               DC.B    8
+;14AUG               DC.W    EDIT+NO_EDITS
+;14AUG               DC.W    ACCESS+SET_PTR
+;14AUG               DC.L    ZERO_VAL
+;14AUG               DC.W    DISPLAY+DISP_VEC
+;14AUG               DC.L    WRITE_NAME_2
+;14AUG               DC.W    FIELD_END
+
+;CUTOFF FIELD
+
+               DC.B    8
+               DC.B    2
+               DC.W    ACCESS+SET_PTR
+               DC.L    CUTOFF_ACCESS
+               DC.W    FIELD_END
+
+;SOUND NUMBER FIELD
+
+               DC.B    13
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CURRENT_SOUND
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    31
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+
+;ALT PARAM FIELD - NOTE THAT THIS IS A NO-EDIT FIELD
+
+               DC.B    15
+               DC.B    1
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+DIR_PTR
+               DC.W    ALT_PARAM_FLAG
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    ALT_PARAM_STRING
+               DC.W    FIELD_END
+
+;CUTOFF TRACK VALUE FIELD
+
+               DC.B    29
+               DC.B    3
+               DC.W    ACCESS+SET_PTR
+               DC.L    CUT_TRK_ACCESS
+               DC.W    ACCESS+SIGNED
+               DC.W    EDIT+LO_LIMIT
+               DC.W    -99
+               DC.W    SUBFUN_END
+
+
+CUTOFF_ACCESS          ; MOD THE CUTOFF
+               BSR     GET_PROP_BLK_PTR
+               LEA     S_F_CUTOFF(A0,D0),A0
+               MOVE.L  A0,D0
+               RTS
+;
+;
+; HO DE HUM - POINT TO CORRECT BYTE IN THE CORRECT SUBBLOCK.
+;
+CUT_TRK_ACCESS
+               BSR     GET_PROP_BLK_PTR     ;A0 ---> CURRENT SOUND BLOCK, D0 = SUB-BLOCK OFFSET.
+               LEA     S_F_PITCH_CUT(A0,D0),A0
+               MOVE.L  A0,D0
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             VELOCITY vs. ENVELOPE AMOUNT SUBFUNCTION
+;
+SUS_VEL_TRK_SUB
+               ASC     "             VC "
+               ASC     "SUS.VEL     :   "
+
+;NAME FIELD (NOTE - NOT EDITABLE)
+
+               DC.B    0
+               DC.B    8
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+SET_PTR
+               DC.L    ZERO_VAL
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_NAME_2
+               DC.W    FIELD_END
+
+;SOUND NUMBER FIELD
+
+               DC.B    9
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CURRENT_SOUND
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    31
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+
+;ALT PARAM FIELD - NOTE THAT THIS IS A NO-EDIT FIELD
+
+               DC.B    11
+               DC.B    1
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+DIR_PTR
+               DC.W    ALT_PARAM_FLAG
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    ALT_PARAM_STRING
+               DC.W    FIELD_END
+
+;VCF/VCA SELECT FIELD
+
+               DC.B    15
+               DC.B    1
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    VCF_VCA_FLAG
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    F_A_STRING
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    1
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+
+;LEVEL/TIME SELECTION FIELD
+
+               DC.B    24
+               DC.B    4
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    LEV_TIME_FLAG
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    LEV_TIME_STR
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    1
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+
+;VEL vs. AMOUNT FIELD
+
+               DC.B    29
+               DC.B    3
+               DC.W    ACCESS+SET_PTR
+               DC.L    VEL_ENV_AMT_ACCESS
+               DC.W    ACCESS+SIGNED
+               DC.W    EDIT+LO_LIMIT
+               DC.W    -99
+               DC.W    EDIT+ED_VEC
+               DC.L    SET_LEV_VEL_FLAG
+               DC.W    SUBFUN_END
+;
+LEV_TIME_STR   ASC     "LEV.TIME"
+;
+; POINT TO CURRENT SUBBLOCK.  THEN, FIGURE OUT IF AFFECTING VCF OR VCA,
+; AND POINT TO THAT.
+;
+VEL_ENV_AMT_ACCESS
+               BSR     GET_PROP_BLK_PTR     ;A0 ---> CURRENT SOUND BLOCK, D0 = SUB-BLOCK OFFSET.
+               TST     VCF_VCA_FLAG         ;0=VCF, 1=VCA
+               BNE.S   HE_BE_VCA_8
+               TST     LEV_TIME_FLAG        ;TIME OR LEVEL?
+               BNE.S   HE_BE_VCF_81
+               LEA     S_F_VEL_ENV(A0,D0),A0
+               BRA.S   EXIT_A_F_8
+
+HE_BE_VCF_81   LEA     S_F_VEL_TIME(A0,D0),A0
+               BRA.S   EXIT_A_F_8
+
+HE_BE_VCA_8    TST     LEV_TIME_FLAG            ;TIME OR LEVEL?
+               BNE.S   HE_BE_VCA_81
+               LEA     S_A_VEL_LEVEL(A0,D0),A0
+               BRA.S   EXIT_A_F_8
+HE_BE_VCA_81   LEA     S_A_VEL_TIME(A0,D0),A0
+
+               ;GOT IT, PARD - I REARRANGED THE SUSTAIN LEVEL & CUTOFF TRACK SCREENS ABOVE.
+               ; ONE SCREEN DOES CUTOFF AND CUTOFF TRACK; THE OTHER DOES VCF ENV AMOUNT (I
+               ; CANNED LEVEL AS VCA ENV AMOUNT - I MEAN, IT IS, AND NO OTHER SYNTH I KNOW HAS
+               ; A VCA ENV AMT....
+
+EXIT_A_F_8
+               MOVE.L  A0,D0
+               RTS
+;
+;
+; SET OR CLEAR BIT FLAG IN S_VEL_LIST ACCORDING TO WHETHER NEW VELOCITY
+; SENSITIVITY SETTING IS ZERO OR SOMETHING OTHER THAN -
+; AFFECTS VOICE INIT PATH WHEN THIS SOUND IS PLAYED.
+;
+SET_LEV_VEL_FLAG
+               BSR     GET_PROP_BLK_PTR     ;POINT TO CURRENT SOUND, SUB-BLOCK.
+               LEA     0(A0,D0),A0
+               TST     VCF_VCA_FLAG         ;EDITING VCF OR VCA?
+               BNE.S   SLV_FLAG_20          ;BRANCH IF VCA,
+               TST     LEV_TIME_FLAG        ;SEE IF TIME OR LEVEL
+               BNE.S   SLV_FLAG_10
+               MOVE    #F_LEV_VEL_BIT,D0    ;ELSE LOAD BIT MASK FOR VCF LEVEL VEL INIT.
+               BRA.S   SLV_FLAG_40
+SLV_FLAG_10    MOVE    #F_TIM_VEL_BIT,D0
+               BRA.S   SLV_FLAG_40
+SLV_FLAG_20
+               TST     LEV_TIME_FLAG
+               BNE.S   SLV_FLAG_30          ;LEVEL OR TIME
+               MOVE    #A_LEV_VEL_BIT,D0
+               BRA.S   SLV_FLAG_40
+SLV_FLAG_30    MOVE    #A_TIM_VEL_BIT,D0
+
+SLV_FLAG_40
+               TST     PARAM_BUFFER         ;DID WE JUST SET VEL SENSITIVITY TO ZERO?
+               BNE.S   SLV_FLAG_60          ;BRANCH IF NOT - SET BIT.
+               NOT     D0                   ;ELSE, CLEAR BIT TO SKIP VEL INIT CODE FOR THIS PARAM.
+               AND     D0,S_VEL_LIST(A0)
+               BRA.S   SLV_FLAG_EXIT
+SLV_FLAG_60
+               OR      D0,S_VEL_LIST(A0)    ;SET BIT TO USE VEL INIT CODE FOR THIS PARAM.
+SLV_FLAG_EXIT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;SOUND EDIT RELEASE FUNCTION
+;
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             INITIAL RELEASE SUBFUNCTION
+;
+INIT_RELEASE_SUB
+               ASC     "             VC "
+               ASC     "RELEASE RATE =  "
+
+;NAME FIELD (NOTE - NOT EDITABLE)
+
+               DC.B    0
+               DC.B    8
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+SET_PTR
+               DC.L    ZERO_VAL
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_NAME_2
+               DC.W    FIELD_END
+
+;SOUND NUMBER FIELD
+
+               DC.B    9
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CURRENT_SOUND
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    31
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+
+;ALT PARAM FIELD - NOTE THAT THIS IS A NO-EDIT FIELD
+
+               DC.B    11
+               DC.B    1
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+DIR_PTR
+               DC.W    ALT_PARAM_FLAG
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    ALT_PARAM_STRING
+               DC.W    FIELD_END
+
+;VCF/VCA SELECT FIELD
+
+               DC.B    15
+               DC.B    1
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    VCF_VCA_FLAG
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    F_A_STRING
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    1
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+
+;INITIAL RATE FIELD
+
+               DC.B    30
+               DC.B    2
+               DC.W    ACCESS+SET_PTR
+               DC.L    INIT_REL_ACCESS
+;25SEP               DC.W    DISPLAY+MAX_LIMIT
+;25SEP               DC.W    99
+;25SEP               DC.W    DISPLAY+MAX_STRNG
+;25SEP               DC.L    INFINITE_STRING
+;25SEP               DC.W    EDIT+LINKED
+               DC.W    SUBFUN_END
+;
+;
+; POINT TO CORRECT SUBBLOCK; THEN LOOK AT THE VCF/VCA FLAG TO SEE WHO
+; TO AFFECT.
+;
+INIT_REL_ACCESS
+               BSR     GET_PROP_BLK_PTR     ;A0 ---> CURRENT SOUND BLOCK, D0 = SUB-BLOCK OFFSET.
+               TST     VCF_VCA_FLAG         ;0=VCF, 1=VCA
+               BNE.S   HE_BE_VCA_11
+               LEA     S_F_INIT_REL(A0,D0),A0
+               BRA.S   EXIT_A_F_11
+HE_BE_VCA_11
+               LEA     S_A_INIT_REL(A0,D0),A0
+EXIT_A_F_11
+               MOVE.L  A0,D0
+               RTS
+;
+;
+;25SEPINFINITE_STRING
+;25SEP               DC.B    24
+;25SEP               DC.B    8
+;25SEP               ASC     "INFINITE"
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             RELEASE RATE/PITCH TRACKING SUBFUNCTION
+;
+REL_PITCH_TRK_SUB
+               ASC     "             VC "
+               ASC     "REL/PIT TRK:   %"
+
+;NAME FIELD (NOTE - NOT EDITABLE)
+
+               DC.B    0
+               DC.B    8
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+SET_PTR
+               DC.L    ZERO_VAL
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_NAME_2
+               DC.W    FIELD_END
+
+;SOUND NUMBER FIELD
+
+               DC.B    9
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CURRENT_SOUND
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    31
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+
+;ALT PARAM FIELD - NOTE THAT THIS IS A NO-EDIT FIELD
+
+               DC.B    11
+               DC.B    1
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+DIR_PTR
+               DC.W    ALT_PARAM_FLAG
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    ALT_PARAM_STRING
+               DC.W    FIELD_END
+
+;VCF/VCA SELECT FIELD
+
+               DC.B    15
+               DC.B    1
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    VCF_VCA_FLAG
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    F_A_STRING
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    1
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+
+;TRACK PERCENTAGE FIELD
+
+               DC.B    29
+               DC.B    3
+               DC.W    ACCESS+SET_PTR
+               DC.L    REL_PIT_ACCESS
+               DC.W    ACCESS+SIGNED
+               DC.W    EDIT+LO_LIMIT
+               DC.W    -99
+               DC.W    SUBFUN_END
+;
+;
+; POINT TO CURRENT SUBBLOCK.  THEN, FIGURE OUT IF AFFECTING VCF OR VCA,
+; AND POINT TO THAT.
+;
+REL_PIT_ACCESS
+               BSR     GET_PROP_BLK_PTR     ;A0 ---> CURRENT SOUND BLOCK, D0 = SUB-BLOCK OFFSET.
+               TST     VCF_VCA_FLAG         ;0=VCF, 1=VCA
+               BNE.S   HE_BE_VCA_12
+               LEA     S_F_PITCH_REL(A0,D0),A0
+               BRA.S   EXIT_A_F_12
+HE_BE_VCA_12
+               LEA     S_A_PITCH_REL(A0,D0),A0
+EXIT_A_F_12
+               MOVE.L  A0,D0
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             RELEASE VS. VELOCITY SUBFUNCTION
+;
+REL_VEL_TRK_SUB
+               ASC     "             VC "
+               ASC     "REL/VELOC:     %"
+
+;NAME FIELD (NOTE - NOT EDITABLE)
+
+               DC.B    0
+               DC.B    8
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+SET_PTR
+               DC.L    ZERO_VAL
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_NAME_2
+               DC.W    FIELD_END
+
+;SOUND NUMBER FIELD
+
+               DC.B    9
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CURRENT_SOUND
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    31
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+
+;ALT PARAM FIELD - NOTE THAT THIS IS A NO-EDIT FIELD
+
+               DC.B    11
+               DC.B    1
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+DIR_PTR
+               DC.W    ALT_PARAM_FLAG
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    ALT_PARAM_STRING
+               DC.W    FIELD_END
+
+;VCF/VCA SELECT FIELD
+
+               DC.B    15
+               DC.B    1
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    VCF_VCA_FLAG
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    F_A_STRING
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    1
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+
+;RELEASE vs. VELOCITY FIELD
+
+               DC.B    29
+               DC.B    3
+               DC.W    ACCESS+SET_PTR
+               DC.L    REL_VEL_ACCESS
+               DC.W    ACCESS+SIGNED
+               DC.W    EDIT+LO_LIMIT
+               DC.W    -99
+               DC.W    EDIT+ED_VEC
+               DC.L    SET_REL_VEL_FLAG
+               DC.W    SUBFUN_END
+;
+;
+; POINT TO CURRENT SUBBLOCK.  THEN, FIGURE OUT IF AFFECTING VCF OR VCA,
+; AND POINT TO THAT.
+;
+REL_VEL_ACCESS
+               BSR     GET_PROP_BLK_PTR     ;A0 ---> CURRENT SOUND BLOCK, D0 = SUB-BLOCK OFFSET.
+               TST     VCF_VCA_FLAG         ;0=VCF, 1=VCA
+               BNE.S   HE_BE_VCA_13
+               LEA     S_F_VEL_REL(A0,D0),A0
+               BRA.S   EXIT_A_F_13
+HE_BE_VCA_13
+               LEA     S_A_VEL_REL(A0,D0),A0
+EXIT_A_F_13
+               MOVE.L  A0,D0
+               RTS
+;
+;
+; SET OR CLEAR BIT FLAG IN S_VEL_LIST ACCORDING TO WHETHER NEW VELOCITY
+; SENSITIVITY SETTING IS ZERO OR SOMETHING OTHER THAN -
+; AFFECTS VOICE INIT PATH WHEN THIS SOUND IS PLAYED.
+;
+SET_REL_VEL_FLAG
+               BSR     GET_PROP_BLK_PTR     ;POINT TO CURRENT SOUND, SUB-BLOCK.
+               LEA     0(A0,D0),A0
+               TST     VCF_VCA_FLAG         ;EDITING VCF OR VCA?
+               BNE.S   SRV_FLAG_20          ;BRANCH IF VCA,
+               MOVE    #F_REL_VEL_BIT,D0    ;ELSE LOAD BIT MASK FOR VCF RELEASE VEL INIT.
+               BRA.S   SRV_FLAG_40
+SRV_FLAG_20
+               MOVE    #A_REL_VEL_BIT,D0
+SRV_FLAG_40
+               TST     PARAM_BUFFER         ;DID WE JUST SET VEL SENSITIVITY TO ZERO?
+               BNE.S   SRV_FLAG_60          ;BRANCH IF NOT - SET BIT.
+               NOT     D0                   ;ELSE, CLEAR BIT TO SKIP VEL INIT CODE FOR THIS PARAM.
+               AND     D0,S_VEL_LIST(A0)
+               BRA.S   SRV_FLAG_EXIT
+SRV_FLAG_60
+               OR      D0,S_VEL_LIST(A0)    ;SET BIT TO USE VEL INIT CODE FOR THIS PARAM.
+SRV_FLAG_EXIT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;SOUND EDIT BEND FUNCTION
+;
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             BEND DEPTH SUBFUNCTION
+;
+BEND_DEPTH_SUB
+               ASC     "            #   "
+               ASC     "BEND DEPTH  =   "
+
+;NAME FIELD (NOTE - NOT EDITABLE)
+
+               DC.B    0
+               DC.B    8
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+SET_PTR
+               DC.L    ZERO_VAL
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_NAME_2
+               DC.W    FIELD_END
+
+;SOUND NUMBER FIELD
+
+               DC.B    13
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CURRENT_SOUND
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    31
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+
+;ALT PARAM FIELD - NOTE THAT THIS IS A NO-EDIT FIELD
+
+               DC.B    15
+               DC.B    1
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+DIR_PTR
+               DC.W    ALT_PARAM_FLAG
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    ALT_PARAM_STRING
+               DC.W    FIELD_END
+
+;INITIAL DEPTH FIELD
+
+               DC.B    29
+               DC.B    3
+               DC.W    ACCESS+SET_PTR
+               DC.L    BEND_DEPTH_ACCESS
+               DC.W    ACCESS+SIGNED
+               DC.W    EDIT+LO_LIMIT
+               DC.W    -99
+               DC.W    SUBFUN_END
+;
+;
+; EDIT CORRECT BYTE IN THE CORRECT SUBBLOCK.
+;
+BEND_DEPTH_ACCESS
+               BSR     GET_PROP_BLK_PTR     ;A0 ---> CURRENT SOUND BLOCK, D0 = SUB-BLOCK OFFSET.
+               LEA     S_B_PEAK(A0,D0),A0
+               MOVE.L  A0,D0                ;D0 -> BYTE TO MODIFY
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             BEND RATE SUBFUNCTION
+;
+BEND_RATE_SUB
+               ASC     "            #   "
+               ASC     "BEND RATE   =   "
+
+;NAME FIELD (NOTE - NOT EDITABLE)
+
+               DC.B    0
+               DC.B    8
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+SET_PTR
+               DC.L    ZERO_VAL
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_NAME_2
+               DC.W    FIELD_END
+
+;SOUND NUMBER FIELD
+
+               DC.B    13
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CURRENT_SOUND
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    31
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+
+;ALT PARAM FIELD - NOTE THAT THIS IS A NO-EDIT FIELD
+
+               DC.B    15
+               DC.B    1
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+DIR_PTR
+               DC.W    ALT_PARAM_FLAG
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    ALT_PARAM_STRING
+               DC.W    FIELD_END
+
+;INITIAL RATE FIELD
+
+               DC.B    30
+               DC.B    2
+               DC.W    ACCESS+SET_PTR
+               DC.L    BEND_RATE_ACCESS
+               DC.W    SUBFUN_END
+;
+;
+; EDIT CORRECT BYTE IN THE CORRECT SUBBLOCK.
+;
+BEND_RATE_ACCESS
+               BSR     GET_PROP_BLK_PTR     ;A0 ---> CURRENT SOUND BLOCK, D0 = SUB-BLOCK OFFSET.
+               LEA     S_B_RATE(A0,D0),A0
+               MOVE.L  A0,D0                ;D0 -> BYTE TO MODIFY
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             BEND RATE vs. PITCH SUBFUNCTION
+;
+BEND_PITCH_TRK_SUB
+               ASC     "            #   "
+               ASC     "BEND/PIT TRK=   "
+
+;NAME FIELD (NOTE - NOT EDITABLE)
+
+               DC.B    0
+               DC.B    8
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+SET_PTR
+               DC.L    ZERO_VAL
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_NAME_2
+               DC.W    FIELD_END
+
+;SOUND NUMBER FIELD
+
+               DC.B    13
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CURRENT_SOUND
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    31
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+
+;ALT PARAM FIELD - NOTE THAT THIS IS A NO-EDIT FIELD
+
+               DC.B    15
+               DC.B    1
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+DIR_PTR
+               DC.W    ALT_PARAM_FLAG
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    ALT_PARAM_STRING
+               DC.W    FIELD_END
+
+;VALUE FIELD
+
+               DC.B    29
+               DC.B    3
+               DC.W    ACCESS+SET_PTR
+               DC.L    BEND_PIT_TRK_ACCESS
+               DC.W    ACCESS+SIGNED
+               DC.W    EDIT+LO_LIMIT
+               DC.W    -99
+               DC.W    SUBFUN_END
+;
+;
+; EDIT CORRECT BYTE IN THE CORRECT SUBBLOCK.
+;
+BEND_PIT_TRK_ACCESS
+               BSR     GET_PROP_BLK_PTR     ;A0 ---> CURRENT SOUND BLOCK, D0 = SUB-BLOCK OFFSET.
+               LEA     S_B_PITCH_RATE(A0,D0),A0
+               MOVE.L  A0,D0                ;D0 -> BYTE TO MODIFY
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             VELOCITY vs. DEPTH & RATE SUBFUNCTION
+;
+BEND_VEL_TRK_SUB
+               ASC     "BEND/VELOC  #   "
+               ASC     "DEPTH    RATE   "
+
+;SOUND NUMBER FIELD
+
+               DC.B    13
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CURRENT_SOUND
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    31
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+
+;ALT PARAM FIELD - NOTE THAT THIS IS A NO-EDIT FIELD
+
+               DC.B    15
+               DC.B    1
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+DIR_PTR
+               DC.W    ALT_PARAM_FLAG
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    ALT_PARAM_STRING
+               DC.W    FIELD_END
+
+;VEL vs. DEPTH FIELD
+
+               DC.B    21
+               DC.B    3
+               DC.W    ACCESS+SET_PTR
+               DC.L    VEL_DEPTH_ACCESS
+               DC.W    ACCESS+SIGNED
+               DC.W    EDIT+LO_LIMIT
+               DC.W    -99
+               DC.W    EDIT+ED_VEC
+               DC.L    SET_BLV_VEL_FLAG     ;TO WIT - "SET BEND-LEVEL VEL FLAG" ....
+               DC.W    FIELD_END
+
+;VEL vs. RATE FIELD
+
+               DC.B    29
+               DC.B    3
+               DC.W    ACCESS+SET_PTR
+               DC.L    VEL_RATE_ACCESS
+               DC.W    ACCESS+SIGNED
+               DC.W    EDIT+LO_LIMIT
+               DC.W    -99
+               DC.W    EDIT+ED_VEC
+               DC.L    SET_BRT_VEL_FLAG     ;TO WIT - "SET BEND-RATE VEL FLAG" ....
+               DC.W    SUBFUN_END
+;
+;
+; EDIT CORRECT BYTE IN THE CORRECT SUBBLOCK.
+;
+VEL_DEPTH_ACCESS
+               BSR     GET_PROP_BLK_PTR     ;A0 ---> CURRENT SOUND BLOCK, D0 = SUB-BLOCK OFFSET.
+               LEA     S_B_VEL_PEAK(A0,D0),A0
+               MOVE.L  A0,D0                ;D0 -> BYTE TO MODIFY
+               RTS
+;
+;
+; SET OR CLEAR BIT FLAG IN S_VEL_LIST ACCORDING TO WHETHER NEW VELOCITY
+; SENSITIVITY SETTING IS ZERO OR SOMETHING OTHER THAN -
+; AFFECTS VOICE INIT PATH WHEN THIS SOUND IS PLAYED.
+;
+SET_BLV_VEL_FLAG
+               BSR     GET_PROP_BLK_PTR     ;POINT TO CURRENT SOUND, SUB-BLOCK.
+               LEA     0(A0,D0),A0
+               MOVE    #B_LEV_VEL_BIT,D0    ;LOAD BIT MASK FOR BEND LEVEL (DEPTH) VEL INIT.
+               TST     PARAM_BUFFER         ;DID WE JUST SET ZERO VELOCITY SENSITIVITY?
+               BNE.S   SBL_FLAG_60          ;BRANCH IF NOT - SET BIT.
+               NOT     D0                   ;ELSE, CLEAR BIT TO SKIP VEL INIT CODE FOR THIS PARAM.
+               AND     D0,S_VEL_LIST(A0)
+               BRA.S   SBL_FLAG_EXIT
+SBL_FLAG_60
+               OR      D0,S_VEL_LIST(A0)    ;SET BIT TO USE VEL INIT CODE FOR THIS PARAM.
+SBL_FLAG_EXIT
+               RTS
+;
+;
+; EDIT CORRECT BYTE IN THE CORRECT SUBBLOCK.
+;
+VEL_RATE_ACCESS
+               BSR     GET_PROP_BLK_PTR     ;A0 ---> CURRENT SOUND BLOCK, D0 = SUB-BLOCK OFFSET.
+               LEA     S_B_VEL_RATE(A0,D0),A0
+               MOVE.L  A0,D0                ;D0 -> BYTE TO MODIFY
+               RTS
+;
+;
+; SET OR CLEAR BIT FLAG IN S_VEL_LIST ACCORDING TO WHETHER NEW VELOCITY
+; SENSITIVITY SETTING IS ZERO OR SOMETHING OTHER THAN -
+; AFFECTS VOICE INIT PATH WHEN THIS SOUND IS PLAYED.
+;
+SET_BRT_VEL_FLAG
+               BSR     GET_PROP_BLK_PTR     ;POINT TO CURRENT SOUND, SUB-BLOCK.
+               LEA     0(A0,D0),A0
+               MOVE    #B_RATE_VEL_BIT,D0   ;LOAD BIT MASK FOR PITCH BEND RATE VEL INIT.
+               TST     PARAM_BUFFER         ;DID WE JUST SET ZERO VELOCITY SENSITIVITY?
+               BNE.S   SBR_FLAG_60          ;BRANCH IF NOT - SET BIT.
+               NOT     D0                   ;ELSE, CLEAR BIT TO SKIP VEL INIT CODE FOR THIS PARAM.
+               AND     D0,S_VEL_LIST(A0)
+               BRA.S   SBR_FLAG_EXIT
+SBR_FLAG_60
+               OR      D0,S_VEL_LIST(A0)    ;SET BIT TO USE VEL INIT CODE FOR THIS PARAM.
+SBR_FLAG_EXIT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; BEND SUSTAIN-MODE SUBFUNCTION - IT BE GATED, OR IT BE NOT GATED.
+;
+BEND_MODE_SUB
+               ASC     "            #   "
+               ASC     "BEND MODE:      "
+
+;NAME FIELD (NOTE - NOT EDITABLE)
+
+               DC.B    0
+               DC.B    8
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+SET_PTR
+               DC.L    ZERO_VAL
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_NAME_2
+               DC.W    FIELD_END
+
+;SOUND NUMBER FIELD
+
+               DC.B    13
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    CURRENT_SOUND
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_OFFSET
+               DC.W    -1
+               DC.W    EDIT+HI_LIMIT
+               DC.W    31
+               DC.W    EDIT+LINKED
+               DC.W    FIELD_END
+
+;ALT PARAM FIELD - NOTE THAT THIS IS A NO-EDIT FIELD
+
+               DC.B    15
+               DC.B    1
+               DC.W    EDIT+NO_EDITS
+               DC.W    ACCESS+DIR_PTR
+               DC.W    ALT_PARAM_FLAG
+               DC.W    ACCESS+WORD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    ALT_PARAM_STRING
+               DC.W    FIELD_END
+
+;MODE FIELD
+
+               DC.B    27
+               DC.B    5
+               DC.W    ACCESS+SET_PTR
+               DC.L    BEND_MODE_ACCESS
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    BEND_MODE_STRING
+               DC.W    EDIT+HI_LIMIT
+               DC.W    1
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    SUBFUN_END
+;
+;
+; EDIT CORRECT BYTE IN THE CORRECT SUBBLOCK.
+;
+BEND_MODE_ACCESS
+               BSR     GET_PROP_BLK_PTR     ;A0 ---> CURRENT SOUND BLOCK, D0 = SUB-BLOCK OFFSET.
+               LEA     S_B_GATE(A0,D0),A0
+               MOVE.L  A0,D0                ;D0 -> BYTE TO MODIFY
+               RTS
+;
+;
+BEND_MODE_STRING
+               ASC     "IMMED"
+               ASC     "GATED"
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA

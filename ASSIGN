@@ -1,0 +1,1287 @@
+               INCLUDE HPFIXUPS
+               TITLE "ASSIGN"
+***************************************************************************************************
+***************************************************************************************************
+***                                                                                             ***
+***            ASSIGN - MODEL 440 VOICE MANAGEMENT PROCEDURES                                   ***
+***                                                                                             ***
+***************************************************************************************************
+***************************************************************************************************
+;
+NEG_EXT        EQU     0FFFFFF00H      ;USE IN MOVEQ INSTRUCTIONS WHERE ARG IS
+                                       ;80H OR LARGER - HP XASM DOES NOT HANDLE
+                                       ;SIGN-EXTEND CORRECTLY.  COSMETIC, KEEPS
+                                       ;ACTUAL BYTE VALUE CLEARER.
+;
+               INCLUDE EQUATES         ;HDW ADDR AND CONSTANT DEFS, ABS_SHORT DIRECTIVE.
+               INCLUDE S_BLK_EQU       ;SOUND BLOCK EQUATES/OFFSETS
+;
+               GLB     VOICE_ASSIGN,VOICE_TABLE
+               GLB     VOICE_GATE_OFF,VOICE_RELEASER
+               GLB     GATE_A_VOICE_OFF,STOP_SUSTAIN_LOOP
+               GLB     LIVE_VOICES_OFF
+               GLB     KILL_ALL_VOICES,KILL_ONE_VOICE
+               GLB     SEQ_ON_INTERNAL,SEQ_OFF_INTERNAL
+;
+                                            ;ROM, DAD.
+               EXTERNAL  KILL_VOICE,NOTHINGNESS
+               EXTERNAL  VCA_RELEASE,VCF_RELEASE,VCA_OFF,VCF_MAINTAIN
+               EXTERNAL  BEND_SUSTAIN,BEND_RELEASE
+               EXTERNAL  GET_S_SUB_PTR
+               EXTERNAL  BACK_HANDLER
+;
+               EXTERNAL  FULL_INIT_LIST
+;
+               EXTERNAL  V_PRIO_FLAG        ;VOICE ARRAY SHIT.
+               EXTERNAL  V_F_CUTOFF
+               EXTERNAL  V_BEND_VECTOR
+               EXTERNAL  V_CTRL_ADDR
+               EXTERNAL  V_CHIP_ADDR
+               EXTERNAL  V_CHIP_CHAN
+               EXTERNAL  V_CHIP_MISC
+               EXTERNAL  V_PRIO_TIME
+               EXTERNAL  V_ACTIVE_SUB
+               EXTERNAL  V_VCA_VECTOR
+               EXTERNAL  V_VCF_VECTOR
+               EXTERNAL  V_CUR_VCA
+               EXTERNAL  V_PRIO_VEC
+               EXTERNAL  V_IDLE_SUB
+               EXTERNAL  V_SOUND_COM
+               EXTERNAL  V_SOUND_SUB
+               EXTERNAL  V_LEVEL
+               EXTERNAL  V_SOUND_ALT
+               EXTERNAL  V_PITCH_DELTA
+               EXTERNAL  V_PAN
+               EXTERNAL  V_VELOCITY
+               EXTERNAL  V_VEL_LIST
+               EXTERNAL  V_NON_VEL_LIST
+               EXTERNAL  V_IDENTITY
+               EXTERNAL  V_PAD_VAL_PTR
+               EXTERNAL  V_BLOCK_SIZE
+               EXTERNAL  V_A_ATT_TIME
+               EXTERNAL  V_A_SUS_TIME
+               EXTERNAL  V_A_REL_TIME
+               EXTERNAL  V_F_SUS_TIME
+               EXTERNAL  V_P_OFF_TIME
+               EXTERNAL  V_N_OFF_TIME
+;
+               EXTERNAL  PAD_VALUE          ;RAM-WORLD.
+               EXTERNAL  TRIGGER_VALUE
+               EXTERNAL  ASSIGN_BLOCK
+               EXTERNAL  ASS_HOLE
+               EXTERNAL  REAL_TIME
+               EXTERNAL  NEXT_TIME
+               EXTERNAL  IDLE_DYNAMIC
+               EXTERNAL  ACTIVE_DYNAMIC
+               EXTERNAL  PRIO_DYNAMIC
+;04MAR               EXTERNAL  FIXED_VOICES
+               EXTERNAL  CUR_SQ_DYN_ON
+               EXTERNAL  CUR_SQ_FIX_ON
+;04MAR               EXTERNAL  CLICK_ASSIGN
+               EXTERNAL  NON_VEL_INIT
+               EXTERNAL  VOICES_TO_OFF
+               EXTERNAL  VOICES_TO_REL
+               EXTERNAL  CHIPS_TO_ZERO
+               EXTERNAL  V_BLK_00
+               EXTERNAL  V_BLK_01
+               EXTERNAL  V_BLK_02
+               EXTERNAL  V_BLK_03
+               EXTERNAL  V_BLK_04
+               EXTERNAL  V_BLK_05
+               EXTERNAL  V_BLK_06
+               EXTERNAL  V_BLK_07
+               EXTERNAL  BG_TEMP_1_B
+               EXTERNAL  BG_TEMP_5_B
+               EXTERNAL  BG_TEMP_9_B
+               EXTERNAL  SAMPLED_SOUNDS
+               EXTERNAL  NUM_DYN_VOICES
+               EXTERNAL  AUTORPT_FLAG
+               EXTERNAL  HOLDING_EVENT
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; IN WHICH the task is undertaken, in solemn determination and forthright spirit, to, perchance,
+;     assign and bestow a Voice, as such, upon an on-coming Event-Of-Note, being that such an Event
+;     has been delivered in haste by a representative of: the Department of Pads, or: the Ministry
+;     of Sequences, or: the Courier of Events-Of-Note, Incoming Division; acknowledging that each
+;     such Event-Of-Note merits full consideration by the Committee of Assignment as to the nature
+;     thereof, and warrants delivery of such response as is deemed appropriate by the Committee,
+;     whether it be in unanimity or in substantial majority thereof, such response also to be
+;     rendered in a swift and timely manner by the Committee, and taken and understood to represent
+;     the final and irrevocable response of the Committee, unless we change our minds again later.
+;
+;
+; BE IT ALSO KNOWN THAT the Committee of Assignment, as directed by this Charter, is given and
+;     assumes no responsibility for the correct and proper utilisation of said Voice, beyond that
+;     which is incumbent upon, and the duty of, the Committee, insofar as the Committee is
+;     recognized as the sole and official apparatus of Voice Bestowal, and is charged with the
+;     execution, in a manner both fitting and efficient, of those tasks which are its sole domain,
+;     such tasks to be performed without undue intrusion upon, interference with, or obstruction,
+;     appropriation or supercession of, those duties and tasks which are recognised as the proper
+;     domain of the Bureau of Voice Development, or of any of its subsidiaries or affiliates.
+;
+; FURTHERMORE, the Committee, in keeping with this Charter, assumes no responsibility for those
+;     tasks which are the proper domain of the Office of The Courier of Events-Of-Note, save that
+;     the Committee, the foregoing notwithstanding, pledges to uphold all Duties of Liaison which
+;     have been entrusted to it (the Committee) by the Office of The Courier, in recognition of the
+;     essential nature of such Liaison with regard to the normal and proper operations of
+;     The Office of The Courier, and in adherence to all terms of the appropriate Interagency
+;     Aggreement(s), such terms having been heretofore drafted, and mutually agreed upon, by both
+;     the Committee and the Office; and as set forth, expressly, in applicable Document(s), i.e.,
+;     not this one.
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; VOICE ASSIGNMENT PROCEDURE - THE ONE, THE ONLY, THE .... HAIRY -
+;
+; EVENT INFO IS PASSED TO VOICE_ASSIGN IN ASSIGN_BLOCK,
+; WHICH CONTAINS THE FOLLOWING ITEMS IN 9 WORDS AT INDICATED OFFSETS:
+;
+;##################################################################################################
+; OFFSET       PAD EVENT               MIDI EVENT               SEQUENCE EVENT
+;##################################################################################################
+;   0          0002H                   0004H                    0000H
+;--------------------------------------------------------------------------------------------------
+;   2          SOUND NUMBER            SOUND NUMBER             SOUND NUMBER
+;--------------------------------------------------------------------------------------------------
+;   4          ALT PARAMS STATUS       ALT PARAMS STATUS        ALT PARAMS STATUS
+;--------------------------------------------------------------------------------------------------
+;   6          VEL/PITCH (IN 6/7)      PITCH                    xxxxx
+;--------------------------------------------------------------------------------------------------
+;   8          LEVEL                   LEVEL                    LEVEL
+;--------------------------------------------------------------------------------------------------
+;  10          PAN                     PAN                      xxxxx
+;--------------------------------------------------------------------------------------------------
+;  12          PAD NUMBER              VELOCITY (0-31)          xxxxx
+;--------------------------------------------------------------------------------------------------
+;  14          PAD EVENT ID WORD 0     MIDI CHANNEL             SEQ EVENT ID WORD 0
+;--------------------------------------------------------------------------------------------------
+;  16          PAD EVENT ID WORD 2     MIDI KEY NUMBER          SEQ EVENT ID WORD 2
+;--------------------------------------------------------------------------------------------------
+;
+; NORMAL-MODE PAD EVENTS ALWAYS SEND VELOCITY = 0.  COPIED INTO VOICE
+; BLOCK, THIS HOLDS THE VOICE BACK UNTIL NEW VELOCITY IS READ FROM PAD.
+; NON-ZERO VELOCITY IN PAD EVENT ASSIGN_BLOCK IS SENT BY AUTOREPEAT, AS
+; VELOCITY IS IMMEDIATELY AVAILABLE IN THIS MODE - VOICE PLAYS ASAP.
+; LIKEWISE FOR "PAD" EVENTS GENERATED BY PROGRAMMABLE FOOTSWITCH,
+; AS WELL AS FOR TRIGGER-IN PAD EVENTS FOR WHICH VELOCITY IS NOT SENSED.
+;
+; NOTE THAT "ALT PARAMS STATUS" REFERS TO STATUS ENCODED INTO THE
+; PARTICUALR EVENT, NOT TO THE CURRENT STATUS OF ALT_PARAM_FLAG.
+;
+; ONLY THE FIRST THREE ITEMS ARE USED TO ASSIGN THE VOICE -
+; THE REST ARE USED TO SET UP THE ASSIGNED VOICE.
+; SETUP HAPPENS IN VOICE_SETUP, WHICH IS THE VOICE_ASSIGN RETURN PATH.
+;
+; V_IDENTITY IS USED TO TRACK VOICE GATE STATUS AND TO FACILITATE THE
+; PROCESS OF MATCHING NOTE-OFF EVENTS TO THE CORRECT VOICE.
+; FOR PAD AND SEQUENCER EVENTS, WORDS 14-16 PROVIDE A READY-TO-USE
+; V_IDENTITY VALUE - FOR SEQUENCER EVENTS, THESE WORDS CONTAIN THE FIRST
+; TWO WORDS OF THE NOTE-ON EVENT FROM THE SEQUENCE, WITH THE FIRST WORD
+; MODIFIED SLIGHTLY TO FORM THE VOICE V_IDENTITY.
+;
+; NOTE THAT SEQUENCE EVENTS MAY BE PASSED TO VOICE_ASSIGN IN GATED-OFF
+; STATE - THIS OCCURS WHEN A ZERO-GATE-TIME EVENT IS PARSED BY SEQUENCE
+; PLAYBACK, AND IS DONE TO ELIMINATE THE OVERHEAD OF A SEPARATE CALL TO
+; VOICE_GATE_OFF.  THIS STATUS IS INDICATED BY A CLEARED GATE STATUS BIT
+; IN V_IDENTITY.  SAME IS DONE FOR TRIGGER-IN PAD EVENTS, FOR WHICH NO
+; GATE-ON STATE EXISTS.
+;
+; NOTE THAT NO VOICE IS ASSIGNED TO A SOUND IF ITS VCA LEVEL = 0 - WE'RE
+; TALKING ABOUT THE SOUND VCA ENVELOPE AMOUNT, NOT EVENT LEVEL SETTING.
+; THIS GUARANTEES THE ABILITY TO CUT A SOUND COMPLETELY OUT OF THE MIX
+; IN AN EXISTING SEQUENCE (WHERE THERE IS NO LONGER THE OPTION OF
+; SETTING A DIFFERENT LEVEL VIA LEVEL KNOB), SINCE NORMAL VCA UPDATE
+; HANDLING ESSENTIALLY PRECLUDES THE POSSIBILITY OF TRUE ZERO TO THE VCA
+; WHILE THE VOICE IS STILL ACTIVE.
+;
+; PLEASE, PLEASE DON'T CALL THIS ROUTINE WITH UNSAMPLED SOUNDS,
+; OR WITH ZERO-VELOCITY EVENTS (SHOULDN'T BE ABLE TO HAPPEN, RIGHT?).
+; PRESERVES ALL REGISTERS, SINCE ROUTINES WHICH CALL HERE MAY STILL NEED
+; TO PRESENT SIMILAR INFO TO MIDI OR SEQUENCER AFTER CALLING HERE.
+;
+VOICE_ASSIGN
+               MOVEM.L D0-D3/A0-A3,-(A7)    ;REGISTERS WILL BE RESTORED ON EXIT FROM VOICE_SETUP.
+               MOVE    ASSIGN_BLOCK+2,A0    ;FETCH EVENT SOUND NUMBER,
+               MOVE    ASSIGN_BLOCK+4,D0    ;FETCH EVENT ALT PARAMS STATUS,
+               BSR     GET_S_SUB_PTR        ;GET SOUND BLOCK POINTER (A0), SUB-BLOCK OFFSET (D0).
+               LEA     0(A0,D0),A1          ;A1 NOW POINTS TO REQUIRED SUB-BLOCK.
+               TST.B   S_A_LEVEL(A1)        ;IS SOUND VCA ENVELOPE AMOUNT = 0?
+               BEQ     VOC_SET_ESCAPE       ;BRANCH IF YES, EXIT - DON'T BOTHER ASSIGNING A VOICE
+                                            ;IF WE WON'T HEAR THE SOUND ANYWAY (PLUS, WOULD NEED
+                                            ;SPECIAL HANDLING IN REALTIME TO ENSURE THAT WE REALLY
+                                            ;WOULDN'T HEAR IT ....)
+               MOVE    ASSIGN_BLOCK+0,D0    ;D0 = 0 FOR SEQ EVENT, > 0 FOR LIVE (PAD/MIDI) EVENT.
+VOC_ASS_20
+               MOVE.B  S_VOICE(A1),D2       ;FETCH VOICE-ASSIGN SETTING FROM SOUND SUB-BLOCK -
+               BNE     FIXED_ASSIGN         ;ANY SET BIT INDICATES FIXED VOICE ASSIGNMENT.
+                                            ;ELSE FALL INTO DYNAMIC ASSIGN PROCEDURE -
+                                            ;BOTH PATHS LEAD TO VOICE_SETUP (BELOW),
+                                            ;WHICH DOES PRELIMINARY SETUP OF THE ASSIGNED VOICE.
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; DYNAMIC VOICE ASSIGN -
+; NOTE:  THIS IS NOT A SUBROUTINE !!!!   JUST A THROUGH-PATH BETWEEN
+; VOICE_ASSIGN (ABOVE) AND VOICE_SETUP (BELOW).
+;
+; REQUIRES THE FOLLOWING AS INPUTS:
+;     D0  -  EVENT ORIGIN CODE:
+;            IF = 0, ASSIGNING VOICE TO A SEQUENCE EVENT -
+;            ELSE ASSIGNING VOICE TO A LIVE (PAD OR MIDI) EVENT.
+;
+; "RETURNS":
+;     D3  -   ASSIGNED VOICE NUMBER 0-7.
+;     A3  -   POINTER TO ASSIGNED VOICE COMMON BLOCK.
+;     **  -   LEAVES VOICE IN LONG PRIORITY COUNTDOWN - NON-PRIORITY
+;             VECTORS CONTINUE TO RUN IF ACTIVE, BUT WON'T CAUSE VOICE
+;             TO GET SWITCHED TO IDLE STATUS IF VCA ENVELOPE GOES TO
+;             COMPLETION WHILE NEW PRIORITY SEQUENCE IS STILL RUNNING.
+;     **  -   UPDATES VOICE STATUS BIT MAPS AS APPROPRIATE.
+;
+; OVERALL PROCEDURE:
+;
+; IF ANY DYNAMIC-ASSIGN VOICES ARE IDLE, TAKE THE FIRST WE FIND.
+;
+; IF NO IDLE DYNAMIC VOICES, SURVEY THE GROUP OF ACTIVE VOICES NOT IN
+; PRIORITY SEQUENCE - DETERMINE THE NUMBER OF VOICES ASSIGNED TO EACH
+; ACTIVE SOUND, AND WHICH VOICES THESE ARE.
+; NEXT, FIND THE LARGEST NUMBER OF VOICES ASSIGNED TO ANY ONE
+; SOUND, THEN FIND ALL SOUNDS WHICH HAVE THIS NUMBER OF VOICES ASSIGNED
+; TO THEM - STEAL FROM THE VOICES ASSIGNED TO THIS (THESE) SOUNDS,
+; UNLESS THE SOUND WE'RE TRYING TO ASSIGN IS AMONG THE SOUNDS IN THIS
+; GROUP - IN THAT CASE, STEAL A VOICE FROM THOSE ASSIGNED TO THIS SOUND.
+; IN EITHER CASE, STEAL THE VOICE WHICH WOULD HAVE SOONEST GONE IDLE
+; ON ITS OWN, USING THE VOICE BLOCK'S VCA PHASE TIMERS AS INDICATORS,
+; BUT LIMITED TO THE GROUP WE HAVE DECIDED TO STEAL FROM.
+;
+; THE IDEA OF THE ABOVE TANGLE IS TO KEEP ANY ONE SOUND FROM HOGGING ALL
+; OF THE VOICES BY MEANS OF HAVING THE LONGEST RELEASE TIME.
+; NOTE THAT VOICES USING GATED VCA SUSTAIN ARE HANDLED SUCH THAT WHILE
+; GATE IS STILL ON, THEY GO TO THE END OF THE LIST AND ARE THE LAST TO
+; BE STOLEN - BUT WILL GET STOLEN WHEN NOTHING ELSE IS LEFT.
+;
+; IF ALL DYNAMIC-ASSIGN VOICES ARE IN PRIORITY SEQUENCE, STEAL THE ONE
+; WITH THE LEAST AMOUNT OF TIME TO GO BEFORE IT WOULD EXIT THE PRIORITY
+; SEQUENCE IF NOT STOLEN - WE'RE LESS WORRIED ABOUT WHICH SOUND WE CUT
+; OFF WHEN WE HAVEN'T HEARD IT YET ....
+;
+; THEORETICALLY, AT LEAST.
+;
+; BRANCHES DIRECTLY TO VOICE_SETUP (BELOW) WHEN FINISHED, UNLESS ....
+;
+;12DEC; UNLESS WE ARE ASSIGNING A SEQUENCER EVENT, AND ALL DYNAMIC-POOL VOICES
+;12DEC; HAVE BEEN ASSIGNED TO SEQUENCER EVENTS DURING CURRENT CLICK PERIOD.
+;12DEC; IN THAT CASE, TAKES THE SHORTEST PATH DIRECTLY OUT OF VOICE_ASSIGN,
+;12DEC; WITHOUT ASSIGNING ANY VOICE AGAIN.
+;12DEC;
+;12DEC;                MAY PUT THIS BACK IN IF SEQUENCER PHASES ARE REARRANGED
+;12DEC;                TO PUT OLD EVENTS BEHIND NEW ONES ON THE AUTOCORRECT CLICK.
+;
+; .... CAN YOU BELIEVE IT?  PRESERVES ALL REGISTERS OTHER THAN A3/D2-D3.
+;
+DYNAMIC_ASSIGN
+               MOVEM.L D4-D7/A4-A5,-(A7)
+               MOVE.B  IDLE_DYNAMIC,D4      ;TAKE STOCK OF IDLE DYNAMIC VOICES -
+               BEQ.S   DYN_ASS_20           ;BRANCH IF NONE ARE IDLE, LOOK FOR ONE TO STEAL.
+               MOVEQ   #7,D3                ;ELSE WALK THROUGH COPY OF IDLE MAP TILL WE HIT ONE.
+DYN_ASS_10
+               BTST    D3,D4                ;IS THIS ONE OF THE IDLE VOICES?
+               DBNE    D3,DYN_ASS_10        ;NO - STEP TO NEXT VOICE UNTIL IDLE VOICE FOUND.
+               MOVE    D3,A3                ;YES - SET A3 AS POINTER TO VOICE COMMON BLOCK.
+               ADD     A3,A3
+               MOVE    VOICE_TABLE(A3),A3
+               BRA     DYN_ASS_D0           ;NOW SKOOT - D3 AND A3 ARE ALL SET.
+;
+;
+DYN_ASS_20
+                                            ;NO IDLE DYNAMIC VOICES, WE'LL NEED TO STEAL ONE:
+               MOVE.B  ACTIVE_DYNAMIC,D4    ;THIS IS ALL OF 'EM ....
+;
+;12DEC               TST     D0                   ;IS THIS A SEQUENCER EVENT WE JUST GOT HANDED, HERE?
+;12DEC               BNE.S   DYN_ASS_21           ;BRANCH IF NOT, GENERAL ASSIGN RULES APPLY -
+;12DEC               MOVE.B  CLICK_ASSIGN,D5      ;FOR SEQUENCER EVENTS, DON'T LOOK AT VOICES ALREADY
+;12DEC               NOT     D5                   ;ASSIGNED TO SEQ EVENTS DURING THE CURRENT SEQ CLICK.
+;12DEC               AND.B   D5,D4
+;12DEC               BEQ     NO_ASS_EXIT          ;IF THIS RULES OUT ALL OF 'EM, ASSIGN NO VOICE - BYE!
+;12DECDYN_ASS_21
+;12DEC;                MAY PUT THIS BACK IN IF SEQUENCER PHASES ARE REARRANGED
+;12DEC;                TO PUT OLD EVENTS BEHIND NEW ONES ON THE AUTOCORRECT CLICK.
+;
+               CMP     #1,NUM_DYN_VOICES    ;WELL - IS THERE ONLY ONE VOICE IN DYNAMIC ASSIGN POOL?
+               BGT.S   DYN_ASS_22           ;BRANCH IF NOT, GOT SOME DIDDLIN ' TO DO ....
+               BRA     DYN_ASS_90           ;ELSE, WE'RE DOWN TO A QUASI-FIXED-ASSIGN MODE,
+                                            ;SO WASTE NO MORE TIME HERE.
+DYN_ASS_22
+               MOVEQ   #7,D6                ;SET UP VOICE-TEST INDEX/COUNT.
+               MOVE    #2300H,SR            ;BLOCK REALTIME INTR WHILE SURVEYING ASSIGN STATUS.
+               MOVE.B  PRIO_DYNAMIC,D5      ;CHECK OUT ACTIVE DYNAMIC VOICES PER D4.B ABOVE,
+               NOT     D5                   ;NOT INCLUDING THOSE CURRENTLY IN PRIORITY SEQUENCE.
+               AND.B   D4,D5
+               BEQ     DYN_ASS_60           ;BRANCH IF (GASP) ALL OF THESE VOICES ARE IN PRIORITY.
+;
+;
+               MOVE    D5,D4                ;ELSE - COPY THE MAP OF VOICES WE MIGHT STEAL,
+               MOVE    #2000H,SR            ;UNBLOCK REALTIME, ROLL UP YOUR SLEEVES ....
+;
+;
+; FIRST - ASCERTAIN WHICH SOUND/ALT-PARAMAZOIDS HAVE DYNAMIC-POOL VOICES
+; ASSIGNED TO THEM, HOW MANY VOICES PER, AND WHICH VOICES THESE ARE:
+;
+               MOVE    #ASS_HOLE,A5         ;A5 IS OUR ASS_HOLE BASE POINTER.
+               MOVEQ   #-1,D5               ;NOTHING IN THE HOLE YET.
+               MOVE    #V_BLK_07,A4         ;POINTER TO VOICE COMMON BLOCKS DURING HOLE-STUFF.
+DYN_ASS_24
+               BTST    D6,D4                ;IS THIS VOICE ONE WE WANT TO CONSIDER STEALING?
+               BEQ.S   DYN_ASS_2C           ;BRANCH IF NOT, WE CARE NOT FOR IT.
+               MOVE    V_SOUND_ALT(A4),D2   ;YES - FETCH ITS ASSIGNED SOUND NUMBER / ALT-PARAM.
+               MOVE    D5,D7                ;SEARCH DOWN ASS_HOLE, OCCUPIED SLOTS ONLY.
+               BMI.S   DYN_ASS_28           ;NOTHING IN THE HOLE?  JAM THE FIRST SLOT, THEN.
+DYN_ASS_26
+               CMP.B   0(A5,D7),D2          ;SOUND/ALT MATCH WHAT'S BEEN JAMMED INTO THIS SLOT?
+               BEQ.S   DYN_ASS_2A           ;BRANCH IF YES, JAM SAM SLOT AGAIN.
+               DBRA    D7,DYN_ASS_26        ;ELSE LOOK AT OTHER OCCUPIED SLOTS, IF ANY.
+DYN_ASS_28
+               ADDQ    #1,D5                ;JAM NEW SLOT - BUMP ASS_HOLE JAM-EXTENT INDEX,
+               MOVE.B  D2,0(A5,D5)          ;TAG THE SLOT WITH OUR SOUND/ALT VALUE,
+               MOVE.B  #1,8(A5,D5)          ;INIT "# VOICES ASSIGNED TO THIS SOUND/ALT SLOT" VALUE,
+               CLR     D2                   ;INIT "MAP OF VOICES ASSIGNED TO THIS SOUND/ALT" VALUE.
+               BSET    D6,D2
+               MOVE.B  D2,16(A5,D5)
+               BRA.S   DYN_ASS_2C           ;LOOK AT NEXT VOICE IF ANY.
+DYN_ASS_2A
+               ADDQ.B  #1,8(A5,D7)          ;BUMP ALREADY-OCCUPIED SLOT - # OF VOICES ASSIGNED,
+               BSET    D6,16(A5,D7)         ;MAP OF VOICES ASSIGNED.
+DYN_ASS_2C
+               SUB     #V_BLOCK_SIZE,A4     ;BUMP POINTER DOWN TO NEXT VOICE COMMON BLOCK IF ANY.
+               DBRA    D6,DYN_ASS_24        ;LOOP IF WE 'AVENT LOOKED AT ALL VOICES.
+;
+;
+; AWWWWW-KAY - NOW WE'VE STUFFED OUR ASS_HOLE -
+; WE KNOW HOW MANY DYNAMIC-POOL VOICES ARE ASSIGNED TO WHICH SOUNDS,
+; AND WHICH VOICES THEY ARE ....
+; ASCERTAIN THE LARGEST NUMBER OF DYNAMIC-POOL VOICES ASSIGNED TO ANY
+; ONE SOUND, THEN COMPILE A MAP OF ALL VOICES WHICH ARE IN A GROUP OF
+; THAT SIZE AND STEAL ONE BASED ON TIME-REMAINING ALGORITHM (E.G., IF
+; THREE DIFFERENT SOUNDS EACH HAVE TWO VOICES ASSIGNED TO THEM, THEN ALL
+; SIX OF THESE VOICES ARE UP FOR GRABS - LIKEWISE IF SIX SOUNDS EACH
+; HAVE ONE VOICE ASSIGNED TO THEM.  BUT, IF ANY ONE SOUND HAS MORE
+; VOICES ASSIGNED TO IT THAN ANY OTHER SOUND, WE JUMP ON HIS SHIT -
+; SOUNDS LIKE COMMUNISM, I KNOW .... IT'S EVERYWHERE THESE DAYS ....)
+; WHILE WE'RE AT IT, SEE IF THE SOUND/ALT WE'RE TRYING TO ASSIGN IS OUT
+; THERE ALREADY - IF IT TURNS OUT THAT THIS SOUND ALREADY HAS JUST AS
+; MANY VOICES ASSIGNED TO IT AS ANY OTHER SOUND OUT THERE, THEN WE WILL
+; STEAL ONE OF HIS OWN VOICES FOR HIM (RATHER THAN GIVE HIM SOME OTHER
+; SOUND'S VOICE, HEY).
+;
+               MOVE    ASSIGN_BLOCK+2,D6    ;LET'S COMPOSE SOUND/ALT FOR THE SOUND WE'RE ASSIGNING:
+               LSL     #1,D6                ;SOUND NUMBER OFF TO THE LEFT ONE BIT,
+               TST     ASSIGN_BLOCK+4       ;WE GOT ALT?
+               BEQ.S   DYN_ASS_2E           ;NO, WE AIN'T GOT ALT.
+               BSET    #0,D6                ;YES, WE GOT ALT.
+DYN_ASS_2E
+               MOVEQ   #-1,D3               ;HAVEN'T SEEN OUR NEW SOUND/ALT OUT THERE YET.
+               MOVEQ   #1,D7                ;OUR MAXIMUM-ASSIGNED COUNT MUST BE AT LEAST THIS BIG.
+               CLR     D4                   ;BUILD OUR "STEAL THIS VOICE" MAP IN D4 -
+               CLR     D1                   ;A-AND, NO VOICES HAVE BEEN STUCK INTO THIS MAP YET.
+DYN_ASS_2I
+               CMP.B   8(A5,D5),D7          ;NUMBER OF VOICES ASSIGNED TO SOUND/ALT IN THIS SLOT -
+               BGT.S   DYN_ASS_2N           ;IF SOME OTHER SOUND HAS MORE VOICES, FORGET THESE.
+               BEQ.S   DYN_ASS_2K           ;SAME AS OUR CURRENT MAX-ASS COUNT - ADD VOICES TO MAP.
+               MOVE.B  8(A5,D5),D7          ;ELSE - WE GOT US A NEW MAXIMUM-ASSIGNED COUNT,
+               MOVE.B  16(A5,D5),D4         ;ALONG WITH A FRESH START ON "STEAL THIS VOICE" MAP,
+               MOVE    D7,D1                ;AS WELL AS THE NUMBER OF VOICES IN THIS MAP.
+               BRA.S   DYN_ASS_2M
+DYN_ASS_2K
+               OR.B    16(A5,D5),D4         ;ADDING VOICES TO EXISTING "STEAL THIS VOICE" MAP -
+               ADD.B   8(A5,D5),D1          ;THIS IS HOW MANY WE'RE ADDING.
+DYN_ASS_2M
+               CMP.B   0(A5,D5),D6          ;IS NEW SOUND/ALT IN THIS ASS_HOLE SLOT?
+               BNE.S   DYN_ASS_2N           ;BRANCH IF NOT -
+               MOVE    D5,D3                ;ELSE, RECORD HIS ASS_HOLE SLOT POSITION,
+               MOVE.B  8(A5,D5),D2          ;AS WELL AS NUMBER OF VOICES ALREADY ASSIGNED TO HIM.
+DYN_ASS_2N
+               DBRA    D5,DYN_ASS_2I        ;LOOP UNTIL STUFFED ASS_HOLE SLOTS HAVE ALL BEEN POKED.
+;
+               TST     D3                   ;NOW - DID WE SEE OUR NEW SOUND OUT THERE ANYWHERE?
+               BMI.S   DYN_ASS_2Q           ;BRANCH IF NOT, STEAL FROM VOICES MAPPED INTO D4.
+               CMP.B   D2,D7                ;WE SAW HIM - IS HE UP THERE WITH THE OTHER VOICE-HOGS?
+               BNE.S   DYN_ASS_2Q           ;BRANCH IF NOT, WE STICK BY THE MAP IN D4.
+               MOVE.B  16(A5,D3),D4         ;ELSE, FETCH HIS ASSIGNED-VOICE MAP AS OUR "STEAL" MAP,
+               MOVE    D2,D1                ;AS WELL AS THE NUMBER OF VOICES IN HIS MAP.
+DYN_ASS_2Q
+               CMP.B   #1,D1                ;AH - ABOUT THAT MAP WE'RE USING - ONLY 1 VOICE IN IT?
+               BEQ     DYN_ASS_90           ;BRANCH IF YES, DO QUASI-FIXED-ASSIGN OF THAT VOICE.
+;
+;
+                                            ;TIME-REMAINING STEAL (VOICE BIT-MAP IN D4):
+;
+               MOVEQ   #7,D6                ;D6 IS AGAIN OUR TRUSTY VOICE-TEST INDEX.
+               MOVE    #V_BLK_07,A4         ;SET UP POINTER TO VOICE COMMON BLOCKS.
+               MOVEQ   #-1,D5               ;WORSE-THAN-WORST-CASE TIME-REMAINING VALUE - ANY VOICE
+                                            ;TESTED IN DYN_ASS_30 LOOP WILL YIELD SMALLER VALUE,
+                                            ;I.E. WE'RE BOUND TO PICK ONE AS A BETTER STEAL CHOICE.
+DYN_ASS_30
+               BTST    D6,D4                ;IS THIS VOICE IN THE TEST CATEGORY?
+               BEQ.S   DYN_ASS_50           ;BRANCH IF NOT, STEP TO NEXT IF ANY.
+               MOVE    V_ACTIVE_SUB(A4),A5  ;YES -  SET POINTER TO ACTIVE VOICE SUB-BLOCK.
+               CLR.L   D7
+               MOVE    V_A_SUS_TIME(A5),D7  ;FETCH REMAINING VCA SUSTAIN TIME.
+               BPL.S   DYN_ASS_40           ;IF POSITIVE, VALID TIMED-SUSTAIN VALUE -
+               ADD.L   D7,D7                ;ELSE, GATED SUSTAIN, GATE ON - USE VALUE LARGE ENOUGH
+                                            ;TO OUTWEIGH LARGEST POSSIBLE SUM OF TIMED VCA PHASES.
+DYN_ASS_40
+               MOVE    V_A_ATT_TIME(A5),D2  ;FETCH REMAINING ATTACK TIME, IF ANY -
+               BMI.S   DYN_ASS_44           ;IGNORE NEGATIVE VALUES, THEY AREN'T FOR REAL.
+               ADD     D2,D7
+DYN_ASS_44
+               MOVE    V_A_REL_TIME(A5),D2  ;FETCH REMAINING RELEASE TIME, IF ANY -
+               BMI.S   DYN_ASS_48           ;IGNORE NEGATIVE VALUES, THEY AREN'T FOR REAL.
+               ADD     D2,D7
+DYN_ASS_48
+               CMP.L   D5,D7                ;IS THIS TIME SUM SMALLER THAN PREVIOUS SMALLEST?
+               BCC.S   DYN_ASS_50           ;BRANCH IF NOT,
+               MOVE.L  D7,D5                ;ELSE SAVE PARAMETERS OF OUR NEW "CHAMPEEN."
+               MOVE    D6,D3                ;THIS BE VOICE INDEX,
+               MOVE    A4,A3                ;THIS BE VOICE COMMON BLOCK POINTER.
+DYN_ASS_50
+               SUB     #V_BLOCK_SIZE,A4     ;STEP POINTER DOWN TO NEXT VOICE COMMON BLOCK, IF ANY.
+               DBRA    D6,DYN_ASS_30        ;LOOP BACK IF WE HAVE CHECKED ALL POSSIBLE VOICES.
+               BRA.S   DYN_ASS_D0           ;OR HEAD ON OUT IF WE HAVE.
+;
+;
+DYN_ASS_60
+                                            ;ALL VOICES WE'D CONSIDER STEALING ARE MAPPED IN D4.B -
+                                            ;ALL ARE IN PRIORITY COUNTDOWN -
+;
+               MOVE    #V_BLK_07,A4         ;STEAL THE ONE NEAREST TO END OF ITS PRIORITY SEQUENCE.
+               MOVEQ   #-1,D5               ;WORSE-THAN-WORST-CASE TIME-REMAINING VALUE - ANY VOICE
+                                            ;TESTED IN DYN_ASS_70 LOOP WILL YIELD SMALLER VALUE,
+                                            ;I.E. WE'RE BOUND TO PICK ONE AS A BETTER STEAL CHOICE.
+DYN_ASS_70
+               BTST    D6,D4                ;IS THIS VOICE IN OUR TEST CATEGORY?
+               BEQ.S   DYN_ASS_80           ;BRANCH IF NOT, SKIP TO NEXT VOICE IF ANY.
+               CMP     V_PRIO_TIME(A4),D5   ;YES - HOW DOES THE TIME THING STACK UP?
+               BLS.S   DYN_ASS_80           ;IF NOT LESS THAN OUR PREVIOUS BEST, SKIP ON ALONG.
+               MOVE    V_PRIO_TIME(A4),D5   ;ELSE, THIS GUY JUST BECAME MR. BEST -
+               MOVE    D6,D3                ;SAVE HIS SHIT.
+               MOVE    A4,A3
+DYN_ASS_80
+               SUB     #V_BLOCK_SIZE,A4     ;STEP POINTER DOWN TO NEXT VOICE BLOCK IF ANY.
+               DBRA    D6,DYN_ASS_70        ;LOOP BACK IF ALL POSSIBLE VOICES NOT YET CHECKED.
+               MOVE    #2000H,SR            ;AND DON'T FORGET - REALTIME INTERRUPT WAS DISABLED.
+               BRA.S   DYN_ASS_D0           ;GO SLOT HIM IN.
+;
+;
+DYN_ASS_90
+               MOVEQ   #7,D3                ;QUASI-FIXED-ASSIGN - WE KNOW WHICH DYNAMIC-POOL VOICE
+                                            ;WE WANT/NEED TO STEAL (BIT IS SET IN D4.B).
+DYN_ASS_92
+               BTST    D3,D4                ;IS THIS THE VOICE WE'RE AFTER?
+               DBNE    D3,DYN_ASS_92        ;REPEAT LOOP IF NOT.
+               MOVE    D3,A3                ;WE LIKE THIS VOICE - SET A3 AS POINTER TO IT.
+               ADD     A3,A3
+               MOVE    VOICE_TABLE(A3),A3
+;
+;
+DYN_ASS_D0
+                                            ;WE'VE DECIDED ....
+               ST      V_PRIO_TIME(A3)      ;SET ASSIGNED VOICE INTO LONG PRIORITY COUNTDOWN TO
+                                            ;BLOCK ASSIGN STATUS CHANGES BY NON-PRIORITY VECTORS.
+               MOVE    #KILL_VOICE,V_PRIO_VEC(A3)     ;THIS IS THE PRIORITY VECTOR WE'LL WANT.
+               BCLR    D3,IDLE_DYNAMIC      ;UPDATE STATUS MAPS - THIS VOICE IS NO LONGER IDLE.
+               BSET    D3,ACTIVE_DYNAMIC    ;HOWEVER, IT IS ACTIVE.
+               BSET    D3,PRIO_DYNAMIC      ;AND, IT'S IN PRIORITY SEQUENCE.
+               TST     D0                   ;BUT SOFT .... WHO JUST GOT THIS VOICE?
+               BEQ.S   DYN_ASS_E0           ;BRANCH IF IT WAS A SEQUENCER EVENT.
+               BCLR    D3,CUR_SQ_DYN_ON     ;ELSE, CLEAR FLAG FOR SEQUENCER DYNAMIC-ASSIGN VOICE.
+               BRA.S   DYN_ASS_EXIT
+DYN_ASS_E0
+               BSET    D3,CUR_SQ_DYN_ON     ;VOICE IS PLAYING GATED-ON SEQUENCER DYN-ASSIGN EVENT.
+;
+;12DEC               BSET    D3,CLICK_ASSIGN      ;SAY, "HEY - THIS VOICE ASSIGNED TO A SEQUENCER EVENT
+;12DEC                                            ;DURING CURRENT CLICK" (FLAG CLEARED AT END OF SERVICE
+;12DEC                                            ;FOR EACH CLICK - USED TO PREVENT MORE THAN EIGHT SEQ
+;12DEC                                            ;EVENT VOICE_ASSIGN CALLS PER CLICK).
+;12DEC;
+;12DEC;                MAY PUT THIS BACK IN IF SEQUENCER PHASES ARE REARRANGED
+;12DEC;                TO PUT OLD EVENTS BEHIND NEW ONES ON THE AUTOCORRECT CLICK.
+;
+DYN_ASS_EXIT
+               MOVEM.L (A7)+,D4-D7/A4-A5
+               BRA     VOICE_SETUP          ;INITIATE SETUP OF THE ASSIGNED VOICE (IF ANY).
+;
+;
+NO_ASS_EXIT
+               MOVEM.L (A7)+,D4-D7/A4-A5    ;SEQUENCER-EVENT SATURATION THIS CLICK - RESTORE REGS,
+               BRA     VOC_SET_ESCAPE       ;EXIT FROM VOICE_ASSIGN WITHOUT ASSIGNING A VOICE.
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; FIXED VOICE ASSIGN -
+; NOTE:  THIS IS NOT A SUBROUTINE !!!!   JUST A THROUGH-CHANNEL BETWEEN
+; VOICE_ASSIGN (ABOVE) AND VOICE_SETUP (BELOW).
+;
+; REQUIRES THE FOLLOWING AS INPUTS:
+;
+;     D0  -  EVENT ORIGIN CODE:
+;            NOT BECAUSE WE USE IT HERE, BUT BECAUSE VOICE_SETUP
+;            EXPECTS IT.  SOUNDS KINDA DUMB?  WELL, FUCK YOU, JACK.
+;     D2 -   REQUIRED VOICE SPECIFIED IN 8-BIT MAP FORMAT, FROM
+;            S_VOICE OF THE APPLICABLE SOUND PARAMETER SUB-BLOCK.
+;
+; "RETURNS":
+;     D3  -  ASSIGNED VOICE NUMBER 0-7.
+;     A3  -  POINTER TO ASSIGNED VOICE COMMON BLOCK.
+;     **  -   LEAVES VOICE IN LONG PRIORITY COUNTDOWN - NON-PRIORITY
+;             VECTORS CONTINUE TO RUN IF ACTIVE, BUT WON'T CAUSE VOICE
+;             TO GET SWITCHED TO IDLE STATUS IF VCA ENVELOPE GOES TO
+;             COMPLETION WHILE NEW PRIORITY SEQUENCE IS STILL RUNNING.
+;     **  -   UPDATES VOICE STATUS BIT MAPS AS APPROPRIATE.
+;
+; BRANCHES DIRECTLY TO VOICE_SETUP (BELOW) WHEN FINISHED, UNLESS ....
+;
+;12DEC; UNLESS SEQUENCER MULTIPLE-ASSIGN-TO-FIXED-VOICE LOCKOUT OCCURS -
+;12DEC; IN THAT CASE, TAKES THE SHORTEST PATH DIRECTLY OUT OF VOICE_ASSIGN,
+;12DEC; WITHOUT ASSIGNING THE VOICE AGAIN.
+;12DEC;                MAY PUT THIS BACK IN IF SEQUENCER PHASES ARE REARRANGED
+;12DEC;                TO PUT OLD EVENTS BEHIND NEW ONES ON THE AUTOCORRECT CLICK.
+;
+; .... CAN YOU BELIEVE IT?  PRESERVES ALL REGISTERS OTHER THAN A3/D3.
+;
+FIXED_ASSIGN
+               MOVEQ   #7,D3                ;SET UP VOICE-TEST INDEX IN D3.
+FIX_ASS_10
+               BTST    D3,D2                ;IS THIS THE VOICE WE'RE AFTER?
+               DBNE    D3,FIX_ASS_10        ;REPEAT LOOP IF NOT.
+;
+;12DEC               TST     D0                   ;SO, HEY - WE GOT A SEQUENCER EVENT HERE?
+;12DEC               BNE.S   FIX_ASS_30           ;BRANCH IF NOT - YOU BET MR. LIVE EVENT GETS THE VOICE.
+;12DEC               BTST    D3,CLICK_ASSIGN      ;IF YES - DID ANOTHER SEQ EVENT ALREADY GET THIS VOICE
+;12DEC                                            ;EARLIER DURING THIS VERY SAME CLICK?
+;12DEC               BNE     VOC_SET_ESCAPE       ;BRANCH IF YES, THIS GUY'S OUT OF LUCK - NO VOICE.
+;12DEC;
+;12DECFIX_ASS_30
+;12DEC;
+;12DEC;                MAY PUT THIS BACK IN IF SEQUENCER PHASES ARE REARRANGED
+;12DEC;                TO PUT OLD EVENTS BEHIND NEW ONES ON THE AUTOCORRECT CLICK.
+;
+                                            ;WE LIKE THIS EVENT, AND Y'KNOW WHAT,
+               MOVE    D3,A3                ;WE LIKE THIS VOICE - SET A3 AS POINTER TO IT.
+               ADD     A3,A3
+               MOVE    VOICE_TABLE(A3),A3
+;
+               ST      V_PRIO_TIME(A3)      ;SET ASSIGNED VOICE INTO LONG PRIORITY COUNTDOWN TO
+                                            ;BLOCK ASSIGN STATUS CHANGES BY NON-PRIORITY VECTORS.
+               MOVE    #KILL_VOICE,V_PRIO_VEC(A3)     ;THIS IS THE PRIORITY VECTOR WE'LL WANT.
+               TST     D0                   ;BUT, WHO JUST GOT THIS VOICE?
+               BEQ.S   FIX_ASS_40           ;BRANCH IF IT WAS A SEQUENCER EVENT.
+               BCLR    D3,CUR_SQ_FIX_ON     ;ELSE CLEAR FLAG FOR GATED-ON SEQ FIXED-ASSIGN EVENT.
+               BRA.S   FIX_ASS_EXIT
+FIX_ASS_40
+               BSET    D3,CUR_SQ_FIX_ON     ;VOICE IS PLAYING GATED-ON SEQ FIXED-ASSIGN EVENT.
+;
+;12DEC               BSET    D3,CLICK_ASSIGN      ;SAY, "HEY - THIS VOICE ASSIGNED TO A SEQUENCER EVENT
+;12DEC                                            ;DURING CURRENT CLICK" (FLAG CLEARED AT END OF SERVICE
+;12DEC                                            ;FOR EACH CLICK - USED TO PREVENT MORE THAN ONE SEQ
+;12DEC                                            ;EVENT ASSIGN OF EACH FIXED VOICE PER CLICK).
+;12DEC;
+;12DEC;                MAY PUT THIS BACK IN IF SEQUENCER PHASES ARE REARRANGED
+;12DEC;                TO PUT OLD EVENTS BEHIND NEW ONES ON THE AUTOCORRECT CLICK.
+;
+FIX_ASS_EXIT
+;
+                                            ;WE BE DONE, FALL THROUGH INTO VOICE_SETUP ROUTINE.
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; POST-ASSIGN VOICE SETUP (VOICE_ASSIGN, CONTINUED) -
+; DECORATES THE ASSIGNED VOICE BLOCK WITH TRIMMINGS FROM ASSIGN_BLOCK,
+; THEN PLUGS IT ON AND TURNS IT IN (OR SUMTHIN LIKE THAT....)
+; WE GET HERE FROM VOICE_ASSIGN VIA FIXED_ASSIGN OR DYNAMIC ASSIGN WITH:
+;    A0 = POINTER TO SOUND COMMON BLOCK.
+;    A1 = POINTER TO SOUND SUB-BLOCK.
+;    D3 = INDEX OF ASSIGNED VOICE.
+;    A3 = POINTER TO ASSIGNED VOICE COMMON BLOCK.
+;    D0 = EVENT ORIGIN CODE (COPY OF ASSIGN_BLOCK+0).
+;
+; REPRODUCED HERE FOR YOUR EASY REFERENCE:  THE ASSIGN_BLOCK FORMAT.
+;
+;##################################################################################################
+; OFFSET       PAD EVENT               MIDI EVENT               SEQUENCE EVENT
+;##################################################################################################
+;   0          0002H                   0004H                    0000H
+;--------------------------------------------------------------------------------------------------
+;   2          SOUND NUMBER            SOUND NUMBER             SOUND NUMBER
+;--------------------------------------------------------------------------------------------------
+;   4          ALT PARAMS STATUS       ALT PARAMS STATUS        ALT PARAMS STATUS
+;--------------------------------------------------------------------------------------------------
+;   6          VEL/PITCH (IN 6/7)      PITCH                    xxxxx
+;--------------------------------------------------------------------------------------------------
+;   8          LEVEL                   LEVEL                    LEVEL
+;--------------------------------------------------------------------------------------------------
+;  10          PAN                     PAN                      xxxxx
+;--------------------------------------------------------------------------------------------------
+;  12          PAD NUMBER              VELOCITY (0-31)          xxxxx
+;--------------------------------------------------------------------------------------------------
+;  14          PAD EVENT ID WORD 0     MIDI CHANNEL             SEQ EVENT ID WORD 0
+;--------------------------------------------------------------------------------------------------
+;  16          PAD EVENT ID WORD 2     MIDI KEY NUMBER          SEQ EVENT ID WORD 2
+;--------------------------------------------------------------------------------------------------
+;
+;
+; STILL MORE DETAILED, LUCID AND THOROUGH DOCUMENTATION -
+; NAMELY, V_IDENTITY FORMATS FOR DIFFERENT EVENT TYPES.
+;
+; GENERAL: BIT 15 OF WORD 0 = 1 FOR LIVE (PAD/MIDI) EVENT, = 0 FOR SEQ EVENT.
+;          BIT 15 OF WORD 1 = 1 FOR MIDI EVENT, = 0 FOR PAD OR SEQ EVENT.
+;          BIT 14 OF WORD 0 = 1 FOR GATE ON, = 0 FOR GATE OFF.
+;
+;
+;                      BIT 15                       BIT 0
+;                        |                             |
+;                        V                             V
+; PAD EVENT V_IDENTITY:
+;              WORD 0 -  1 G P-P-P 0 0 0 0 0 0 0 0 0 0 0
+;              WORD 2 -  0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+;
+;                   G = GATE STATUS BIT.
+;                   P-P-P = PAD NUMBER.
+;
+; FOOTSWITCH "PAD" EVENT V_IDENTITY:
+;              WORD 0 -  1 G 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+;              WORD 2 -  0 0 0 0 0 0 0 0 0 0 0 0 1 1 1 F
+;
+;                   G = GATE STATUS BIT.
+;                   F = 0 FOR FOOTSWITCH 1 "PAD" EVENT,
+;                       1 FOR FOOTSWITCH 2 "PAD" EVENT.
+;
+; TRIGGER "PAD" EVENT V_IDENTITY:
+;              WORD 0 -  1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+;              WORD 2 -  0 0 0 0 0 0 0 0 1 1 1 1 0 0 0 0
+;
+;                   NOTE: NO GATE-ON STATE FOR TRIGGER-PAD EVENTS.
+;
+;
+; MIDI EVENT V_IDENTITY:
+;              WORD 0 -  1 G 0 0 0 K-K-K-K-K-K-K C-C-C-C
+;              WORD 2 -  1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+;
+;                   G = GATE STATUS BIT.
+;                   K-K-K-K-K-K-K = MIDI KEY NUMBER.
+;                   C-C-C-C = MIDI CHANNEL NUMBER.
+;
+;
+; SEQUENCE EVENT V_IDENTITY:
+;              WORD 0 -  0 G P-P-P S-S-S-S-S A T-T-T 0 0
+;              WORD 2 -  0 H-H-H-H-H N-N-N-N-N V-V-V-V-V
+;
+;                   G = GATE STATUS BIT.
+;                   P-P-P = PAD NUMBER.
+;                   S-S-S-S-S = SOUND NUMBER.
+;                   A = ALT-PARAMS STATUS.
+;                   T-T-T = TRACK NUMBER.
+;                   H-H-H-H-H = EVENT PITCH.
+;                   N-N-N-N-N = EVENT PAN.
+;                   V-V-V-V-V = EVENT VELOCITY.
+;
+; FOR COMPARISON -
+; SEQUENCER FORMAT FOR INTERNAL NOTE-ON EVENT:
+;              WORD 0 -  P-P-P S-S-S-S-S A T-T-T 0 0 0 1
+;              WORD 2 -  X H-H-H-H-H N-N-N-N-N V-V-V-V-V
+;              WORD 4 -  X X X X X X X X X X X L-L-L-L-L
+; SEQUENCER FORMAT FOR INTERNAL NOTE-OFF EVENT:
+;              WORD 0 -  P-P-P S-S-S-S-S A T-T-T 0 0 1 0
+;              WORD 2 -  X H-H-H-H-H N-N-N-N-N V-V-V-V-V
+;
+;                   BIT FIELDS SAME AS FOR V_IDENTITY, EXCEPT:
+;                   X = UNDEFINED.
+;                   L-L-L-L-L = EVENT LEVEL.
+;
+;
+VOICE_SETUP
+               CLR     V_P_OFF_TIME(A3)     ;STOP ANY DELAYED GATE-OFF TIMEOUT WHICH MAY HAVE BEEN
+               MOVE    V_ACTIVE_SUB(A3),A2  ;IN PROGRESS - IF BEGUN WHILE VOICE WAS IN PRIORITY,
+               CLR     V_N_OFF_TIME(A2)     ;REALTIME COULD TRANSFER TIMER FROM COMMON BLOCK TO
+                                            ;SUB-BLOCK, SO KILL THEM BOTH - IN THAT ORDER.
+;
+               BCLR    D3,VOICES_TO_OFF     ;CLEAR ANY PENDING GATE-OFF REQUEST FOR THIS VOICE.
+               BCLR    D3,VOICES_TO_REL     ;CLEAR ANY PENDING RELEASE REQUEST FOR THIS VOICE.
+               BCLR    D3,CHIPS_TO_ZERO     ;LIKEWISE FOR ANY PENDING CHIP-ZEROING REQUEST.
+;
+                                            ;NOW, SET UP VOICE BLOCK TO THE POINT WHERE IT CAN BE
+                                            ;HANDED OFF TO BACKGROUND INIT AND PRIORITY PROCEDURES:
+;
+               MOVE    V_IDLE_SUB(A3),A2    ;AT THIS STAGE IN SETUP, WE DIDDLE THE IDLE SUB-BLOCK.
+               MOVE    A0,V_SOUND_COM(A2)   ;INSTALL SOUND COMMON AND SUB-BLOCK POINTERS.
+               MOVE    A1,V_SOUND_SUB(A2)   ;NOTE:  PRESERVE A0 FOR CALL TO SET_PITCH_DELTA.
+;
+               MOVE    S_VEL_LIST(A1),D1    ;INSTALL VELOCITY-DEPENDENT INITIALIZATION LIST.
+               MOVE    D1,V_VEL_LIST(A3)
+               EOR     #FULL_INIT_LIST,D1   ;COMPUTE AND INSTALL NON-VEL INITIALIZATION LIST.
+               MOVE    D1,V_NON_VEL_LIST(A3)
+;
+               MOVE    ASSIGN_BLOCK+4,D2    ;FETCH EVENT ALT-PARAMS BIT SETTING,
+               AND     #1,D2                ;MAKE SURE IT'S CLEAN -
+               MOVE    ASSIGN_BLOCK+2,D1    ;FETCH EVENT SOUND NUMBER,
+               LSL     #1,D1                ;MOVE IT OVER TO MAKE ROOM FOR ALT-PARAMS BIT,
+               OR      D2,D1                ;PUT 'EM TOGETHER,
+               MOVE    D1,V_SOUND_ALT(A3)   ;TAG THE VOICE COMMON BLOCK (FOR VOICE STEAL USE).
+;
+                                            ;AT THIS POINT, SETUP DEPENDS UPON EVENT ORIGIN -
+               ADD     D0,D0                ;CONVERT EVENT ORIGIN CODE TO LONG-WORD OFFSET,
+               JMP     VOC_SET_20(PC,D0)    ;BRANCH BASED ON EVENT ORIGIN CODE.
+VOC_SET_20
+               BRA     VOC_SET_60           ;BRANCH FOR SEQUENCER EVENT.
+               BRA     VOC_SET_80           ;BRANCH FOR PAD EVENT (INCLUDES TRIG, FOOTSW EVENTS).
+                                            ;FALL THROUGH FOR MIDI EVENT.
+;
+VOC_SET_40
+                                            ;COMPLETE SETUP FOR MIDI EVENT -
+               MOVE    ASSIGN_BLOCK+12,V_VELOCITY(A3)      ;MOVE EVENT VELOCITY INTO VOICE BLOCK.
+               MOVE    ASSIGN_BLOCK+6,D0    ;FETCH EVENT PITCH SETTING,
+               BSR     SET_PITCH_DELTA      ;INSTALL DELTA RELATIVE TO SAMPLED PITCH.
+               MOVE    ASSIGN_BLOCK+8,V_LEVEL(A3)     ;INSTALL EVENT LEVEL SETTING.
+               MOVE    ASSIGN_BLOCK+10,V_PAN(A3)      ;INSTALL EVENT PAN SETTING.
+               MOVE    ASSIGN_BLOCK+16,D2   ;BUILD V_IDENTITY VALUE - FETCH MIDI KEY NUMBER,
+               LSL     #4,D2                ;SHIFT IT OVER TO MAKE ROOM FOR CHANNEL NUMBER.
+               OR      ASSIGN_BLOCK+14,D2   ;DROP CHANNEL NUMBER IN AT "RIGHT".
+               OR      #0C000H,D2           ;THIS INDICATES LIVE EVENT, GATE ON -
+               SWAP    D2                   ;(FOREGOING IS IN M.S.WORD)
+               MOVE    #8000H,D2            ;WHILE THIS INDICATES MIDI (NOT PAD) EVENT -
+               MOVE.L  D2,V_IDENTITY(A3)    ;DROP COMPLETE V_IDENTITY INTO VOICE BLOCK.
+               MOVE    #1,V_PRIO_TIME(A3)   ;SET VOICE TIMEOUT TO PLAY SOUND ASAP.
+               BRA     VOC_SET_A0           ;EXIT, TRIGGERING BACKGROUND VOICE INIT ON THE WAY.
+;
+VOC_SET_60
+                                            ;COMPLETE SETUP FOR SEQUENCER EVENT -
+               MOVE.L  ASSIGN_BLOCK+14,D0   ;FETCH AND STORE V_IDENTITY FOR THE EVENT.
+               BCLR    #15,D0               ;MAKE SURE UNDEFINED BIT IS CLEAR (PART OF SEQ ID),
+               MOVE.L  D0,V_IDENTITY(A3)
+               BTST    #30,D0               ;IS GATE-ON BIT SET?
+               BNE.S   VOC_SET_64           ;BRANCH IF YES,
+               BCLR    D3,CUR_SQ_DYN_ON     ;ELSE REMOVE THIS VOICE FROM MAPS OF GATED-ON SEQUENCER
+               BCLR    D3,CUR_SQ_FIX_ON     ;VOICES, TO CUT DOWN ON NOTE-OFF EVENT PROCESSING.
+VOC_SET_64
+               MOVE    D0,V_VELOCITY(A3)    ;STICK VELOCITY VALUE INTO VOICE BLOCK.
+               AND     #1FH,V_VELOCITY(A3)  ;CLEAR ALL BUT BITS 4-0.
+               LSR     #5,D0                ;SHIFT PAN SETTING INTO PLACE,
+               MOVE    D0,V_PAN(A3)         ;WRITE IT TO VOICE BLOCK,
+               AND     #1FH,V_PAN(A3)       ;CLEAR ALL BUT BITS 4-0.
+               LSR     #5,D0                ;SHIFT PITCH SETTING INTO PLACE,
+               BSR.S   SET_PITCH_DELTA      ;INSTALL DELTA RELATIVE TO SAMPLED PITCH.
+               MOVE    ASSIGN_BLOCK+8,V_LEVEL(A3)     ;INSTALL EVENT LEVEL SETTING.
+               TST     HOLDING_EVENT        ;ARE WE ON THE VERY FIRST CLICK OF RECORD (OR PLAYBACK
+                                            ;OUTSIDE OF A PLAYBACK REPEAT LOOP)?
+               BEQ.S   VOC_SET_68           ;IF YES, DON'T IMPOSE ANY FIRING DELAY ON THIS SOUND.
+               MOVE    NEXT_TIME,D1         ;ELSE - FETCH TIME AT WHICH TO ACTUALLY FIRE THE SOUND,
+               SUB     REAL_TIME,D1         ;SUBTRACT TIME RIGHT NOW TO GET V_PRIO_TIME VALUE.
+               BCC.S   VOC_SET_70           ;IF > 0, THIS IS HOW LONG UNTIL WE START THIS SOUND -
+VOC_SET_68
+               MOVEQ   #1,D1                ;ELSE, GET SOUND STARTED ASAP.
+;
+VOC_SET_70
+               MOVE    D1,V_PRIO_TIME(A3)
+               BRA.S   VOC_SET_A0           ;EXIT, TRIGGERING BACKGROUND VOICE INIT ON THE WAY.
+;
+VOC_SET_80
+                                            ;COMPLETE SETUP FOR PAD EVENT -
+               MOVE.L  ASSIGN_BLOCK+14,V_IDENTITY(A3) ;COMES READY TO USE, RIGHT OUT OF THE BLOCK.
+               MOVE.B  ASSIGN_BLOCK+6,V_VELOCITY+1(A3)     ;INSTALL VELOCITY PASSED IN BLOCK -
+               BNE.S   VOC_SET_90           ;IF WE ALREADY HAVE VEL, SKIP PAD_VEL_PTR SETUP -
+                                            ;THIS WOULD BE AN AUTOREPEAT PAD EVENT, THEN -
+                                            ;OR PERHAPS A FOOTSWITCH OR TRIGGER-IN PAD EVENT.
+               TST.B   ASSIGN_BLOCK+17      ;ARE WE DEALING WITH A TRIGGER-IN "PAD" EVENT?
+               BPL.S   VOC_SET_84           ;BRANCH IF NOT, LINK VOICE TO A REAL PAD FOR VELOCITY.
+               MOVE    #TRIGGER_VALUE,D1    ;ELSE, LINK VOICE TO TRIGGER-IN FOR VELOCITY.
+               BRA.S   VOC_SET_88
+VOC_SET_84
+               MOVE    ASSIGN_BLOCK+12,D1   ;FETCH PAD NUMBER, USE IT TO COMPUTE PAD_VALUE POINTER.
+               ADD     D1,D1                ;THAT'S A WORD-PER-PAD OFFSET INTO PAD_VALUE ARRAY ....
+               ADD     #PAD_VALUE,D1        ;UND AFF KORSS, DER BASE ADDRESSE.
+VOC_SET_88
+               MOVE    D1,V_PAD_VAL_PTR(A3) ;STORE VELOCITY LINK POINTER FOR USE BY PRIORITY INIT -
+                                            ;VELOCITY VALID WHEN POINTED-AT VALUE BECOMES NON-ZERO.
+VOC_SET_90
+               MOVE.B  ASSIGN_BLOCK+7,D0    ;FETCH EVENT PITCH (LEAVE VELOCITY BEHIND),
+               BSR.S   SET_PITCH_DELTA      ;INSTALL DELTA RELATIVE TO SAMPLED PITCH.
+               MOVE    ASSIGN_BLOCK+8,V_LEVEL(A3)     ;INSTALL EVENT LEVEL SETTING.
+               MOVE    ASSIGN_BLOCK+10,V_PAN(A3)      ;INSTALL EVENT PAN SETTING.
+               MOVE    #1,V_PRIO_TIME(A3)   ;SET VOICE TIMEOUT TO PLAY SOUND ASAP.
+;
+VOC_SET_A0
+               BSET    D3,NON_VEL_INIT      ;GIVE BACKGROUND FIRST CRACK AT COMPLETING VOICE
+                                            ;INITIALIZATION, NON-VELOCITY-DEPENDENT ITEMS FIRST -
+                                            ;IF TIME RUNS OUT, REALTIME INTERRUPT WILL TAKE OVER.
+;
+VOC_SET_ESCAPE
+                                            ;NOTE - WE ALSO COME HERE TO EXIT WITHOUT ASSIGN.
+               MOVEM.L (A7)+,D0-D3/A0-A3    ;RESTORE REGISTERS STACKED ON ENTRY TO VOICE_ASSIGN.
+VOC_SET_EXIT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; COMPUTE AND INSTALL DELTA FROM NOMINAL PITCH, PER SAMPLE RATE -
+; RESULT IS USED BY INIT ROUTINES FOR ALL VOICE PARAMETERS WHICH PROVIDE
+; PITCH-TRACKING VARIATION - WE COMPUTE IT HERE TO SAVE INIT TIME.
+; ASSOOMS:     A0 POINTS TO SOUND COMMON BLOCK,
+;              A3 POINTS TO VOICE COMMON BLOCK,
+;              D0 CONTAINS EVENT PITCH VALUE,
+;              A-AND, IT'S OKAY TO TRASH D1 - WHICH WE DO.
+; PRESERVES ALL OTHER REGISTERS.
+;
+SET_PITCH_DELTA
+               CLR     D1
+               MOVE.B  S_RATE(A0),D1                  ;FETCH SAMPLE RATE FOR SOUND BEING PLAYED,
+               MOVE.B  ROOT_PITCH_TABLE(PC,D1),D1     ;USE IT TO FETCH ASSOCIATED ROOT PITCH.
+               NEG     D1                   ;NEGATE FETCHED ROOT PITCH - DELTA FOLLOWS PITCH VALUE.
+               ADD     D0,D1                ;ADD PITCH TO NEGATED ROOT PITCH TO GET OUR DELTA -
+               MOVE    D1,V_PITCH_DELTA(A3) ;PUT IT IN THE VOICE BLOCK, BLOKE.
+               RTS
+;
+;
+ROOT_PITCH_TABLE
+               DC.B    19                   ;ROOT PITCH FOR 16KHz.
+               DC.B    19                   ;ROOT PITCH FOR 31KHz.
+               DC.B    24                   ;ROOT PITCH FOR 42KHz.
+               EVEN
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; VOICE-SPECIFIC GATE-OFF PATH -
+; INVOKED FROM HIGH-PRIORITY BACKGROUND BY BITS SET IN VOICES_TO_OFF.
+; WE CLEAR ONE BIT, GATE ONE VOICE OFF PER PASS THROUGH HERE.
+; LEVEL 2 AND 3 INTERRUPTS DISABLED BRIEFLY AS WE PASS THROUGH.
+;
+GATE_A_VOICE_OFF
+               MOVEQ   #7,D1                ;WE PROB'LY'LL FIND THE VOICE -
+GATVOFF_10
+               BCLR    D1,VOICES_TO_OFF
+               BNE.S   GATVOFF_20
+               DBRA    D1,GATVOFF_10
+               BRA.S   GATVOFF_EXIT         ;IF NOT, IT DIED WHILE WE WERE LOOKING FOR IT.
+GATVOFF_20
+               MOVE    D1,A0                ;D1 IS VOICE INDEX -
+               ADD     A0,A0                ;WE ALSO NEED VOICE COMMON BLOCK POINTER.
+               MOVE    VOICE_TABLE(A0),A0
+               BSR.S   VOC_SPC_ENTRY        ;OFF WE (IT) GOES.
+GATVOFF_EXIT
+               BRA     BACK_HANDLER
+;
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; VOICE GATE-OFF EVENT HANDLER -
+; CALL WITH V_IDENTITY FOR THE NOTE-ON EVENT IN D0.L.
+;
+; SEEKS VOICE WITH MATCHING V_IDENTITY, GATES IT OFF IF FOUND -
+; GATE-OFF AT THIS POINT CONSISTS OF CLEARING V_IDENTITY GATE BIT,
+; UPDATING ASSIGN, ETC. STATUS MAPS, SETTING A BIT IN VOICES_TO_REL
+; WHICH WILL INVOKE VOICE_RELEASER FROM HIGH-PRIORITY BACKGROUND
+; TO DIDDLE VOICE VECTORS AND CHIP (I.E., EXIT FROM SUS LOOP IF ANY),
+; AND FINALLY, IF VCA IS IN GATED-SUSTAIN MODE, CLEARING ATTACK AND
+; SUSTAIN TIMERS AND PUTTING VCA INTO RELEASE PHASE -
+; I.E., IT DOES RIGHT NOW ONLY WHAT IS REQUIRED FROM THE GATE-OFF STATUS
+; AND VOICE-STEALING PERSPECTIVE, POSTPONES OTHER STUFF.
+;
+; NOTABLE EXCEPTIONS TO THE ABOVE:
+;
+; IF VOICE IS STILL IN PRIORITY SEQUENCE, NO BIT IS SET NOW IN
+; VOICES_TO_REL, AND VCA PHASE TIMERS/VECTOR ARE LEFT ALONE - THESE GET
+; DEALT WITH IN FINAL STEP OF PRIORITY SEQUENCE WHEN GATE-OFF STATUS IS
+; DETECTED VIA CLEARED GATE-STATUS BIT IN V_IDENTITY.
+;
+; IF VOICE IS PLAYING A SEQUENCE EVENT, GATE-OFF ACTION MUST BE DELAYED
+; UNTIL NEXT_TIME (ESTIMATED REAL_TIME AT NEXT 24 PPQN CLICK) - HENCE,
+; ALL WE DO RIGHT NOW IS REMOVE THE VOICE FROM BIT MAPS OF GATED-ON SEQ
+; VOICES (TO STAY ABREAST OF SEQUENCE PLAYBACK PARSING PROCESS), THEN
+; SET THE VOICE SELF-GATE-OFF PROCESS INTO MOTION, TIMED FOR NEXT CLICK.
+; WHEN IT TIMES OUT, IT INVOKES A CALL HERE VIA OFF_DEM_VOICE.
+;
+; SPECIAL ENTRY POINT - VOC_SPC_ENTRY (FOR VOICE-SPECIFIC ENTRY) -
+; ENTER WITH D1 = VOICE INDEX, A0 = VOICE COMMON BLOCK POINTER TO
+; GATE OFF THAT VOICE.  NOTE THAT SEQUENCE VOICE-MAP BOOKKEEPING AND
+; GATE-OFF DELAY HANDLING IS BYPASSED WITH THIS ENTRY POINT.
+;
+; STOPS AFTER FINDING ONE MATCH - NO MULTIPLE KILLS.
+; RETURNS BG_TEMP_9_B (.B) = 0FFH IF NO MATCHING VOICE FOUND, = 0 IF
+; MATCH FOUND, SO MIDI HANDLER CAN KEEP TRACK OF VOICES GATED OFF AND
+; STOP AT EIGHT, EH?
+;
+; PRESERVES ALL REGISTERS.
+;
+VOICE_GATE_OFF
+               MOVEM.L D1/A0,-(A7)
+               ST      BG_TEMP_9_B          ;IF FLAG STILL SET UPON RETURN, WE DIDN'T FIND A MATCH.
+               MOVEQ   #7,D1                ;PREPARE TO STROLL THROUGH EIGHT VOICE BLOCKS,
+               MOVE    #V_BLK_07,A0         ;STARTING WITH NUMBER 7 AND GOING DOWN TO NUMBER 0.
+VGATEOFF_20
+               MOVE    #2300H,SR            ;WHILE CHECKING EACH VOICE, BLOCK STATUS CHANGES.
+               CMP.L   V_IDENTITY(A0),D0    ;DOES THIS VOICE HAVE THE LOOK YOU WANT TO KILL BETTER?
+               BEQ.S   VGATEOFF_40          ;BRANCH IF YES - LET'S GO KILL IT.
+                                            ;(NOTE - WE SEEK ONLY ONE EVENT TO MATCH THIS ID).
+               MOVE    #2000H,SR            ;ELSE - GET OFF LEVEL2, REALTIME RESPECTIVE FACES,
+               SUB     #V_BLOCK_SIZE,A0     ;STEP POINTER DOWN TO NEXT VOICE BLOCK.
+               DBRA    D1,VGATEOFF_20       ;LOOP BACK IF ANY MORE VOICES TO CHECK,
+               BRA.S   VGATEOFF_A0          ;ELSE B'GONE.
+;
+VGATEOFF_40
+                                            ;TO KILL - YES, TO KILL!  AT LEAST, TO GATE OFF ....
+               BCLR    #6,V_IDENTITY(A0)    ;CLEAR GATE STATUS BIT - BLOCK FUTURE MATCH, LET VOICE
+                                            ;KNOW THAT IT'S OFF (IF IN PRIORITY, FINDS OUT LATER).
+               BCLR    D1,CUR_SQ_DYN_ON     ;REMOVE THIS VOICE FROM MAPS OF SEQ GATED-ON VOICES -
+               BNE.S   VGATEOFF_50          ;IF IT WAS IN ONE, WE GOT A SEQUENCE EVENT -
+               BCLR    D1,CUR_SQ_FIX_ON     ;HANDLE THIS CASE SOMEWHAT DIFFERENTLY.
+               BEQ.S   VGATEOFF_70          ;USE NORMAL PROCEDURE IF IT WASN'T IN EITHER MAP.
+VGATEOFF_50
+               TST     HOLDING_EVENT        ;ARE WE ON THE VERY FIRST CLICK OF RECORD (OR PLAYBACK
+                                            ;OUTSIDE OF A PLAYBACK REPEAT LOOP)?
+               BEQ.S   VGATEOFF_70          ;IF YES, DON'T DELAY THE GATE-OFF ON THIS EVENT.
+               MOVE    NEXT_TIME,D1         ;ELSE - THIS IS WHEN GATE-OFF SHOULD OCCUR.
+               BNE.S   VGATEOFF_54          ;DIDDLE TIME VALUE IF NECESSARY -
+               SUBQ    #1,D1                ;WE REQUIRE A NON-ZERO VALUE FOR USE AS ACTIVITY FLAG.
+VGATEOFF_54
+               TST     V_PRIO_TIME(A0)      ;IS THIS VOICE STILL IN PRIORITY SEQUENCE?
+               BEQ.S   VGATEOFF_58          ;BRANCH IF NOT, PLACE TIMER IN VOICE ACTIVE SUB-BLOCK.
+               MOVE    D1,V_P_OFF_TIME(A0)  ;ELSE PUT IT IN COMMON BLOCK - IT'LL GET MOVED TO SUB-
+               BRA.S   VGATEOFF_80          ;BLOCK UPON EXIT FROM PRIORITY SEQUENCE.
+VGATEOFF_58
+               MOVE    V_ACTIVE_SUB(A0),A0  ;INSTALL TIMER IN VOICE ACTIVE SUB-BLOCK.
+               MOVE    D1,V_N_OFF_TIME(A0)
+               BRA.S   VGATEOFF_80
+;
+VOC_SPC_ENTRY
+               MOVE    #2300H,SR            ;OFF_DEM_VOICE, GATE_A_VOICE_OFF BSRs IN HERE -
+               MOVEM.L D1/A0,-(A7)          ;ESTABLISH PARITY WITH VOICE_GATE_OFF AT THIS POINT.
+               BCLR    #6,V_IDENTITY(A0)    ;CLEAR GATE STATUS BIT - BLOCK FUTURE MATCH, LET VOICE
+                                            ;KNOW THAT IT'S OFF (IF IN PRIORITY, FINDS OUT LATER).
+;
+VGATEOFF_70
+               SF      BG_TEMP_9_B          ;LETS MIDI CODE COUNT DEATHS - WHY KILL MORE THAN 8?
+               TST     V_PRIO_TIME(A0)      ;IS THIS VOICE STILL IN PRIORITY SEQUENCE?
+               BNE.S   VGATEOFF_80          ;SKIP OUT IF YES, PRIO SEQ WILL GATE IT OFF WHEN DONE.
+               BSET    D1,VOICES_TO_REL     ;ELSE, FLAG VOICE HERE AS NEEDING VECTOR/LOOP DIDDLE.
+               MOVE    V_ACTIVE_SUB(A0),A0  ;WIPE OUT VCA PHASE TIMES AS APPROPRIATE -
+               TST     V_A_SUS_TIME(A0)     ;IS VCA IN TIMED SUSTAIN MODE, NOT NEARLY DONE?
+               BGT.S   VGATEOFF_80          ;BRANCH IF YES, LEAVE ALLA IT ALONE.
+               CLR     V_A_SUS_TIME(A0)     ;ELSE, WOMPIT - SUSTAIN IS OVER, BAY-BEE.  NOTE: ALSO
+                                            ;ACTS AS FLAG CAUSING VOICE_RELEASER TO EXIT SUS LOOP.
+               CLR     V_A_ATT_TIME(A0)     ;ATTACK IS NOW RETREATING TOO.
+               MOVE.W  #VCA_RELEASE,V_VCA_VECTOR(A0) ;IN FACT, GUESS WHAT VCA IS DOING NOW.
+VGATEOFF_80
+               MOVE    #2000H,SR            ;WE'RE THROUGH MUCKING ABOUT - RE-ENABLE INTERRUPTS.
+VGATEOFF_A0
+               MOVEM.L (A7)+,D1/A0
+VGATEOFF_EXIT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; ROUTINE TO DO THE HANDS-ON WORK OF GATING A VOICE OFF -
+; NAMELY, REARRANGEMENT OF NON-PRIORITY VECTORS, EXIT FROM SUSTAIN LOOP.
+;
+; INVOKED BY VOICE_GATE_OFF (FOR VOICES NOT IN PRIORITY SEQUENCE),
+; OR BY ARE_WE_GATED_OFF (AS LAST STEP IN PRIORITY SEQUENCE FOR VOICES
+; WHICH GET GATED OFF BEFORE THEY HAVE MADE IT THROUGH PRIORITY PHASE) -
+; WE ACTUALLY BRANCH HERE FROM HIGH-PRIORITY BACKGROUND IN RESPONSE TO
+; BITS SET BY THESE ROUTINES IN VOICES_TO_REL ....
+; JUST A WARNING, THAT'S ALL.
+;
+; HANDLES ONE VOICE PER PASS - DISABLES LEVEL 2-3 INTERRUPTS FOR THE
+; DURATION OF ITS EXECUTION.
+;
+VOICE_RELEASER
+               MOVEQ   #7,D0                ;FIND A SET BIT IN VOICES_TO_REL -
+VOC_RLSR_10
+               BCLR    D0,VOICES_TO_REL     ;TEST AND CLEAR AT ONCE ....
+               BNE.S   VOC_RLSR_12          ;BRANCH IF WE GOT ONE, RELEASE THAT VOICE.
+               DBRA    D0,VOC_RLSR_10       ;ELSE LOOP UNTIL 8 BITS TESTED.
+               BRA.S   VOC_RLSR_EXIT        ;EXIT IF NONE FOUND (STOPGAP, SHOULD NEVER HAPPEN).
+VOC_RLSR_12
+               ADD     D0,D0                ;TURN VOICE NUMBER INTO VOICE_TABLE WORD OFFSET,
+               MOVE    D0,A0
+               MOVE    VOICE_TABLE(A0),A0   ;FETCH VOICE COMMON BLOCK POINTER FOR THIS VOICE.
+               MOVE    #2300H,SR            ;BLOCK REALTIME INTERRUPT TO FREEZE VOICE STATUS.
+               MOVE    V_ACTIVE_SUB(A0),A1  ;GET POINTER TO ACTIVE VOICE SUB-BLOCK.
+               TST     V_A_SUS_TIME(A1)     ;IS VCA IN TIMED-SUSTAIN MODE, NOT QUITE DONE?
+               BNE.S   VOC_RLSR_20          ;BRANCH IF YES - VCA IS OBLIVIOUS TO GATE-OFF.
+               BSR.S   STOP_SUSTAIN_LOOP    ;ELSE VCA IS IN RELEASE, HALT SUSTAIN LOOP IF ANY.
+VOC_RLSR_20
+               TST     V_F_SUS_TIME(A1)               ;IS VCF IN GATED-SUSTAIN MODE?
+               BPL.S   VOC_RLSR_40                    ;BRANCH IF NO - VCF IS OBLIVIOUS TO GATE-OFF.
+               MOVE    #VCF_RELEASE,V_VCF_VECTOR(A1)  ;ELSE PUT VCF INTO RELEASE.
+VOC_RLSR_40
+               CMP     #BEND_SUSTAIN,V_BEND_VECTOR(A1)     ;IS BEND_SUSTAIN VECTOR ACTIVE?
+               BNE.S   VOC_RLSR_60                         ;BRANCH IF NOT - HANS AUFF.
+               MOVE    #BEND_RELEASE,V_BEND_VECTOR(A1)     ;ELSE, PUT BEND INTO RELEASE PHASE.
+VOC_RLSR_60
+               MOVE    #2000H,SR            ;INTERRUPTS - AWAKE!
+;
+VOC_RLSR_EXIT
+               BRA     BACK_HANDLER
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; AT GATE-OFF, TURN OFF SUSTAIN LOOP IF ANY -
+; INPUTS:      A0 POINTS TO VOICE COMMON BLOCK.
+;              A1 POINTS TO VOICE SUB-BLOCK.
+; NOTE - WE BE CALLED BY VOICE_RELEASER (FOR GATED VCA SUSTAIN), AND BY
+; VCA_SUSTAIN (FOR TIMED VCA SUSTAIN, AT TIMEOUT) -
+; MAY I THUS SAY, WE EXPECT NO REALTIME INTERRUPT WILL OCCUR IN THE
+; MIDDLE OF THIS, EITHER WAY - SO IT'S OK TO BE DOING WHAT WE DO HERE.
+; PRESERVES ALL REGISTERS.
+;
+STOP_SUSTAIN_LOOP
+               MOVEM.L D0-D1/A2-A4,-(A7)
+               MOVE    V_SOUND_SUB(A1),A2   ;SET POINTER TO SOUND SUB-BLOCK FOR LOOP PARAM ACCESS.
+               MOVE.B  S_LOOP_TYPE(A2),D0   ;FETCH LOOP/DIRECTION BITS.
+               BPL.S   NOTHING_TO_STOP      ;EXIT IF LOOP BIT (BIT 7) IS OFF.
+               BCLR    #4,D0                ;TEST AND CLEAR OUT THE LOOP TYPE BIT -
+               BNE.S   NOTHING_TO_STOP      ;BRANCH IF RELEASE LOOP, LEAVE IT ALONE.
+               BTST    #5,D0                ;TEST DIRECTION -
+               BNE.S   STOP_REV_LOOP        ;BRANCH IF SOUND BEING PLAYED IN REVERSE.
+;
+               MOVE.L  V_CHIP_ADDR(A0),A3   ;FORWARD PLAY - FETCH CHIP POINTER FOR THIS VOICE.
+               OR      V_CHIP_CHAN(A0),D0   ;DROP CHIP CHANNEL BIT INTO CONTROL WORD,
+               MOVE.B  D0,MISC(A3)          ;SELECT CHIP CHANNEL FUR REAL.
+               LEA     S_END+1(A2),A4       ;WRITE S_END ADDRESS TO RIGHT LATCH.
+               MOVE.B  (A4)+,D1
+               BSET    #7,D1
+               MOVE.B  D1,ADDRHI(A3)
+               MOVE.B  (A4)+,ADDRMID(A3)
+               MOVE.B  (A4),ADDRLO(A3)
+               BRA.S   NOW_STOP_IT          ;GO PUT OUT LOOP-STOP CONTROL WORD.
+;
+STOP_REV_LOOP
+               MOVE.L  V_CHIP_ADDR(A0),A3   ;FETCH CHIP POINTER FOR THIS VOICE.
+               OR      V_CHIP_CHAN(A0),D0   ;DROP CHIP CHANNEL BIT INTO CONTROL WORD,
+               MOVE.B  D0,MISC(A3)          ;SELECT CHIP CHANNEL FUR REAL.
+               LEA     S_START+1(A2),A4     ;WRITE S_START ADDRESS TO LEFT LATCH.
+               MOVE.B  (A4)+,ADDRHI(A3)
+               MOVE.B  (A4)+,ADDRMID(A3)
+               MOVE.B  (A4),ADDRLO(A3)
+;
+NOW_STOP_IT
+               AND     #21H,D0              ;CLEAR ALL BUT DIRECTION AND CHANNEL BITS,
+               MOVE.B  D0,MISC(A3)          ;SO AS TO STOP LOOPING.
+               MOVE    D0,V_CHIP_MISC(A0)   ;REMEMBER WHAT WE JUST SAID TO MR. MISC -
+                                            ;PITCH BEND WILL NEED TO KNOW.
+;
+NOTHING_TO_STOP
+               MOVEM.L (A7)+,D0-D1/A2-A4
+;
+STOP_SUS_EXIT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; GATE OFF ALL LIVE-EVENT VOICES -
+; CALLED WHEN AUTOREPEAT OR ERASE MODES ARE ACTIVATED,
+; SINCE LIVE-EVENT HANDLERS ARE REGROOVED AND MAY NOT DELIVER
+; NOTE-OFFS TO MATCH CURRENTLY-ON EVENTS.
+;
+; NOTE - WE DON'T DEAL WITH RECORD-MODE SEQUENCER EVENT MATCHING HERE,
+; REFER TO INDIVIDUAL SWITCH OR MODE-CHANGE HANDLERS.
+;
+; ALL REGISTERS PRESERVED - NO INTERRUPT LEVEL CHANGES OCCUR,
+; WE ASSUME INTERRUPTS DISABLED AT LEAST TO LEVEL 3.
+;
+LIVE_VOICES_OFF
+               MOVEM.L D0-D1/A0,-(A7)
+               MOVEQ   #7,D0                ;CHECK ALL VOICES -
+               MOVE    #V_BLK_07,A0         ;GATE-OFF ANY LIVE-EVENT VOICES PLAYED PRIOR TO THIS
+                                            ;TIME, SINCE NOTE-OFFS FOR THEM MAY NOT BE FORTHCOMING.
+LIVEOFF_10
+               MOVE.B  V_IDENTITY(A0),D1    ;HAVE A LOOK AT THE ID TAG -
+               BPL.S   LIVEOFF_30           ;BRANCH IF NOT A LIVE-EVENT VOICE.
+               BTST    #6,D1                ;LIVE - BUT IS IT GATED ON?
+               BEQ.S   LIVEOFF_30           ;BRANCH IF NOT, WE HAVE NO CONCERN HERE.
+               TST     V_PRIO_TIME(A0)      ;GOTTA GATE THIS ONE OFF - IS IT IN PRIORITY SEQUENCE?
+               BEQ.S   LIVEOFF_20           ;BRANCH IF NOT - FAIRLY SIMPLE CASE ....
+               TST     V_VELOCITY(A0)       ;IT'S IN PRIO SEQ - DOES IT HAVE A VELOCITY VALUE YET?
+               BNE.S   LIVEOFF_20           ;BRANCH IF YES, THIS IS ALSO PRETTY STRAIGHTFORWARD.
+               TST.B   AUTORPT_FLAG         ;ARE WE AUTOREPEATING?
+               BEQ.S   LIVEOFF_20           ;BRANCH IF NOT, STILL QUITE STRAIGHTFORWARD.
+;
+               BSR     KILL_ONE_VOICE       ;IF VOICE IS IN PRIORITY SEQUENCE AND DOESN'T YET HAVE
+                                            ;EVENT VELOCITY AND WE ARE IN AUTOREPEAT MODE,
+                                            ;VOICE MAY NEVER GET ITS VELOCITY, SINCE AUTOREPEAT
+                                            ;ALTERS PAD-SCAN MODE.  THEREFORE, KILL VOICE OUTRIGHT.
+               BRA.S   LIVEOFF_30           ;NEXT!
+;
+LIVEOFF_20
+               BSET    D0,VOICES_TO_OFF     ;ELSE, THIS IS ALL WE NEED TO DO - HE'LL BE GONE SOON.
+;
+LIVEOFF_30
+               SUB     #V_BLOCK_SIZE,A0     ;STEP POINTER DOWN TO NEXT VOICE BLOCK IF ANY,
+               DBRA    D0,LIVEOFF_10        ;LOOP UNTIL WE'VE CHECKED ALL VOICES.
+;
+               MOVEM.L (A7)+,D0-D1/A0
+LIVEOFF_EXIT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; INSTANT OBLITERATION OF ALL VOICES -
+; NO INPUTS, ALL REGISTERS PRESERVED.
+;
+KILL_ALL_VOICES
+               MOVE    #2300H,SR            ;KEEP REALTIME OUT OF THIS.
+               MOVEM.L A0/D0,-(A7)
+               MOVE    #V_BLK_07,A0         ;START WITH VOICE BLOCK 7, DO ALL EIGHT.
+               MOVEQ   #7,D0                ;D0 IS VOICE INDEX/COUNTER.
+KILL_ALL_LOOP
+               BSR.S   KILL_ONE_VOICE       ;THIS LIQUIDATES ONE VOICE.
+               SUB     #V_BLOCK_SIZE,A0     ;STEP POINTER DOWN TO NEXT VOICE BLOCK, IF ANY.
+               DBRA    D0,KILL_ALL_LOOP     ;LOOP UNTIL ALL EIGHT VOICES KILT.
+;
+               MOVE    #2000H,SR            ;INTERRUPZ - BE HAPPENIN'.
+               MOVEM.L (A7)+,A0/D0
+KILL_ALL_EXIT
+               RTS
+;
+;
+; KILL ONE VOICE -
+; ENTER WITH D0 = VOICE INDEX, A0 POINTING TO VOICE COMMON BLOCK,
+; AND - HEY! - LEVEL 3 INTERRUPT DISABLED.
+; ALL REGISTERS PRESERVED, NO INTERRUPT LEVEL CHANGES WILL OCCUR.
+;
+KILL_ONE_VOICE
+               MOVE.L  A1,-(A7)
+               CLR.L   V_IDENTITY(A0)       ;STEAL YOUR FACE.
+               CLR     V_PRIO_TIME(A0)      ;DEFUSE PRIORITY SEQUENCE IF ANY.
+               MOVE    #NOTHINGNESS,V_PRIO_VEC(A0)
+               CLR     V_VEL_LIST(A0)       ;DIVERT ANY PENDING BACKGROUND VOICE INITIALIZATION.
+               CLR     V_NON_VEL_LIST(A0)
+               SF      V_PRIO_FLAG(A0)      ;MAKE SURE NON-PRIORITY VECTORS RUN, TO KEEP VCA OFF.
+               MOVE    V_ACTIVE_SUB(A0),A1  ;ALSO, MAKE SURE WE GOT THE RIGHT ONES.
+               MOVE    #VCA_OFF,V_VCA_VECTOR(A1)
+               CLR     V_CUR_VCA(A1)        ;(NOT REALLY NECESSARY BUT WHAT THE FUCK.)
+               CLR     V_A_ATT_TIME(A1)     ;(LIKEWISE, LIKEWISE.)
+               CLR     V_A_REL_TIME(A1)
+               MOVE    #VCF_MAINTAIN,V_VCF_VECTOR(A1)      ;KEEP VCF WIDE OPEN.
+               MOVE    #0FFF0H,V_F_CUTOFF(A1)
+               MOVE    #NOTHINGNESS,V_BEND_VECTOR(A1)      ;GET UN-BENT, PITCH-WISE.
+               MOVE.L  V_CTRL_ADDR(A0),A1   ;HARD-CLEAR THE VCA ROT NAOW.
+               CLR     2(A1)
+;
+               BCLR    D0,NON_VEL_INIT      ;SNUFFLE ANY PENDING VOICE INIT REQUESTS,
+               BCLR    D0,VOICES_TO_OFF     ;NOT TO MENTION PENDING VOICE GATE-OFF REQUESTS,
+               BCLR    D0,VOICES_TO_REL     ;AS WELL AS ANY PENDING VOICE_RELEASER REQUESTS.
+               BCLR    D0,PRIO_DYNAMIC      ;VOICE MAY OR MAY NOT BE A DYNAMIC-ASSIGN VOICE -
+               BCLR    D0,ACTIVE_DYNAMIC    ;IT MAY NOT HAVE BEEN ACTIVE, EITHER -
+               BEQ.S   KIL1VOC_20           ;IF NOT, COOL ....
+               BSET    D0,IDLE_DYNAMIC      ;BUT IF IT WAS ACTIVE_DYNAMIC, NOW IT'S IDLE_DYNAMIC.
+KIL1VOC_20
+               BCLR    D0,CUR_SQ_DYN_ON     ;TAKE VOICE OUT OF GATED-ON SEQ VOICES BIT MAPS,
+               BCLR    D0,CUR_SQ_FIX_ON     ;EVEN THOUGH IT MAY NOT BEEN IN ONE, ANY-WAZE.
+               BSET    D0,CHIPS_TO_ZERO     ;REQUEST CHIP-ZEROING FOR THIS VOICE (BY BACKGROUND).
+;
+               MOVE.L  (A7)+,A1
+KIL1VOC_EXIT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+VOICE_TABLE
+;
+; FOR QUICK ACCESS - LET NOT THE PROCESSOR BE MULTIPLYING, EH?
+;
+               DC.W    V_BLK_00             ;(ABSOLUTE SHORT) POINTER TO VOICE BLOCK 0.
+               DC.W    V_BLK_01             ;(ABSOLUTE SHORT) POINTER TO VOICE BLOCK 1.
+               DC.W    V_BLK_02             ;(ABSOLUTE SHORT) POINTER TO VOICE BLOCK 2.
+               DC.W    V_BLK_03             ;(ABSOLUTE SHORT) POINTER TO VOICE BLOCK 3.
+               DC.W    V_BLK_04             ;(ABSOLUTE SHORT) POINTER TO VOICE BLOCK 4.
+               DC.W    V_BLK_05             ;(ABSOLUTE SHORT) POINTER TO VOICE BLOCK 5.
+               DC.W    V_BLK_06             ;(ABSOLUTE SHORT) POINTER TO VOICE BLOCK 6.
+               DC.W    V_BLK_07             ;(ABSOLUTE SHORT) POINTER TO VOICE BLOCK 7.
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; CHEEPO SEQUENCER INTERNAL NOTE-ON HANDLER -
+; WE JUST TRY TO PLAY IT, NO MATTER WHAT - UNLESS IT'S UNSAMPLED.
+; EVENT IS IN BG_TEMP_1_B/3_B/5_B.
+; PRESERVEZ LES REGISTRES.
+;
+SEQ_ON_INTERNAL
+               MOVEM.L D0-D1,-(A7)
+               MOVE.L  BG_TEMP_1_B,D0       ;FETCH FIRST TWO WORDS ONLY -
+               BCLR    #15,D0               ;MAKE SURE UNDEFINED BIT IS CLEAR.
+               MOVE    D0,ASSIGN_BLOCK+16   ;THIS WORD IS NOW COMPLETE AS V_IDENTITY.
+               SWAP    D0                   ;WHEREAS THIS WORD STILL NEEDS A BIT OF HELP -
+               LSR     #2,D0
+               BSET    #14,D0               ;INDICATES GATE-ON STATUS ....
+               MOVE    D0,ASSIGN_BLOCK+14   ;V_IDENTITY IS NOW ALL THERE.
+                                            ;GET AT SOUND NUMBER FOR TEST OF SAMPLED STATUS.
+               LSR     #6,D0                ;SWEEP TYPE CODE, TRACK NUMBER, ALT BIT OUT OF THE WAY.
+               AND     #1FH,D0              ;OFF THE PAD NUMBER TOO.
+               MOVE.L  SAMPLED_SOUNDS,D1    ;HERE'S THE LIST -
+               BTST    D0,D1                ;YOU ON THE LIST?
+               BEQ.S   SEQ_ON_40            ;BRANCH IF NOT, FORGET IT.
+               CLR     ASSIGN_BLOCK         ;ELSE, WILL DO - SET EVENT ORIGIN CODE = SEQUENCER,
+               MOVE    D0,ASSIGN_BLOCK+2    ;STORE SOUND NUMBER,
+               MOVE    ASSIGN_BLOCK+14,D0   ;RETRIEVE EVENT WORD AND PULL ALT BIT STATUS OUT OF IT.
+               LSR     #5,D0
+               AND     #1,D0
+               MOVE    D0,ASSIGN_BLOCK+4
+               MOVE    BG_TEMP_5_B,ASSIGN_BLOCK+8     ;COPY EVENT LEVEL SETTING INTO ASSIGN_BLOCK.
+               BSR     VOICE_ASSIGN         ;AND HERE WE GO.
+;
+SEQ_ON_40
+               MOVEM.L (A7)+,D0-D1
+;
+SEQ_ON_EXIT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; CHEEPO SEQUENCER INTERNAL NOTE-OFF HANDLER -
+; WE JUST TRY TO TURN IT OFF, NO MATTER WHAT.  PERIOD.
+; EVENT IS IN BG_TEMP_1_B/3_B/5_B.
+; SE MANTENECE TODOS LOS REGISTEROS.
+;
+SEQ_OFF_INTERNAL
+               MOVE.L  D0,-(A7)
+               MOVE.L  BG_TEMP_1_B,D0       ;FETCH NOTE-OFF EVENT (TWO WORDS).
+               BCLR    #15,D0               ;DIDDLE IT TO RESEMBLE NOTE-ON V_IDENTITY.
+               SWAP    D0
+               LSR     #2,D0
+               BSET    #14,D0
+               SWAP    D0
+               BSR     VOICE_GATE_OFF
+;
+               MOVE.L  (A7)+,D0
+;
+SEQ_OFF_EXIT
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA

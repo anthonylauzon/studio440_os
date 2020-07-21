@@ -1,0 +1,75 @@
+               INCLUDE HPFIXUPS
+               TITLE "LEVEL 5 INT - 6803->68000 COMMUNICATION"
+***************************************************************************************************
+***************************************************************************************************
+***                                                                                             ***
+***            6803 -> 68000 COMMUNICATION  (MESSAGES FROM TIMING CHIP)                        ***
+***                                                                                             ***
+***************************************************************************************************
+***************************************************************************************************
+;
+NEG_EXT        EQU     0FFFFFF00H      ;USE IN MOVEQ INSTRUCTIONS WHERE ARG IS
+                                       ;80H OR LARGER - HP XASM DOES NOT HANDLE
+                                       ;SIGN-EXTEND CORRECTLY.  COSMETIC, KEEPS
+                                       ;ACTUAL BYTE VALUE CLEARER.
+;
+               INCLUDE EQUATES         ;HDW ADDR AND CONSTANT DEFS, ABS_SHORT DIRECTIVE.
+               INCLUDE S_BLK_EQU       ;SOUND BLOCK EQUATES/OFFSETS
+;
+               GLB     LEVEL_5_INT,UNLOAD_LEVEL_5,GET_LEVEL_5
+;
+               EXTERNAL  TC_RCV_IN
+               EXTERNAL  TC_RCV_COUNT
+               EXTERNAL  TC_RCV_BUFF
+               EXTERNAL  TC_RCV_OUT
+;
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;              PURPOSE HERE IS TO BUFFER UP MESSAGES FROM THE 6803 TIMING CHIP TO THE
+;              68000.  KEEP A SPECIAL LOOKOUT FOR AN 'F8' - THIS IS A HIGH-SPEED SYNC
+;              TIMING BYTE (MEANING WE'VE GOT TO BLOCK EVERYTHING AND CATCH UP WITH THE
+;              OUTSIDE WORLD - I.E., SEQUENCER FAST-FORWARD).
+;
+;              ENTERS EXPECTING NOTHING; DESTROYS NOTHING.
+;
+LEVEL_5_INT
+               MOVE.L  A0,-(A7)             ;SAVE REGISTER WE'LL BE USING
+;
+               MOVE    TC_RCV_IN,A0         ;LOAD UP BUFFER INDEX
+               ABS_LONG
+               MOVE.B  TC_READ,TC_RCV_BUFF(A0)   ;READ AND STORE NEXT DATA BYTE
+               ABS_SHORT
+;
+               ADDQ    #1,TC_RCV_IN         ;INCREMENT...
+               ANDI    #3FFH,TC_RCV_IN      ;        ...AND WRAP INDEX POINTER (1K BUFF)
+               ADDQ    #1,TC_RCV_COUNT      ;INC BUFFER COUNT (ALSO FLAGS BACKGROUND TO ACTIVITY)
+;
+               MOVE.L  (A7)+,A0             ;RESTORE BORROWED REGISTER
+               RTE                          ;BACK TO THE FUTURE.......
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;               THIS ROUTINE IS FOR UNLOADING THE MESSAGE STORED FROM THE
+;               TIMING CHIP IN THE ABOVE ROUTINE.
+;
+;               ENTERS EXPECTING NOTHING.
+;               TRASHES A0,D0.
+;               LEAVES WITH D0 = NEXT BYTE OUT OF BUFFER.
+;
+GET_LEVEL_5    ;ENTER HERE IF YOU WANT TO WAIT ON A BYTE'S APPEARANCE
+               TST     TC_RCV_COUNT
+               BEQ     GET_LEVEL_5
+UNLOAD_LEVEL_5
+               MOVE    TC_RCV_OUT,A0        ;LOAD UP INDEX TO NEXT BYTE TO READ
+               MOVE.B  TC_RCV_BUFF(A0),D0   ;GET BYTE
+               EXT     D0
+;
+               ADDQ    #1,TC_RCV_OUT        ;INCREMENT...
+               ANDI    #3FFH,TC_RCV_OUT     ;        ...AND WRAP INDEX (1K BUFF)
+               SUBQ    #1,TC_RCV_COUNT      ;DECREMENT BUFFER COUNT
+;
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA

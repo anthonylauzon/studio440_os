@@ -1,0 +1,604 @@
+               INCLUDE HPFIXUPS
+               TITLE "SYSFUNS4"
+***************************************************************************************************
+***************************************************************************************************
+***                                                                                             ***
+***            SYSFUNS4 - SUBFUNCTIONS UNDER "SMPTE", "COUNT/TAP" FUNCTION SWITCHES             ***
+***                                                                                             ***
+***************************************************************************************************
+***************************************************************************************************
+;
+NEG_EXT        EQU     0FFFFFF00H      ;USE IN MOVEQ INSTRUCTIONS WHERE ARG IS
+                                       ;80H OR LARGER - HP XASM DOES NOT HANDLE
+                                       ;SIGN-EXTEND CORRECTLY.  COSMETIC, KEEPS
+                                       ;ACTUAL BYTE VALUE CLEARER.
+;
+               ABS_SHORT
+;
+               INCLUDE FIELD_EQU       ;SUBFUNCTION/FIELD BLOCK DEFINITIONS.
+
+               GLB     NEW_TAPE_SPEED,DROP_CHECK_START
+               GLB     CLICKS_TO_COUNT_IN
+
+;900621               EXTERNAL  SMPTE_TYPE_TBL
+               GLB	SMPTE_TYPE_TBL
+
+               EXTERNAL  WRITE_TO_TC,WRITE_PARAM_STRING
+               EXTERNAL  STOP_THE_SEQUENCER
+               EXTERNAL  TEST_PIN_LIMITS
+               EXTERNAL  TEST_POUT_LIMITS,CREATE_CLOCK_OUT
+
+               EXTERNAL  SMPTE_START_HR,SMPTE_START_MN,SMPTE_START_SC,SMPTE_START_FR,SMPTE_START_BT
+               EXTERNAL  SMPTE_NOW_HR,SMPTE_NOW_MN,SMPTE_NOW_SC,SMPTE_NOW_FR,SMPTE_NOW_BT
+               EXTERNAL  SMPTE_NOW_TYPE,SMPTE_NOW_T_1,TAPE_SPEED_TYPE,TAPE_SPEED_VARI
+               EXTERNAL  TC_MODE,XPORT_STATE
+               EXTERNAL  PARAM_HI_LIM,SUBFUN_INSTALL
+               EXTERNAL  CUR_TEMPO_BPM,CUR_TEMPO_FPB
+               EXTERNAL  COUNT_IN_METHOD,TAP_SLEW_AMOUNT,TAP_DIV_FLAG
+               EXTERNAL  CLICKS_PER_TAP
+;19JUN               EXTERNAL  CLICKS_PER_TAP_LEFT
+               EXTERNAL  CLICKS_TAP,CURSOR_ENABLE
+               EXTERNAL  TAP_CLICKS_LEFT,SMPTE_SYNC
+;
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; FOR STARTERS, GLOBAL DECLARATIONS FOR THE SUBFUNCTION BLOCKS -
+; THEY'RE ACCESSED FROM SWITCHBOY MODULE:
+;
+                                            ;SMPTE_GROUP.
+               GLB     SMPTE_START_SUB
+               GLB     SMPTE_TYPE_SUB
+               GLB     FPB_BPM_SUB
+               GLB     TIME_DISPLAY_SUB
+                                            ;COUNT_TAP_GROUP.
+               GLB     TAP_METHOD_SUB
+               GLB     COUNT_IN_SUB
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               TITLE   "SMPTE FUNCTION"
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; THE SUBFUNCTION BLOCKS -
+; EACH BEGINS WITH THE DEFAULT SCREEN TEXT FOR THE SUBFUNCTION.
+;
+; SMPTE_GROUP:
+;
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             SMPTE START TIME SUBFUNCTION
+;
+SMPTE_START_SUB
+               ASC     "SMPTE START TIME"
+               ASC     "   :  :  :  :   "
+
+;HOUR FIELD
+
+               DC.B    17
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    SMPTE_START_HR
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+HI_LIMIT
+               DC.W    23
+               DC.W    EDIT+ED_VEC
+               DC.L    DROP_CHECK_START
+               DC.W    FIELD_END
+
+;MINUTE FIELD
+
+               DC.B    20
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    SMPTE_START_MN
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+HI_LIMIT
+               DC.W    59
+               DC.W    EDIT+ED_VEC
+               DC.L    DROP_CHECK_START
+               DC.W    FIELD_END
+
+;SECOND FIELD
+
+               DC.B    23
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    SMPTE_START_SC
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+HI_LIMIT
+               DC.W    59
+               DC.W    EDIT+ED_VEC
+               DC.L    DROP_CHECK_START
+               DC.W    FIELD_END
+
+;FRAME FIELD
+
+               DC.B    26
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    SMPTE_START_FR
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+CUSTOMIZE
+               DC.L    WOT_FRAME_LIMIT
+               DC.W    EDIT+ED_VEC
+               DC.L    DROP_CHECK_START
+               DC.W    FIELD_END
+
+;BIT FIELD
+
+               DC.B    29
+               DC.B    2
+               DC.W    ACCESS+DIR_PTR
+               DC.W    SMPTE_START_BT
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    EDIT+ED_VEC
+               DC.L    DROP_CHECK_START
+               DC.W    SUBFUN_END
+
+
+WOT_FRAME_LIMIT        ; UPPER LIMIT ON FRAME COUNT DEPENDS ON SMPTE MODE.  FORTUNATELY, ALREADY
+; CALCULATED.
+               MOVE.B  SMPTE_NOW_TYPE,D0
+               BCLR    #7,D0                ;(CLEAR DROP FRAME BIT)
+               EXT     D0
+               SUBQ    #1,D0
+               MOVE    D0,PARAM_HI_LIM
+               RTS
+
+
+DROP_CHECK_START       ; IF IN DROP-FRAME MODE, THE FIRST TWO FRAMES ARE DROPPED PER MINUTE
+; (EXCEPT FOR TENTH MINUTES).  CANNOT ALLOW ILLEGAL START TIMES EXIST.
+               BTST    #7,SMPTE_NOW_TYPE    ;DROP FRAME MODE?
+               BEQ.S   NEW_SMPTE_START      ;    IF NOT, DON'T WORRY
+
+               TST.B   SMPTE_START_SC       ;IF NOT A MINUTE BOUNDRY, NO PROB!
+               BNE.S   NEW_SMPTE_START
+
+               MOVE.B  SMPTE_START_MN,D0    ;LOAD UP MINUTE
+               AND.L   #0FFH,D0             ; (CLEAN UP)
+               ADD     #10,D0               ;   (AVOID ZERO DIVIDE ON MIN=0)
+               DIVU    #10,D0               ; SEE IF A TENTH MINUTE
+               SWAP    D0                   ;  (SEE THIS BY DIVIDING BY 10, AND LOOKING FOR REMAINDER)
+               TST     D0
+               BEQ.S   NEW_SMPTE_START      ;    IF A TENTH MINUTE, ALLOWED TO SKIP ON
+
+               MOVE.B  SMPTE_START_FR,D0    ;         ELSE, SEE IF ILLEGAL (0,1) FRAME NOMBRE
+               CMP.B   #2,D0
+               BCC.S   NEW_SMPTE_START
+               MOVE.B  #2,SMPTE_START_FR
+               ST      SUBFUN_INSTALL       ;HAVE CORRECTED FRAME NOMBRE & INITIATED A REDISPLAY
+
+NEW_SMPTE_START        ; TELL TIMING CHIP NEW SMPTE START TIME.
+;
+               JSR     STOP_THE_SEQUENCER   ;MAKE SURE SEQUENCER IS NOT RUNNING.
+               MOVEQ   #NEG_EXT+0F4H,D0     ; F4
+               JSR     WRITE_TO_TC
+               MOVE.B  SMPTE_START_HR,D0    ; hr
+               JSR     WRITE_TO_TC
+               MOVE.B  SMPTE_START_MN,D0    ; mn
+               JSR     WRITE_TO_TC
+               MOVE.B  SMPTE_START_SC,D0    ; sc
+               JSR     WRITE_TO_TC
+               MOVE.B  SMPTE_START_FR,D0    ; fr
+               JSR     WRITE_TO_TC
+               MOVE.B  SMPTE_START_BT,D0    ; bt
+               EXT     D0                   ; (NEED TO CONVERT FROM 1/100 FRAMES TO 0->79 BITS)
+               MULU    #80,D0
+               DIVU    #100,D0
+               JSR     WRITE_TO_TC
+               .ALONG
+               JSR     TEST_PIN_LIMITS      ;NEW START TIME MAY MEAN CORRECTION OF PUNCH IN/OUT TIMES
+               JSR     TEST_POUT_LIMITS     ;ABOVE MEANS PUNCH IN OKAY, THIS MEANS PUNCH OUT IS TOO
+               .AWORD
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             SMPTE TYPE SUBFUNCTION
+;
+SMPTE_TYPE_SUB
+               ASC     "   SMPTE TYPE   "
+               ASC     "                "
+
+;ONE FIELD - TYPE
+
+               DC.B    16
+               DC.B    16
+               DC.W    ACCESS+DIR_PTR
+               DC.W    SMPTE_NOW_T_1
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    SMPTE_MODE_SCREENS
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    3
+               DC.W    EDIT+ED_VEC
+               DC.L    NEW_SMPTE_TYPE
+               DC.W    SUBFUN_END
+
+
+SMPTE_MODE_SCREENS
+               ASC     "24 FRAMES/SECOND"
+               ASC     "25 FRAMES/SECOND"
+               ASC     " 30 FPS  (DROP) "
+               ASC     "30 FRAMES/SECOND"
+
+
+NEW_SMPTE_TYPE         ; TELL TIMING CHIP NEW SMPTE MODE.  NOTE THAT NEW SMPTE TYPE MAY INVALIDATE
+; THE SET START TIME.  WE CHECK & AUTO-EDIT IT.
+               SF      SMPTE_SYNC           ;IF WE'RE CHANGING TYPE, ANY SUPPOSED SYNC IS FALSE
+               JSR     STOP_THE_SEQUENCER   ;MAKE SURE SEQUENCER IS NOT RUNNING.
+
+               MOVE.B  SMPTE_NOW_T_1,D0     ;GET 0->3 INDICATION OF TYPE
+               EXT     D0
+;900621               LEA.L   SMPTE_TYPE_TBL,A0    ;CONVERT TO 24/25/128+30/30
+               lea.l   SMPTE_TYPE_TBL(pc),a0     ;CONVERT TO 24/25/128+30/30
+               MOVE.B  0(A0,D0),SMPTE_NOW_TYPE
+
+               MOVE.B  TC_MODE,D0           ;GET OLD TIMING CHIP MODE
+               AND.B   #011111100B,D0       ;WIPE OUT OLD SMPTE TYPE
+               OR.B    SMPTE_NOW_T_1,D0     ;MASK IN NEW TYPE
+               MOVE.B  D0,TC_MODE
+               MOVEQ   #NEG_EXT+0F3H,D0     ;TELL TC NEW MODE
+               JSR     WRITE_TO_TC
+               MOVE.B  TC_MODE,D0
+               JSR     WRITE_TO_TC
+
+; HAVE VALUE IN BPM; NEED TO CALC IT IN FPB
+               MOVE.B  SMPTE_NOW_T_1,D0     ;FPB INTERACTS WITH SMPTE TYPE
+               EXT     D0
+               LSL     #1,D0                ; (WORD INDEX)
+               MOVE    SMPT2_MULT_TBL(PC,D0),D0  ;LOAD SMPTE FPS x100
+               MULU    #60,D0               ;MULT BY 60 SECONDS/MINUTE
+               DIVU    CUR_TEMPO_BPM,D0     ;DIVIDE BY CURRENT BEATS/MINUTE * 10
+               MOVE    D0,CUR_TEMPO_FPB     ;NOW HAVE F/B * 10
+
+               BSR     NEW_TAPE_SPEED       ;CHANGING TYPE CHANGES VARISPEED ADD/SUBTRACT AMOUNT
+
+               MOVE.B  SMPTE_NOW_TYPE,D0    ;SEE IF START FRAME NOW ILLEGAL
+               BCLR    #7,D0                ; (KNOCK OUT DROP-FRAME BIT)
+               ADDQ    #1,D0                ;  (OUR LIMIT IS 1 UNDER TYPE - OFFSET TO CHECK)
+               CMP.B   SMPTE_START_FR,D0
+               BCC.S   CHECK_DROP_FRAME     ;    IF UNDER, COOL (BUT MAY VIOLATE DROP-FRAME RULES)
+               SUBQ    #2,D0                ;         ELSE, RESET START FRAME TO UPPER LIMIT
+               MOVE.B  D0,SMPTE_START_FR
+               BRA     NEW_SMPTE_START      ;         AND TELL TC ABOUT NEW START
+
+CHECK_DROP_FRAME
+               BTST    #7,SMPTE_NOW_TYPE    ;DROP FRAME MODE?
+               BNE     DROP_CHECK_START     ;    IF SO, BETTER MAKE SURE FULLY LEGAL
+               RTS                          ;         ELSE, COOL - DONE.
+
+
+OUR_TYPE_TBL
+               DC.B    24
+               DC.B    25
+               DC.B    158
+               DC.B    30
+
+
+SMPT2_MULT_TBL
+               DC.W    2400
+               DC.W    2500
+               DC.W    2997
+               DC.W    3000
+;
+SMPTE_TYPE_TBL
+;900621               HEX     1819,9E1E
+               dc.b    18h
+               dc.b    19h
+               dc.b    9eh
+               dc.b    1eh
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             ACTUALLY, THE TAPE SPEED VARIATION SUBFUNCTION
+;
+FPB_BPM_SUB
+               ASC     "TAPE SPEED VARI:"
+               ASC     "               %"
+
+;GROSS ADJUST FIELD
+
+               DC.B    16
+               DC.B    10
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    TAPE_SPEED_TYPE
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    TAPE_SCREENS
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    2
+               DC.W    EDIT+ED_VEC
+               DC.L    NEW_TAPE_SPEED
+               DC.W    FIELD_END
+
+;FINE TUNE FIELD
+
+               DC.B    28
+               DC.B    3
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    TAPE_SPEED_VARI
+               DC.W    ACCESS+SIGNED
+               DC.W    EDIT+LO_LIMIT
+               DC.W    -20
+               DC.W    EDIT+HI_LIMIT
+               DC.W    20
+               DC.W    EDIT+ED_VEC
+               DC.L    NEW_TAPE_SPEED
+               DC.W    SUBFUN_END
+
+
+TAPE_SCREENS
+               ASC     "  NORMAL  "
+               ASC     "  DOUBLE  "
+               ASC     "HALF SPEED"
+
+
+NEW_TAPE_SPEED         ; CONVERT +/- % TO AN ABSOLUTE SIGNED VALUE.  THIS, OF COURSE, IS DEPENDENT
+; ON THE SMPTE TYPE.  MASK THE GROSS DIVIDE ON TO THE FRONT, AND TELL THE TIMING CHIP.  MESSAGE
+; FORMAT IS:
+;                      FB  aabbbbbb bbbbbbbb
+;
+;              aa = GROSS VARIATION (0=NORMAL, 1=x2, 2 = /2)
+;          bbbbbbbbbbbbb = SIGNED VARIATION (1 UNIT = 500 nsec)
+;
+               MOVEM.L D1-D7/A1-A6,-(A7)          ;PROTECT REGGIES
+               JSR     STOP_THE_SEQUENCER   ;MAKE SURE SEQUENCER IS NOT RUNNING.
+
+               MOVEQ   #NEG_EXT+0FBH,D0     ;TELL TC TAPE SPEED VARIATION IS FOLLOWING
+               JSR     WRITE_TO_TC
+
+               MOVEQ   #100,D0              ; "100 %" IN D0 (LONG, PLEASE - FOR DIVIDE BELOW).
+               MOVE    TAPE_SPEED_VARI,D1   ; +/- nn% IN D1
+
+               MOVE.B  SMPTE_NOW_T_1,D2     ;CALC BASE TIME PER SMPTE BIT
+               EXT     D2                   ; DO THIS VIA SMPTE TYPE, GROSS VARIATION, AND TABLE LOOKUP
+               LSL     #2,D2
+               ADD     TAPE_SPEED_TYPE,D2
+               LSL     #1,D2
+               MOVE    BIT_LEN_TBL(PC,D2),D2     ;VIOLA!
+
+               TST     D1                   ; (ZERO VARI MEANS FUCK IT)
+               BEQ.S   COURT_0
+
+               MULS    D2,D1                ;MULTIPLY OUT...
+               DIVS    D1,D0                ;            ...DIVIDE DOWN
+COURT_0
+               AND     #3FFFH,D0            ;MASK CLEAN ROOM FOR GROSS BITS
+               MOVE    TAPE_SPEED_TYPE,D2
+               AND.L   #3,D2                ; MASK TAPE SPEED TYPE CLEAN
+               SWAP    D2
+               LSR.L   #2,D2
+               OR      D2,D0                ;ASSEMBLED AT THIS POINT
+
+               ROR.L   #8,D0                ;MS BYTE FIRST
+               JSR     WRITE_TO_TC
+               ROL.L   #8,D0                ;    LSB
+               JSR     WRITE_TO_TC
+
+               MOVEM.L (A7)+,D1-D7/A1-A6
+               RTS
+
+
+BIT_LEN_TBL
+               DC.W    1042                 ; 24 FPS - NORMAL SPEED (1 unit = 500 nsec)
+               DC.W    521                  ;  "  "  - DOUBLE   "
+               DC.W    2083                 ;  "  "  -  HALF    "
+               DC.W    0                    ; (dummy space)
+
+               DC.W    1000                 ; 25 FPS - NORMAL SPEED (1 unit = 500 nsec)
+               DC.W    500                  ;  "  "  - DOUBLE   "
+               DC.W    2000                 ;  "  "  -  HALF    "
+               DC.W    0                    ; (dummy space)
+
+               DC.W    834                  ; 30 df - NORMAL SPEED (1 unit = 500 nsec)
+               DC.W    417                  ;  "  " - DOUBLE   "
+               DC.W    1668                 ;  "  " -  HALF    "
+               DC.W    0                    ; (dummy space)
+
+               DC.W    833                  ; 30 ndf - NORMAL SPEED (1 unit = 500 nsec)
+               DC.W    417                  ;  "  "  - DOUBLE   "
+               DC.W    1667                 ;  "  "  -  HALF    "
+               DC.W    0                    ; (dummy space)
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             RUNNING TIME DISPLAY SUBFUNCTION
+;
+TIME_DISPLAY_SUB
+               ASC     " HR MN SC FR BT "
+               ASC     "   :  :  :  :   "
+
+;HOUR FIELD
+
+               DC.B    17
+               DC.B    2
+               DC.W    EDIT+NO_EDITS        ;FRAME REFRESHED BY TC WRITING TIME TO US
+               DC.W    ACCESS+DIR_PTR
+               DC.W    SMPTE_NOW_HR
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    FIELD_END
+
+;MINUTE FIELD
+
+               DC.B    20
+               DC.B    2
+               DC.W    EDIT+NO_EDITS        ;FRAME REFRESHED BY TC WRITING TIME TO US
+               DC.W    ACCESS+DIR_PTR
+               DC.W    SMPTE_NOW_MN
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    FIELD_END
+
+;SECOND FIELD
+
+               DC.B    23
+               DC.B    2
+               DC.W    EDIT+NO_EDITS        ;FRAME REFRESHED BY TC WRITING TIME TO US
+               DC.W    ACCESS+DIR_PTR
+               DC.W    SMPTE_NOW_SC
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    FIELD_END
+
+;FRAME FIELD
+
+               DC.B    26
+               DC.B    2
+               DC.W    EDIT+NO_EDITS        ;FRAME REFRESHED BY TC WRITING TIME TO US
+               DC.W    ACCESS+DIR_PTR
+               DC.W    SMPTE_NOW_FR
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    FIELD_END
+
+;BIT FIELD
+
+               DC.B    29
+               DC.B    2
+               DC.W    EDIT+NO_EDITS        ;FRAME REFRESHED BY TC WRITING TIME TO US
+               DC.W    ACCESS+DIR_PTR
+               DC.W    SMPTE_NOW_BT
+               DC.W    DISPLAY+NO_ZERO_BLANK
+               DC.W    DISPLAY+TAILOR
+               DC.L    KILL_CURSOR
+               DC.W    SUBFUN_END
+
+
+KILL_CURSOR            ; WE DON'T WANT A CURSOR SHOWING IN THIS FIELD WHEN IT IS UPDATED OUT OF
+; PRO_MTC.
+               SF      CURSOR_ENABLE
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               TITLE   "COUNT/TAP FUNCTIONS"
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+; COUNT_TAP_GROUP:
+;
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             COUNT IN METHOD SUBFUNCTION
+;
+TAP_METHOD_SUB
+               ASC     "COUNT-IN METHOD:"
+               ASC     "                "
+
+;ONE FIELD - METHOD
+
+               DC.B    16
+               DC.B    16
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    COUNT_IN_METHOD
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    COUNT_STRINGS
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    2
+               DC.W    SUBFUN_END
+
+
+COUNT_STRINGS
+               ASC     "   OFF (NONE)   "
+               ASC     "METRONOME  CLICK"
+               ASC     "     TAP IN     "
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+               SKIP
+;VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+;
+;             TAP INTERVAL AND SLEW/COUNT SCREEN
+;
+COUNT_IN_SUB
+               ASC     "NUM. OF BEATS:  "
+               ASC     "(         NOTES)"
+
+;SLEW FIELD
+
+               DC.B    15
+               DC.B    1
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    TAP_SLEW_AMOUNT
+               DC.W    EDIT+LO_LIMIT
+               DC.W    2
+               DC.W    EDIT+HI_LIMIT
+               DC.W    8
+               DC.W    EDIT+ED_VEC
+               DC.L    CLICKS_TO_COUNT_IN
+               DC.W    FIELD_END
+
+;SIZE 'O TAP FIELD
+
+               DC.B    17
+               DC.B    7
+               DC.W    ACCESS+WORD
+               DC.W    ACCESS+DIR_PTR
+               DC.W    TAP_DIV_FLAG
+               DC.W    DISPLAY+DISP_VEC
+               DC.L    WRITE_PARAM_STRING
+               DC.W    DISPLAY+DISP_STRNG
+               DC.L    QUAR_EIG
+               DC.W    EDIT+NO_KEYPAD
+               DC.W    EDIT+HI_LIMIT
+               DC.W    1
+               DC.W    EDIT+ED_VEC
+               DC.L    CLICKS_TO_COUNT_IN
+               DC.W    SUBFUN_END
+
+
+QUAR_EIG
+               ASC     "QUARTER"
+               ASC     "EIGHTH "
+
+
+CLICKS_TO_COUNT_IN     ; FIND HOW MANY CLICKS ARE IMPLIED BY THE ABOVE PARAMETERS.  IF SET FOR A
+; METRONOME COUNT-IN, WANT TO HOLD OFF PRO_CLICK BY THAT MANY CLICKS.
+               MOVEQ   #24,D0               ;24 CLICKS/QUARTER NOTE
+               TST     TAP_DIV_FLAG         ;    IF EIGHTHS, CUT IN HALF, OF COURSE
+               BEQ.S   ONE_ONE
+               LSR     #1,D0
+ONE_ONE
+               MOVE    D0,CLICKS_PER_TAP    ;SAVE CLICKS PER TAP
+
+               MULU    TAP_SLEW_AMOUNT,D0   ;# OF TAPS x CLICKS/TAP = CLICKS 'TILL START
+               MOVE    D0,CLICKS_TAP        ; SAVE
+
+               BTST    #6,XPORT_STATE       ;IF PLAYING, DON'T UPDATE & INIT NOW - STOP WILL PICK IT UP
+               BNE.S   INIT_COUNT_IN        ; IF PAUSED, GO AHEAD AND INIT
+               BTST    #3,XPORT_STATE       ;IF PAUSE & PLAY OFF, GO AHEAD AND INIT
+               BEQ.S   INIT_COUNT_IN
+               RTS                          ;    ELSE, LET STOP OR PAUSE BUTTON DO IT.
+INIT_COUNT_IN
+               MOVE    TAP_SLEW_AMOUNT,TAP_CLICKS_LEFT     ;ALSO LOAD UP NUMBER OF TAPS 'FORE A COUNT IN
+               ADDQ    #1,TAP_CLICKS_LEFT   ;(OVERCOMPESATE, FOR A MET CLICK WHEN STARTING OUT)
+;19JUN;
+;19JUN               MOVE    #1,CLICKS_PER_TAP_LEFT
+;19JUN;                                DEFUNCT .....
+               RTS
+;
+;AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
