@@ -107,4 +107,3 @@ reset procedure now explicitly initializes stack pointer,
 for use with generic mon68k (hp64000 emulation monitor).
 
 i called this version 2.30 - shipped it to dave seznak.
-
